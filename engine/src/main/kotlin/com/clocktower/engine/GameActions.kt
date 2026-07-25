@@ -29,6 +29,17 @@ object GameActions {
     fun removeSeat(state: GameState, playerId: Long): GameState =
         state.copy(players = state.players.filterNot { it.id == playerId })
 
+    /** Moves a seat one position around the circle (for seat swaps). */
+    fun moveSeat(state: GameState, playerId: Long, delta: Int): GameState {
+        val players = state.players.toMutableList()
+        val from = players.indexOfFirst { it.id == playerId }
+        if (from < 0 || players.size < 2) return state
+        val to = ((from + delta) % players.size + players.size) % players.size
+        val p = players.removeAt(from)
+        players.add(to, p)
+        return state.copy(players = players)
+    }
+
     fun rename(state: GameState, playerId: Long, name: String): GameState =
         state.updatePlayer(playerId) { it.copy(name = name) }
 

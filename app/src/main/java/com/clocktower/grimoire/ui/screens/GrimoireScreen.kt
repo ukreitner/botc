@@ -34,7 +34,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
 import com.clocktower.engine.GameState
+import com.clocktower.engine.NightMarkers
+import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
@@ -62,6 +65,22 @@ fun GrimoireScreen(
     var offsetX by rememberSaveable { mutableFloatStateOf(0f) }
     var offsetY by rememberSaveable { mutableFloatStateOf(0f) }
 
+    // During the night, badge each seat with its wake-order position.
+    val wakeOrder: Map<String, Int> = remember(state.players, state.phase, state.cycle, state.fabledIds) {
+        if (state.phase != Phase.NIGHT) {
+            emptyMap()
+        } else {
+            val steps = if (state.cycle == 1) {
+                viewModel.gameData.nightOrder.firstNight(state, viewModel::characterById)
+            } else {
+                viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
+            }
+            steps.filter { it.id !in NightMarkers.all && it.playerIds.isNotEmpty() }
+                .mapIndexed { index, step -> step.id to index + 1 }
+                .toMap()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -88,8 +107,32 @@ fun GrimoireScreen(
                     viewModel = viewModel,
                     state = state,
                     player = player,
+                    wakeNumber = player.characterId?.let { wakeOrder[it] },
                     onClick = { onOpenSeat(player.id) },
                 )
+            }
+        }
+
+        // Standing facts every storyteller keeps re-deriving.
+        val ghostVotes = state.players.count { !it.alive && !it.ghostVoteUsed }
+        Text(
+            text = "${state.alivePlayers.size} alive · ${state.executionThreshold} to execute · $ghostVotes ghost vote${if (ghostVotes == 1) "" else "s"}",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 6.dp),
+        )
+        if (state.fabledIds.isNotEmpty()) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 20.dp, end = 8.dp),
+            ) {
+                for (id in state.fabledIds) {
+                    CharacterToken(character = viewModel.characterById(id), size = 34.dp)
+                }
             }
         }
 
@@ -153,6 +196,7 @@ private fun SeatView(
     viewModel: GameViewModel,
     state: GameState,
     player: Player,
+    wakeNumber: Int?,
     onClick: () -> Unit,
 ) {
     val character = viewModel.characterById(player.characterId)
@@ -211,6 +255,22 @@ private fun SeatView(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("T", style = MaterialTheme.typography.labelSmall, color = Color.Black)
+                }
+            }
+            if (wakeNumber != null && player.alive) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF2A2040)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "$wakeNumber",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AgedGold,
+                    )
                 }
             }
         }

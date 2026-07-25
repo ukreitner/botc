@@ -273,6 +273,40 @@ class GameActionsTest {
     }
 
     @Test
+    fun `move seat wraps around the circle`() {
+        var state = newGame(5)
+        state = GameActions.moveSeat(state, 0, +1)
+        assertEquals(listOf(1L, 0L, 2L, 3L, 4L), state.players.map { it.id })
+        state = GameActions.moveSeat(state, 0, -1)
+        assertEquals(listOf(0L, 1L, 2L, 3L, 4L), state.players.map { it.id })
+        // Moving backwards from the first seat wraps to the end.
+        state = GameActions.moveSeat(state, 0, -1)
+        assertEquals(listOf(1L, 2L, 3L, 4L, 0L), state.players.map { it.id })
+    }
+
+    @Test
+    fun `win check advises when demon dies or two remain`() {
+        var state = newGame(8)
+        val assignments = listOf("imp", "scarletwoman", "washerwoman", "empath", "chef", "recluse", "soldier", "mayor")
+        assignments.forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
+        state = GameActions.advancePhase(state)
+        assertEquals(null, WinCheck.check(state, data::character))
+
+        val demonDead = GameActions.kill(state, 0, DeathCause.EXECUTION)
+        val advisory = assertNotNull(WinCheck.check(demonDead, data::character))
+        assertEquals(true, advisory.goodWins)
+        assertTrue(advisory.cautions.any { "Scarlet Woman" in it })
+
+        var lastTwo = state
+        for (id in listOf(1L, 2L, 3L, 4L, 5L, 6L)) {
+            lastTwo = GameActions.kill(lastTwo, id, DeathCause.DEMON)
+        }
+        val evilWin = assertNotNull(WinCheck.check(lastTwo, data::character))
+        assertEquals(false, evilWin.goodWins)
+        assertTrue(evilWin.cautions.any { "Mayor" in it })
+    }
+
+    @Test
     fun `game state survives serialization round trip`() {
         var state = newGame(7)
         state = GameActions.assignCharacter(state, 0, "imp")

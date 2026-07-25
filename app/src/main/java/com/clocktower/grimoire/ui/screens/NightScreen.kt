@@ -38,6 +38,7 @@ import com.clocktower.engine.GameState
 import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NightStep
+import com.clocktower.engine.PlacedReminder
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
 import com.clocktower.grimoire.ui.components.FullScreenShow
@@ -213,6 +214,42 @@ private fun StepDetailPanel(
                 onClick = { onShow(ShowCard.BluffsCard(state.demonBluffIds)) },
                 label = { Text("Show bluffs full-screen") },
             )
+        }
+
+        // Place this character's reminder tokens without leaving the sheet:
+        // pick the token, then the seat it goes on.
+        val stepCharacter = viewModel.characterById(step.id)
+        val tokens = stepCharacter?.allReminders.orEmpty()
+        if (tokens.isNotEmpty()) {
+            var pendingLabel by rememberSaveable(step.id) { mutableStateOf<String?>(null) }
+            Text("Place reminder:", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (label in tokens) {
+                    FilterChip(
+                        selected = pendingLabel == label,
+                        onClick = { pendingLabel = if (pendingLabel == label) null else label },
+                        label = { Text(label) },
+                    )
+                }
+            }
+            pendingLabel?.let { label ->
+                Text(
+                    "…on whom?",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (p in state.players) {
+                        AssistChip(
+                            onClick = {
+                                viewModel.addReminder(p.id, PlacedReminder(step.id, label))
+                                pendingLabel = null
+                            },
+                            label = { Text(p.name) },
+                        )
+                    }
+                }
+            }
         }
 
         if (InfoCalc.supports(step.id)) {

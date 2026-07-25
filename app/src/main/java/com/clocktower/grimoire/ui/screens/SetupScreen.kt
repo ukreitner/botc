@@ -1,5 +1,7 @@
 package com.clocktower.grimoire.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
@@ -139,6 +142,19 @@ private fun ScriptStage(
     onPick: (Script) -> Unit,
     onBack: () -> Unit,
 ) {
+    val context = LocalContext.current
+    var fileError by rememberSaveable { mutableStateOf<String?>(null) }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            fileError = try {
+                val text = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.use { it.readText() }
+                if (text == null) "Couldn't read that file." else viewModel.importScript(text)
+            } catch (e: Exception) {
+                "Couldn't read that file: ${e.message}"
+            }
+        }
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -196,7 +212,16 @@ private fun ScriptStage(
         }
         item {
             OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) {
-                Text("Import script JSON (official script tool format)")
+                Text("Import script JSON (paste)")
+            }
+            OutlinedButton(
+                onClick = { filePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text("Import script from file (.json)")
+            }
+            fileError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
         }
     }

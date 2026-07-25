@@ -47,8 +47,12 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Row
+import com.clocktower.engine.DeathCause
+import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Phase
+import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.theme.AgedGold
 
@@ -73,6 +77,13 @@ fun GameShell(
     var showAddSeat by rememberSaveable { mutableStateOf(false) }
     var showCardTool by rememberSaveable { mutableStateOf(false) }
     var activeCard by remember { mutableStateOf<ShowCard?>(null) }
+    var showLog by rememberSaveable { mutableStateOf(false) }
+    var showFabled by rememberSaveable { mutableStateOf(false) }
+    var showJinxes by rememberSaveable { mutableStateOf(false) }
+    var showReorder by rememberSaveable { mutableStateOf(false) }
+    var revealGoodWins by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var duskGuard by rememberSaveable { mutableStateOf(false) }
+    var dismissedAdvisory by rememberSaveable { mutableStateOf("") }
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val stateHolder = rememberSaveableStateHolder()
@@ -111,6 +122,12 @@ fun GameShell(
                             val nowMs = System.currentTimeMillis()
                             if (nowMs - lastAdvanceAt < 800) return@FilledTonalButton
                             lastAdvanceAt = nowMs
+                            // Dusk guard: someone is on the block and hasn't died.
+                            val onBlock = GameActions.aboutToDie(state)?.let { state.player(it) }
+                            if (state.phase == Phase.DAY && onBlock?.alive == true) {
+                                duskGuard = true
+                                return@FilledTonalButton
+                            }
                             viewModel.advancePhase()
                             // Jump to the tab that matters for the new phase.
                             tab = when (state.phase) {
@@ -145,8 +162,32 @@ fun GameShell(
                             onClick = { showMenu = false; showCardTool = true },
                         )
                         DropdownMenuItem(
+                            text = { Text("Fabled…") },
+                            onClick = { showMenu = false; showFabled = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Jinxes in play") },
+                            onClick = { showMenu = false; showJinxes = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Game log") },
+                            onClick = { showMenu = false; showLog = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Reorder seats") },
+                            onClick = { showMenu = false; showReorder = true },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Add seat (traveller joins)") },
                             onClick = { showMenu = false; showAddSeat = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Declare good victory") },
+                            onClick = { showMenu = false; revealGoodWins = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Declare evil victory") },
+                            onClick = { showMenu = false; revealGoodWins = false },
                         )
                         DropdownMenuItem(
                             text = { Text("Back to home") },
@@ -215,6 +256,61 @@ fun GameShell(
             state = state,
             onShow = { activeCard = it },
             onDismiss = { showCardTool = false },
+        )
+    }
+    if (showLog) GameLogDialog(state, onDismiss = { showLog = false })
+    if (showFabled) FabledSheet(viewModel, state, onDismiss = { showFabled = false })
+    if (showJinxes) ActiveJinxesDialog(viewModel, state, onDismiss = { showJinxes = false })
+    if (showReorder) ReorderSeatsDialog(viewModel, state, onDismiss = { showReorder = false })
+
+    // Advisory when the grimoire looks like a finished game.
+    val advisory = remember(state.players, state.phase) {
+        WinCheck.check(state, viewModel::characterById)
+    }
+    if (advisory != null && advisory.reason != dismissedAdvisory && revealGoodWins == null) {
+        WinAdvisoryDialog(
+            advisory = advisory,
+            onDeclare = { revealGoodWins = it },
+            onDismiss = { dismissedAdvisory = advisory.reason },
+        )
+    }
+    revealGoodWins?.let { goodWins ->
+        RevealSheet(
+            viewModel = viewModel,
+            state = state,
+            goodWins = goodWins,
+            onNewGame = {
+                revealGoodWins = null
+                viewModel.endGame()
+                onExit()
+            },
+            onDismiss = { revealGoodWins = null },
+        )
+    }
+    if (duskGuard) {
+        val onBlock = GameActions.aboutToDie(state)?.let { state.player(it) }
+        AlertDialog(
+            onDismissRequest = { duskGuard = false },
+            title = { Text("Dusk falls") },
+            text = { Text("${onBlock?.name ?: "Someone"} is on the block and hasn't been executed. Execute before night?") },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    duskGuard = false
+                    onBlock?.let { viewModel.kill(it.id, DeathCause.EXECUTION) }
+                    viewModel.advancePhase()
+                    tab = GameTab.NIGHT
+                }) { Text("Execute & begin night") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        duskGuard = false
+                        viewModel.advancePhase()
+                        tab = GameTab.NIGHT
+                    }) { Text("No execution") }
+                    TextButton(onClick = { duskGuard = false }) { Text("Cancel") }
+                }
+            },
         )
     }
     activeCard?.let { card ->
