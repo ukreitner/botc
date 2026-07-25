@@ -30,7 +30,7 @@ object InfoCalc {
         "chef", "empath", "clockmaker", "shugenja", "oracle", "undertaker",
         "towncrier", "flowergirl", "fortuneteller", "dreamer", "seamstress",
         "villageidiot", "cultleader", "king", "washerwoman", "librarian",
-        "investigator", "knight", "steward", "noble", "bountyhunter",
+        "investigator", "knight", "sage", "steward", "noble", "bountyhunter",
         "chambermaid", "mathematician", "balloonist", "ravenkeeper",
         "grandmother",
     )
@@ -69,6 +69,7 @@ object InfoCalc {
             "librarian" -> startKnowing(ctx, Team.OUTSIDER, "Outsider")
             "investigator" -> startKnowing(ctx, Team.MINION, "Minion")
             "knight" -> knight(ctx)
+            "sage" -> sage(ctx)
             "steward" -> steward(ctx)
             "noble" -> noble(ctx)
             "bountyhunter" -> bountyHunter(ctx)
@@ -416,6 +417,16 @@ object InfoCalc {
             headline = "$label in play: " + inPlay.joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" },
             detail = "Show one of those character tokens, point to that player plus 1 wrong player.",
             caveats = misregistrations(ctx, ctx.players),
+        )
+    }
+
+    private fun sage(ctx: Ctx): InfoResult {
+        val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
+        if (demons.isEmpty()) return InfoResult("No Demon in the grimoire")
+        return InfoResult(
+            headline = "Point to 2 players: one must be the Demon",
+            detail = "Demon: ${demons.joinToString { ctx.name(it) }} — pair with any other player",
+            caveats = listOf("Only if the Demon killed the Sage; other deaths don't wake them."),
         )
     }
 

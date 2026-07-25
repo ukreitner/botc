@@ -212,6 +212,22 @@ private fun ScriptStage(
                                 color = MaterialTheme.colorScheme.error,
                             )
                         }
+                        // A taste of the script: one token per team.
+                        val preview = remember(script) {
+                            val resolved = viewModel.gameData.resolve(script)
+                            listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)
+                                .mapNotNull { team -> resolved.firstOrNull { it.team == team } }
+                        }
+                        if (preview.isNotEmpty()) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(top = 6.dp),
+                            ) {
+                                for (c in preview) {
+                                    CharacterToken(character = c, size = 34.dp)
+                                }
+                            }
+                        }
                     }
                     if (!script.isBuiltIn) {
                         IconButton(onClick = { pendingDeleteId = script.id }) {

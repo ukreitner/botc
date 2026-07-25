@@ -75,6 +75,8 @@ import kotlin.math.sin
 fun GrimoireScreen(
     viewModel: GameViewModel,
     state: GameState,
+    onOpenBluffs: () -> Unit = {},
+    onOpenFabled: () -> Unit = {},
     onOpenSeat: (Long) -> Unit,
 ) {
     var scale by rememberSaveable { mutableFloatStateOf(1f) }
@@ -168,15 +170,49 @@ fun GrimoireScreen(
                 .align(Alignment.TopCenter)
                 .padding(top = 6.dp),
         )
-        if (state.fabledIds.isNotEmpty()) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 20.dp, end = 8.dp),
-            ) {
+        // Quick edit access: bluffs on the left, fabled on the right — both
+        // tappable, both always one gesture away.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 20.dp, start = 8.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onOpenBluffs)
+                .padding(2.dp),
+        ) {
+            if (state.demonBluffIds.isEmpty()) {
+                Text(
+                    "＋ bluffs",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                for (id in state.demonBluffIds) {
+                    CharacterToken(character = viewModel.characterById(id), size = 30.dp)
+                }
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 20.dp, end = 8.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onOpenFabled)
+                .padding(2.dp),
+        ) {
+            if (state.fabledIds.isEmpty()) {
+                Text(
+                    "fabled ＋",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
                 for (id in state.fabledIds) {
-                    CharacterToken(character = viewModel.characterById(id), size = 34.dp)
+                    CharacterToken(character = viewModel.characterById(id), size = 30.dp)
                 }
             }
         }

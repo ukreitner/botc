@@ -304,7 +304,11 @@ fun GameShell(
             // unrecorded vote tally, scroll positions) across tab switches.
             stateHolder.SaveableStateProvider(tab.name) {
                 when (tab) {
-                    GameTab.GRIMOIRE -> GrimoireScreen(viewModel, state) { openSeat = it }
+                    GameTab.GRIMOIRE -> GrimoireScreen(
+                        viewModel, state,
+                        onOpenBluffs = { showBluffs = true },
+                        onOpenFabled = { showFabled = true },
+                    ) { openSeat = it }
                     GameTab.NIGHT -> NightScreen(
                         viewModel = viewModel,
                         state = state,

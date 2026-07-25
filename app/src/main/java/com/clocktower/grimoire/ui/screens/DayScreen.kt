@@ -88,16 +88,37 @@ fun DayScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = when {
-                    onBlock != null -> "On the block: ${onBlock.name}"
-                    highest > 0 -> "Tie — no one is about to die"
-                    else -> "No one is about to die"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (onBlock != null) EmberRed else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (onBlock != null) {
+                // Prominent block banner with a one-tap execution shortcut.
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            "⚔ On the block: ${onBlock.name}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = EmberRed,
+                            modifier = Modifier.weight(1f),
+                        )
+                        FilledTonalButton(onClick = {
+                            viewModel.kill(onBlock.id, DeathCause.EXECUTION)
+                        }) { Text("Execute") }
+                    }
+                }
+            } else {
+                Text(
+                    text = if (highest > 0) "Tie — no one is about to die" else "No one is about to die",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         item {
