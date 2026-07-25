@@ -128,11 +128,18 @@ fun DayScreen(
                                 "tap everyone whose hand is up (${voters.size} so far, needs $voteThreshold)",
                             style = MaterialTheme.typography.titleSmall,
                         )
+                        // Hands are counted clockwise starting left of the
+                        // nominee — list voters in that order.
+                        val voteOrder = run {
+                            val start = state.players.indexOfFirst { it.id == nomineeId }
+                            if (start < 0) state.players
+                            else (1..state.players.size).map { state.players[(start + it) % state.players.size] }
+                        }
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            for (p in state.players) {
+                            for (p in voteOrder) {
                                 val canVote = p.alive || !p.ghostVoteUsed || isExile
                                 FilterChip(
                                     selected = p.id in voters,

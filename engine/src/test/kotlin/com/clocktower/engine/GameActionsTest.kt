@@ -307,6 +307,32 @@ class GameActionsTest {
     }
 
     @Test
+    fun `swap characters exchanges tokens only`() {
+        var state = newGame(5)
+        state = GameActions.assignCharacter(state, 0, "imp")
+        state = GameActions.assignCharacter(state, 1, "mayor")
+        state = GameActions.swapCharacters(state, 0, 1)
+        assertEquals("mayor", state.player(0)?.characterId)
+        assertEquals("imp", state.player(1)?.characterId)
+    }
+
+    @Test
+    fun `suggest bluffs picks three not in play good characters`() {
+        var state = newGame(8)
+        listOf("imp", "poisoner", "washerwoman", "empath", "chef", "recluse", "butler", "mayor")
+            .forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
+        val available = data.resolve(tb)
+        val bluffs = GameActions.suggestBluffs(available, state, Random(1))
+        assertEquals(3, bluffs.size)
+        val inPlay = state.players.mapNotNull { it.characterId }.toSet()
+        for (id in bluffs) {
+            assertTrue(id !in inPlay, "$id is in play")
+            val team = data.character(id)?.team
+            assertTrue(team == Team.TOWNSFOLK || team == Team.OUTSIDER)
+        }
+    }
+
+    @Test
     fun `game state survives serialization round trip`() {
         var state = newGame(7)
         state = GameActions.assignCharacter(state, 0, "imp")

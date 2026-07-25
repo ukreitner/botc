@@ -76,6 +76,7 @@ fun SeatSheet(
                 character = character,
                 onPickCharacter = { mode = SeatSheetMode.PICK_CHARACTER },
                 onAddReminder = { mode = SeatSheetMode.ADD_REMINDER },
+                onSwap = { mode = SeatSheetMode.SWAP },
                 onDismiss = onDismiss,
             )
             SeatSheetMode.PICK_CHARACTER -> CharacterPicker(
@@ -96,11 +97,33 @@ fun SeatSheet(
                 },
                 onBack = { mode = SeatSheetMode.ACTIONS },
             )
+            SeatSheetMode.SWAP -> Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 24.dp),
+            ) {
+                Text("Swap characters with…", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "Barber cuts, Snake Charmer swaps — both seats trade tokens.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                for (other in state.players.filter { it.id != player.id }) {
+                    TextButton(onClick = {
+                        viewModel.update { s -> com.clocktower.engine.GameActions.swapCharacters(s, player.id, other.id) }
+                        mode = SeatSheetMode.ACTIONS
+                    }) {
+                        Text("${other.name} (${viewModel.characterById(other.characterId)?.name ?: "no character"})")
+                    }
+                }
+                TextButton(onClick = { mode = SeatSheetMode.ACTIONS }) { Text("Back") }
+            }
         }
     }
 }
 
-private enum class SeatSheetMode { ACTIONS, PICK_CHARACTER, ADD_REMINDER }
+private enum class SeatSheetMode { ACTIONS, PICK_CHARACTER, ADD_REMINDER, SWAP }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -111,6 +134,7 @@ private fun SeatActions(
     character: Character?,
     onPickCharacter: () -> Unit,
     onAddReminder: () -> Unit,
+    onSwap: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by rememberSaveable(player.id) { mutableStateOf(player.name) }
@@ -143,6 +167,20 @@ private fun SeatActions(
         character?.ability?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium)
         }
+        // Jinxes between this character and others currently in play.
+        if (character != null) {
+            val inPlay = state.players.mapNotNull { it.characterId } + state.fabledIds
+            val jinxes = viewModel.gameData.activeJinxes(inPlay)
+                .filter { it.id1 == character.id || it.id2 == character.id }
+            for (j in jinxes) {
+                val partner = if (j.id1 == character.id) j.id2 else j.id1
+                Text(
+                    "Jinx with ${viewModel.gameData.character(partner)?.name}: ${j.reason}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
 
         HorizontalDivider()
 
@@ -170,6 +208,7 @@ private fun SeatActions(
             OutlinedButton(onClick = onPickCharacter) { Text("Change character") }
             OutlinedButton(onClick = onAddReminder) { Text("Add reminder") }
             OutlinedButton(onClick = { viewModel.flipAlignment(player.id) }) { Text("Flip alignment") }
+            OutlinedButton(onClick = onSwap) { Text("Swap characters") }
             if (state.phase == Phase.SETUP || player.isTraveller) {
                 OutlinedButton(onClick = { viewModel.removeSeat(player.id); onDismiss() }) {
                     Text("Remove seat", color = MaterialTheme.colorScheme.error)

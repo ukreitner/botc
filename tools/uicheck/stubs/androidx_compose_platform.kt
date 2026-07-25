@@ -5,5 +5,6 @@ package androidx.compose.ui.platform
 import android.content.Context
 import androidx.compose.runtime.staticCompositionLocalOf
 
-// Android-only composition local; desktop Compose has no equivalent.
+// Android-only composition locals; desktop Compose has no equivalent.
 val LocalContext = staticCompositionLocalOf<Context> { Context() }
+val LocalView = staticCompositionLocalOf<android.view.View> { android.view.View() }

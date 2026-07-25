@@ -60,6 +60,17 @@ fun BluffsSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                androidx.compose.material3.AssistChip(
+                    onClick = {
+                        viewModel.setBluffs(
+                            com.clocktower.engine.GameActions.suggestBluffs(
+                                viewModel.gameData.resolve(state.script),
+                                state,
+                            ),
+                        )
+                    },
+                    label = { Text("Suggest 3 for me") },
+                )
                 Spacer(Modifier.width(1.dp))
             }
             items(candidates, key = { "bluff-" + it.id }) { c ->

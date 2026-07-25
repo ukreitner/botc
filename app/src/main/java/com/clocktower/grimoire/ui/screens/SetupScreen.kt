@@ -312,6 +312,7 @@ private fun BagStage(
         viewModel.gameData.resolve(script).filter { it.team.isTownResident }
     }
     val byId = remember(characters) { characters.associateBy { it.id } }
+    var search by rememberSaveable { mutableStateOf("") }
     val selected = bagIds.mapNotNull { byId[it] }
     val issues = GameActions.validateBag(selected, playerCount)
     val adjusted = Setup.adjustedDistribution(playerCount, selected)
@@ -355,7 +356,18 @@ private fun BagStage(
                 }
             }
         }
-        val groups = characters.groupBy { it.team }
+        item {
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                placeholder = { Text("Search characters…") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        val groups = characters
+            .filter { search.isBlank() || it.name.contains(search, ignoreCase = true) }
+            .groupBy { it.team }
         for (team in listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)) {
             val members = groups[team] ?: continue
             item {

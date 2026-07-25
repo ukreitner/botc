@@ -47,7 +47,13 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
@@ -84,6 +90,16 @@ fun GameShell(
     var revealGoodWins by rememberSaveable { mutableStateOf<Boolean?>(null) }
     var duskGuard by rememberSaveable { mutableStateOf(false) }
     var dismissedAdvisory by rememberSaveable { mutableStateOf("") }
+    var showRevealFlow by rememberSaveable { mutableStateOf(false) }
+    var nightScrim by rememberSaveable { mutableStateOf(false) }
+    var drunkPromptDone by rememberSaveable { mutableStateOf(false) }
+
+    // The table's phone must not sleep mid-game.
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val stateHolder = rememberSaveableStateHolder()
@@ -162,6 +178,14 @@ fun GameShell(
                             onClick = { showMenu = false; showCardTool = true },
                         )
                         DropdownMenuItem(
+                            text = { Text("Reveal characters to players…") },
+                            onClick = { showMenu = false; showRevealFlow = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (nightScrim) "Night dimming off" else "Night dimming on") },
+                            onClick = { showMenu = false; nightScrim = !nightScrim },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Fabled…") },
                             onClick = { showMenu = false; showFabled = true },
                         )
@@ -236,7 +260,57 @@ fun GameShell(
                         .padding(12.dp),
                 )
             }
+            if (nightScrim && state.phase == Phase.NIGHT) {
+                // Red-shifted dimming preserves the room's darkness; plain
+                // Box without pointer handling lets touches pass through.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color(0x66300000)),
+                )
+            }
         }
+    }
+    if (showRevealFlow) {
+        RevealFlow(viewModel, state, onDone = { showRevealFlow = false })
+    }
+    // The Drunk needs a believed-character before night one.
+    val drunkSeat = state.players.find { it.characterId == "drunk" }
+    if (!drunkPromptDone && state.phase == Phase.SETUP && drunkSeat != null &&
+        drunkSeat.reminders.none { it.label == "Is the Drunk" }
+    ) {
+        val inPlay = state.players.mapNotNull { it.characterId }.toSet()
+        val options = viewModel.gameData.resolve(state.script)
+            .filter { it.team == com.clocktower.engine.Team.TOWNSFOLK && it.id !in inPlay }
+        AlertDialog(
+            onDismissRequest = { drunkPromptDone = true },
+            title = { Text("The Drunk is in play") },
+            text = {
+                Column {
+                    Text("${drunkSeat.name} is the Drunk. Which Townsfolk do they think they are?")
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                        items(options.size) { i ->
+                            val c = options[i]
+                            TextButton(onClick = {
+                                viewModel.update { s ->
+                                    var next = com.clocktower.engine.GameActions.addReminder(
+                                        s, drunkSeat.id,
+                                        com.clocktower.engine.PlacedReminder("drunk", "Is the Drunk"),
+                                    )
+                                    next = com.clocktower.engine.GameActions.setNote(
+                                        next, drunkSeat.id, "Believes they are the ${c.name}",
+                                    )
+                                    next
+                                }
+                                drunkPromptDone = true
+                                showRevealFlow = false
+                            }) { Text(c.name) }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { drunkPromptDone = true }) { Text("Later") } },
+        )
     }
 
     openSeat?.let { seatId ->

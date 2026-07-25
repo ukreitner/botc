@@ -46,6 +46,27 @@ object GameActions {
     fun assignCharacter(state: GameState, playerId: Long, characterId: String?, isTraveller: Boolean = false): GameState =
         state.updatePlayer(playerId) { it.copy(characterId = characterId, isTraveller = isTraveller) }
 
+    /** Swaps two seats' characters (Barber, Snake Charmer...). */
+    fun swapCharacters(state: GameState, id1: Long, id2: Long): GameState {
+        val p1 = state.player(id1) ?: return state
+        val p2 = state.player(id2) ?: return state
+        return state
+            .updatePlayer(id1) { it.copy(characterId = p2.characterId) }
+            .updatePlayer(id2) { it.copy(characterId = p1.characterId) }
+    }
+
+    /**
+     * Suggests 3 demon bluffs: not-in-play good characters from the script,
+     * preferring two townsfolk and one outsider like most storytellers.
+     */
+    fun suggestBluffs(available: List<Character>, state: GameState, random: Random = Random): List<String> {
+        val inPlay = state.players.mapNotNull { it.characterId }.toSet()
+        val townsfolk = available.filter { it.team == Team.TOWNSFOLK && it.id !in inPlay }.shuffled(random)
+        val outsiders = available.filter { it.team == Team.OUTSIDER && it.id !in inPlay }.shuffled(random)
+        val picks = (townsfolk.take(2) + outsiders.take(1) + townsfolk.drop(2) + outsiders.drop(1))
+        return picks.take(3).map { it.id }
+    }
+
     fun flipAlignment(state: GameState, playerId: Long): GameState =
         state.updatePlayer(playerId) { it.copy(alignmentFlipped = !it.alignmentFlipped) }
 
