@@ -1,0 +1,206 @@
+package com.clocktower.grimoire.ui.screens
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Theaters
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.clocktower.engine.GameState
+import com.clocktower.engine.Phase
+import com.clocktower.grimoire.ui.GameViewModel
+import com.clocktower.grimoire.ui.theme.AgedGold
+
+private enum class GameTab { GRIMOIRE, NIGHT, DAY, REFERENCE }
+
+/**
+ * The in-game scaffold: grimoire / night / day / reference tabs, phase
+ * control, undo, bluffs and storyteller notes.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GameShell(
+    viewModel: GameViewModel,
+    state: GameState,
+    onExit: () -> Unit,
+) {
+    var tab by rememberSaveable { mutableStateOf(GameTab.GRIMOIRE) }
+    var openSeat by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showBluffs by rememberSaveable { mutableStateOf(false) }
+    var showNotes by rememberSaveable { mutableStateOf(false) }
+    var showMenu by rememberSaveable { mutableStateOf(false) }
+    val canUndo by viewModel.canUndo.collectAsState()
+
+    val phaseLabel = when (state.phase) {
+        Phase.SETUP -> "Setup"
+        Phase.NIGHT -> if (state.cycle == 1) "First Night" else "Night ${state.cycle}"
+        Phase.DAY -> "Day ${state.cycle}"
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(state.script.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "$phaseLabel · ${state.alivePlayers.size}/${state.players.size} alive",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = AgedGold,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(enabled = canUndo, onClick = { viewModel.undo() }) {
+                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.advancePhase()
+                            // Jump to the tab that matters for the new phase.
+                            tab = when (state.phase) {
+                                Phase.SETUP, Phase.DAY -> GameTab.NIGHT
+                                Phase.NIGHT -> GameTab.DAY
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    ) {
+                        Text(
+                            when (state.phase) {
+                                Phase.SETUP -> "Begin night"
+                                Phase.NIGHT -> "Dawn"
+                                Phase.DAY -> "Dusk"
+                            },
+                        )
+                    }
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Menu")
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Demon bluffs") },
+                            onClick = { showMenu = false; showBluffs = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Storyteller notes") },
+                            onClick = { showMenu = false; showNotes = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Back to home") },
+                            onClick = { showMenu = false; onExit() },
+                        )
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                GameTabItem(tab == GameTab.GRIMOIRE, { tab = GameTab.GRIMOIRE }, "Grimoire") {
+                    Icon(Icons.Filled.Groups, contentDescription = null)
+                }
+                GameTabItem(tab == GameTab.NIGHT, { tab = GameTab.NIGHT }, "Night") {
+                    Icon(Icons.Filled.DarkMode, contentDescription = null)
+                }
+                GameTabItem(tab == GameTab.DAY, { tab = GameTab.DAY }, "Day") {
+                    Icon(Icons.Filled.WbSunny, contentDescription = null)
+                }
+                GameTabItem(tab == GameTab.REFERENCE, { tab = GameTab.REFERENCE }, "Script") {
+                    Icon(Icons.Filled.AutoStories, contentDescription = null)
+                }
+            }
+        },
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            when (tab) {
+                GameTab.GRIMOIRE -> GrimoireScreen(viewModel, state) { openSeat = it }
+                GameTab.NIGHT -> NightScreen(viewModel, state)
+                GameTab.DAY -> DayScreen(viewModel, state)
+                GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script)
+            }
+        }
+    }
+
+    openSeat?.let { seatId ->
+        SeatSheet(
+            viewModel = viewModel,
+            state = state,
+            playerId = seatId,
+            onDismiss = { openSeat = null },
+        )
+    }
+    if (showBluffs) {
+        BluffsSheet(viewModel, state, onDismiss = { showBluffs = false })
+    }
+    if (showNotes) {
+        var notes by rememberSaveable { mutableStateOf(state.storytellerNotes) }
+        AlertDialog(
+            onDismissRequest = { showNotes = false },
+            title = { Text("Storyteller notes") },
+            text = {
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    minLines = 6,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    viewModel.setStorytellerNotes(notes)
+                    showNotes = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showNotes = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun RowScope.GameTabItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    icon: @Composable () -> Unit,
+) {
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = icon,
+        label = { Text(label) },
+    )
+}

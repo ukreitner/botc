@@ -1,0 +1,472 @@
+{
+ "jinxes": [
+  {
+   "id1": "cannibal",
+   "id2": "butler",
+   "reason": "If the Cannibal gains the Butler ability, the Cannibal learns this."
+  },
+  {
+   "id1": "butler",
+   "id2": "organgrinder",
+   "reason": "If the Organ Grinder is causing eyes closed voting, the Butler may raise their hand to vote but their vote is only counted if their master voted too."
+  },
+  {
+   "id1": "cannibal",
+   "id2": "juggler",
+   "reason": "If the Juggler guesses on their first day and dies by execution, tonight the living Cannibal learns how many guesses the Juggler got correct."
+  },
+  {
+   "id1": "cannibal",
+   "id2": "zealot",
+   "reason": "If the Cannibal gains the Zealot ability, the Cannibal learns this."
+  },
+  {
+   "id1": "chambermaid",
+   "id2": "mathematician",
+   "reason": "The Chambermaid learns if the Mathematician wakes tonight or not, even though the Chambermaid wakes first."
+  },
+  {
+   "id1": "lunatic",
+   "id2": "mathematician",
+   "reason": "The Mathematician learns if the Lunatic attacks a different player(s) than the real Demon attacked."
+  },
+  {
+   "id1": "spy",
+   "id2": "damsel",
+   "reason": "If the Spy is (or has been) in play, the Damsel is poisoned."
+  },
+  {
+   "id1": "widow",
+   "id2": "damsel",
+   "reason": "If the Widow is (or has been) in play, the Damsel is poisoned."
+  },
+  {
+   "id1": "marionette",
+   "id2": "damsel",
+   "reason": "The Marionette does not learn that a Damsel is in play."
+  },
+  {
+   "id1": "pithag",
+   "id2": "damsel",
+   "reason": "If a Pit-Hag creates a Damsel, the Storyteller chooses which player it is."
+  },
+  {
+   "id1": "baron",
+   "id2": "heretic",
+   "reason": "The Baron might only add 1 Outsider, not 2."
+  },
+  {
+   "id1": "godfather",
+   "id2": "heretic",
+   "reason": "Only 1 jinxed character can be in play."
+  },
+  {
+   "id1": "spy",
+   "id2": "heretic",
+   "reason": "Only 1 jinxed character can be in play."
+  },
+  {
+   "id1": "widow",
+   "id2": "heretic",
+   "reason": "Only 1 jinxed character can be in play."
+  },
+  {
+   "id1": "pithag",
+   "id2": "heretic",
+   "reason": "A Pit-Hag can not create a Heretic."
+  },
+  {
+   "id1": "lleech",
+   "id2": "heretic",
+   "reason": "If the Lleech has poisoned the Heretic, and the Lleech dies, the Heretic remains poisoned."
+  },
+  {
+   "id1": "pithag",
+   "id2": "cultleader",
+   "reason": "If the Pit-Hag turns an evil player into the Cult Leader, they can't turn good due to their own ability."
+  },
+  {
+   "id1": "marionette",
+   "id2": "balloonist",
+   "reason": "If the Marionette thinks that they are the Balloonist, +1 Outsider might have been added."
+  },
+  {
+   "id1": "marionette",
+   "id2": "poppygrower",
+   "reason": "When the Poppy Grower dies, the Demon learns the Marionette but the Marionette learns nothing."
+  },
+  {
+   "id1": "marionette",
+   "id2": "snitch",
+   "reason": "The Marionette does not learn 3 not in-play characters. The Demon learns an extra 3 instead."
+  },
+  {
+   "id1": "marionette",
+   "id2": "huntsman",
+   "reason": "If the Marionette thinks that they are the Huntsman, the Damsel was added."
+  },
+  {
+   "id1": "marionette",
+   "id2": "lilmonsta",
+   "reason": "The Marionette neighbors a Minion, not the Demon. The Marionette is not woken to choose who takes the Lil' Monsta token."
+  },
+  {
+   "id1": "summoner",
+   "id2": "marionette",
+   "reason": "The Marionette neighbors the Summoner, not the Demon. The Summoner knows who the Marionette is."
+  },
+  {
+   "id1": "magician",
+   "id2": "lilmonsta",
+   "reason": "Each night, the Magician chooses a Minion: if that Minion and Lil' Monsta are alive, that Minion babysits Lil' Monsta."
+  },
+  {
+   "id1": "poppygrower",
+   "id2": "lilmonsta",
+   "reason": "If the Poppy Grower is in play, Minions don't wake together. They are woken one by one, until one of them chooses to take the Lil' Monsta token."
+  },
+  {
+   "id1": "scarletwoman",
+   "id2": "lilmonsta",
+   "reason": "If there are 5 or more players alive and the player holding the Lil' Monsta token dies, the Scarlet Woman is given the Lil' Monsta token tonight."
+  },
+  {
+   "id1": "spy",
+   "id2": "magician",
+   "reason": "When the Spy sees the Grimoire, the Demon's and Magician's character tokens are removed."
+  },
+  {
+   "id1": "widow",
+   "id2": "magician",
+   "reason": "When the Widow sees the Grimoire, the Demon's and Magician's character tokens are removed."
+  },
+  {
+   "id1": "spy",
+   "id2": "poppygrower",
+   "reason": "If the Poppy Grower is in play, the Spy does not see the Grimoire until the Poppy Grower dies."
+  },
+  {
+   "id1": "widow",
+   "id2": "poppygrower",
+   "reason": "If the Poppy Grower is in play, the Widow does not see the Grimoire until the Poppy Grower dies."
+  },
+  {
+   "id1": "cerenovus",
+   "id2": "goblin",
+   "reason": "The Cerenovus may choose to make a player mad that they are the Goblin, instead of a good character."
+  },
+  {
+   "id1": "philosopher",
+   "id2": "bountyhunter",
+   "reason": "If the Philosopher gains the Bounty Hunter ability, a Townsfolk might turn evil."
+  },
+  {
+   "id1": "lycanthrope",
+   "id2": "gambler",
+   "reason": "If the Lycanthrope is alive and the Gambler kills themself at night, no one else can die that night."
+  },
+  {
+   "id1": "fanggu",
+   "id2": "scarletwoman",
+   "reason": "If the Fang Gu chooses an Outsider and dies, the Scarlet Woman does not become the Fang Gu."
+  },
+  {
+   "id1": "alhadikhia",
+   "id2": "scarletwoman",
+   "reason": "If there are two living Al-Hadikhias, the Scarlet Woman Al-Hadikhia becomes the Scarlet Woman again."
+  },
+  {
+   "id1": "lleech",
+   "id2": "slayer",
+   "reason": "If the Slayer slays the Lleech's host, the host dies."
+  },
+  {
+   "id1": "vortox",
+   "id2": "banshee",
+   "reason": "If the Vortox kills the Banshee, all players still learn that the Banshee has died."
+  },
+  {
+   "id1": "leviathan",
+   "id2": "mayor",
+   "reason": "If Leviathan is in play and no execution occurs on day 5, good wins."
+  },
+  {
+   "id1": "leviathan",
+   "id2": "ravenkeeper",
+   "reason": "If Leviathan is in play and the Ravenkeeper dies by execution, they wake that night to use their ability."
+  },
+  {
+   "id1": "leviathan",
+   "id2": "sage",
+   "reason": "If Leviathan is in play and the Sage dies by execution, they wake that night to use their ability."
+  },
+  {
+   "id1": "leviathan",
+   "id2": "farmer",
+   "reason": "If Leviathan is in play and a Farmer dies by execution, a good player becomes a Farmer that night."
+  },
+  {
+   "id1": "riot",
+   "id2": "saint",
+   "reason": "If Riot nominates and kills the Saint, the good team loses."
+  },
+  {
+   "id1": "riot",
+   "id2": "farmer",
+   "reason": "If Riot kills the Farmer, a good player becomes a Farmer tonight."
+  },
+  {
+   "id1": "riot",
+   "id2": "ravenkeeper",
+   "reason": "If Riot kills the Ravenkeeper, the Ravenkeeper wakes that night to use their ability."
+  },
+  {
+   "id1": "riot",
+   "id2": "sage",
+   "reason": "If Riot kills the Sage, the Sage wakes that night to use their ability."
+  },
+  {
+   "id1": "riot",
+   "id2": "grandmother",
+   "reason": "If Riot kills the Grandchild, the Grandmother dies too."
+  },
+  {
+   "id1": "summoner",
+   "id2": "alchemist",
+   "reason": "The Alchemist can not have the Summoner ability."
+  },
+  {
+   "id1": "summoner",
+   "id2": "poisoner",
+   "reason": "If the Summoner is poisoned on the 3rd night, the Summoner chooses which Demon, but the Storyteller chooses which player becomes that Demon."
+  },
+  {
+   "id1": "summoner",
+   "id2": "courtier",
+   "reason": "If the Summoner is drunk on the 3rd night, the Summoner chooses which Demon, but the Storyteller chooses which player becomes that Demon."
+  },
+  {
+   "id1": "kazali",
+   "id2": "bountyhunter",
+   "reason": "An evil Townsfolk is only created if the Kazali chooses the Bounty Hunter."
+  },
+  {
+   "id1": "kazali",
+   "id2": "choirboy",
+   "reason": "The Kazali can not choose the King to become a Minion."
+  },
+  {
+   "id1": "kazali",
+   "id2": "marionette",
+   "reason": "If the Kazali chooses to create a Marionette, they must choose one of their alive neighbors to be it."
+  },
+  {
+   "id1": "plaguedoctor",
+   "id2": "baron",
+   "reason": "If the Storyteller gains the Baron ability, up to 2 Townsfolk players become not-in-play Outsiders."
+  },
+  {
+   "id1": "plaguedoctor",
+   "id2": "scarletwoman",
+   "reason": "If the Demon dies while the Storyteller has the Scarlet Woman ability, a living Minion becomes the Demon."
+  },
+  {
+   "id1": "boffin",
+   "id2": "heretic",
+   "reason": "The Boffin can not give the Demon the Heretic ability."
+  },
+  {
+   "id1": "boffin",
+   "id2": "cultleader",
+   "reason": "If the Demon has the Cult Leader ability, they can't turn good due to their own ability."
+  },
+  {
+   "id1": "boffin",
+   "id2": "drunk",
+   "reason": "If the Boffin gives the Demon the Drunk ability, the Demon thinks they have been given a different not-in-play Townsfolk ability."
+  },
+  {
+   "id1": "exorcist",
+   "id2": "yaggababble",
+   "reason": "If the Exorcist chooses the Yaggababble, the Yaggababble does not kill due to their public phrase that night."
+  }
+ ],
+ "firstNight": [
+  "DUSK",
+  "lordoftyphon",
+  "kazali",
+  "apprentice",
+  "barista",
+  "bureaucrat",
+  "thief",
+  "boffin",
+  "stormcatcher",
+  "philosopher",
+  "alchemist",
+  "poppygrower",
+  "yaggababble",
+  "magician",
+  "wraith",
+  "MINION_INFO",
+  "snitch",
+  "lunatic",
+  "summoner",
+  "DEMON_INFO",
+  "king",
+  "sailor",
+  "marionette",
+  "engineer",
+  "preacher",
+  "lilmonsta",
+  "lleech",
+  "xaan",
+  "poisoner",
+  "widow",
+  "courtier",
+  "wizard",
+  "snakecharmer",
+  "godfather",
+  "organgrinder",
+  "devilsadvocate",
+  "eviltwin",
+  "witch",
+  "cerenovus",
+  "fearmonger",
+  "harpy",
+  "mezepheles",
+  "pukka",
+  "pixie",
+  "huntsman",
+  "damsel",
+  "amnesiac",
+  "washerwoman",
+  "librarian",
+  "investigator",
+  "chef",
+  "empath",
+  "fortuneteller",
+  "butler",
+  "grandmother",
+  "clockmaker",
+  "dreamer",
+  "seamstress",
+  "steward",
+  "knight",
+  "noble",
+  "balloonist",
+  "shugenja",
+  "villageidiot",
+  "bountyhunter",
+  "nightwatchman",
+  "cultleader",
+  "spy",
+  "ogre",
+  "highpriestess",
+  "general",
+  "chambermaid",
+  "mathematician",
+  "DAWN",
+  "leviathan",
+  "vizier",
+  "gnome"
+ ],
+ "otherNight": [
+  "DUSK",
+  "wraith",
+  "barista",
+  "bureaucrat",
+  "thief",
+  "plaguedoctor",
+  "bonecollector",
+  "harlot",
+  "philosopher",
+  "poppygrower",
+  "sailor",
+  "engineer",
+  "preacher",
+  "xaan",
+  "poisoner",
+  "innkeeper",
+  "courtier",
+  "wizard",
+  "gambler",
+  "acrobat",
+  "snakecharmer",
+  "monk",
+  "organgrinder",
+  "devilsadvocate",
+  "witch",
+  "cerenovus",
+  "pithag",
+  "fearmonger",
+  "harpy",
+  "mezepheles",
+  "scarletwoman",
+  "summoner",
+  "lunatic",
+  "exorcist",
+  "lycanthrope",
+  "toymaker",
+  "princess",
+  "legion",
+  "imp",
+  "zombuul",
+  "pukka",
+  "shabaloth",
+  "po",
+  "fanggu",
+  "nodashii",
+  "vortox",
+  "lordoftyphon",
+  "vigormortis",
+  "ojo",
+  "alhadikhia",
+  "lleech",
+  "lilmonsta",
+  "yaggababble",
+  "kazali",
+  "riot",
+  "leviathan",
+  "assassin",
+  "godfather",
+  "gossip",
+  "hatter",
+  "barber",
+  "sweetheart",
+  "sage",
+  "banshee",
+  "professor",
+  "choirboy",
+  "huntsman",
+  "damsel",
+  "amnesiac",
+  "farmer",
+  "tinker",
+  "moonchild",
+  "grandmother",
+  "ravenkeeper",
+  "empath",
+  "fortuneteller",
+  "undertaker",
+  "dreamer",
+  "flowergirl",
+  "towncrier",
+  "duchess",
+  "oracle",
+  "seamstress",
+  "juggler",
+  "balloonist",
+  "villageidiot",
+  "king",
+  "bountyhunter",
+  "nightwatchman",
+  "cultleader",
+  "butler",
+  "spy",
+  "highpriestess",
+  "general",
+  "chambermaid",
+  "mathematician",
+  "DAWN"
+ ]
+}

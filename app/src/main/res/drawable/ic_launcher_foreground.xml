@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Clocktower silhouette with a crescent moon -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- moon -->
+    <path
+        android:fillColor="#E8C36A"
+        android:pathData="M70,30 a12,12 0 1,0 0.01,0 z" />
+    <path
+        android:fillColor="#160F22"
+        android:pathData="M75,26 a11,11 0 1,0 0.01,0 z" />
+    <!-- tower body -->
+    <path
+        android:fillColor="#B49CD8"
+        android:pathData="M46,44 L62,44 L62,84 L46,84 Z" />
+    <!-- tower roof -->
+    <path
+        android:fillColor="#8A6FB8"
+        android:pathData="M44,44 L54,32 L64,44 Z" />
+    <!-- clock face -->
+    <path
+        android:fillColor="#1E1430"
+        android:pathData="M54,52 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0" />
+    <!-- clock hands -->
+    <path
+        android:strokeColor="#E8C36A"
+        android:strokeWidth="1.6"
+        android:pathData="M54,52 L54,48 M54,52 L57,54" />
+    <!-- base -->
+    <path
+        android:fillColor="#8A6FB8"
+        android:pathData="M42,84 L66,84 L66,88 L42,88 Z" />
+</vector>
