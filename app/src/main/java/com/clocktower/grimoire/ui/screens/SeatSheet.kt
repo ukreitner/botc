@@ -184,6 +184,20 @@ private fun SeatActions(
 
         HorizontalDivider()
 
+        // Consequences to weigh before recording a death here.
+        if (player.alive) {
+            val deathNotes = com.clocktower.engine.StatusEffects.deathNotes(
+                state, viewModel::characterById, player.id,
+            )
+            for (note in deathNotes) {
+                Text(
+                    "⚠ $note",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+
         // Life & death
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (player.alive) {

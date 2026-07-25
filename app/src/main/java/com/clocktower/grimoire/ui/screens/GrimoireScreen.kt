@@ -257,6 +257,13 @@ private fun SeatView(
                     Text("T", style = MaterialTheme.typography.labelSmall, color = Color.Black)
                 }
             }
+            if (com.clocktower.engine.StatusEffects.isImpaired(state, viewModel::characterById, player)) {
+                Text(
+                    "🧪",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
             if (wakeNumber != null && player.alive) {
                 Box(
                     modifier = Modifier

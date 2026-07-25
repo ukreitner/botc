@@ -132,6 +132,7 @@ object InfoCalc {
             }
         }
         if (!player.alive) notes += "${player.name} is dead — they normally don't act."
+        StatusEffects.derivedPoison(state, lookup)[player.id]?.let { notes += "$it — give false info." }
         return notes
     }
 

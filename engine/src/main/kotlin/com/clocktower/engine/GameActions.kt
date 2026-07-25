@@ -106,6 +106,20 @@ object GameActions {
     fun addReminder(state: GameState, playerId: Long, reminder: PlacedReminder): GameState =
         state.updatePlayer(playerId) { it.copy(reminders = it.reminders + reminder) }
 
+    /**
+     * Places a reminder that only exists once in the grimoire (Poisoner's
+     * poison, Monk's Safe...): removes the same token from every other seat
+     * first, so nightly choices move instead of accumulating.
+     */
+    fun placeExclusiveReminder(state: GameState, playerId: Long, reminder: PlacedReminder): GameState {
+        val cleared = state.copy(
+            players = state.players.map { p ->
+                p.copy(reminders = p.reminders.filterNot { it.sourceId == reminder.sourceId && it.label == reminder.label })
+            },
+        )
+        return addReminder(cleared, playerId, reminder)
+    }
+
     fun removeReminder(state: GameState, playerId: Long, index: Int): GameState =
         state.updatePlayer(playerId) {
             it.copy(reminders = it.reminders.filterIndexed { i, _ -> i != index })

@@ -274,6 +274,36 @@ fun GameShell(
     if (showRevealFlow) {
         RevealFlow(viewModel, state, onDone = { showRevealFlow = false })
     }
+    // The Fortune Teller needs a red herring before night one.
+    var herringPromptDone by rememberSaveable { mutableStateOf(false) }
+    val ftSeat = state.players.find { it.characterId == "fortuneteller" }
+    if (!herringPromptDone && state.phase == Phase.SETUP && ftSeat != null &&
+        state.players.none { p -> p.reminders.any { it.label.equals("Red herring", true) } }
+    ) {
+        AlertDialog(
+            onDismissRequest = { herringPromptDone = true },
+            title = { Text("Fortune Teller red herring") },
+            text = {
+                Column {
+                    Text("Pick the good player who registers as the Demon to the Fortune Teller:")
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                        val candidates = state.players.filter { !it.isEvil(viewModel::characterById) }
+                        items(candidates.size) { i ->
+                            val p = candidates[i]
+                            TextButton(onClick = {
+                                viewModel.addReminder(
+                                    p.id,
+                                    com.clocktower.engine.PlacedReminder("fortuneteller", "Red herring"),
+                                )
+                                herringPromptDone = true
+                            }) { Text(p.name) }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { herringPromptDone = true }) { Text("Later") } },
+        )
+    }
     // The Drunk needs a believed-character before night one.
     val drunkSeat = state.players.find { it.characterId == "drunk" }
     if (!drunkPromptDone && state.phase == Phase.SETUP && drunkSeat != null &&

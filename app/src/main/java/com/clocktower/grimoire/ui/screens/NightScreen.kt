@@ -242,7 +242,12 @@ private fun StepDetailPanel(
                     for (p in state.players) {
                         AssistChip(
                             onClick = {
-                                viewModel.addReminder(p.id, PlacedReminder(step.id, label))
+                                // Nightly tokens move rather than stack.
+                                viewModel.update { s ->
+                                    com.clocktower.engine.GameActions.placeExclusiveReminder(
+                                        s, p.id, PlacedReminder(step.id, label),
+                                    )
+                                }
                                 pendingLabel = null
                             },
                             label = { Text(p.name) },
@@ -303,6 +308,8 @@ private fun StepDetailPanel(
                 }
                 // Numeric or yes/no answers can be flashed full-screen.
                 val leadingNumber = result.headline.takeWhile { it.isDigit() }.toIntOrNull()
+                val isYes = result.headline.startsWith("YES")
+                val isNo = result.headline.startsWith("NO")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (leadingNumber != null && leadingNumber <= 9) {
                         AssistChip(
@@ -310,13 +317,39 @@ private fun StepDetailPanel(
                             label = { Text("Show $leadingNumber full-screen") },
                         )
                     }
-                    if (result.headline.startsWith("YES") || result.headline.startsWith("NO")) {
+                    if (isYes || isNo) {
                         AssistChip(
-                            onClick = {
-                                onShow(ShowCard.Message(if (result.headline.startsWith("YES")) "YES" else "NO"))
-                            },
+                            onClick = { onShow(ShowCard.Message(if (isYes) "YES" else "NO")) },
                             label = { Text("Show answer full-screen") },
                         )
+                    }
+                }
+                // Impaired players get false info — offer the lies one tap away.
+                val impaired = result.caveats.any {
+                    "POISONED" in it || "DRUNK" in it || "IS the Drunk" in it || "VORTOX" in it || "No Dashii" in it
+                }
+                if (impaired) {
+                    Text(
+                        "False info to show instead:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = EmberRed,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (leadingNumber != null) {
+                            for (n in 0..4) {
+                                if (n == leadingNumber) continue
+                                AssistChip(
+                                    onClick = { onShow(ShowCard.NumberCard(n)) },
+                                    label = { Text("$n") },
+                                )
+                            }
+                        }
+                        if (isYes || isNo) {
+                            AssistChip(
+                                onClick = { onShow(ShowCard.Message(if (isYes) "NO" else "YES")) },
+                                label = { Text(if (isYes) "Show NO" else "Show YES") },
+                            )
+                        }
                     }
                 }
             }
