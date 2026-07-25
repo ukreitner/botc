@@ -44,15 +44,34 @@ object GameActions {
         state.updatePlayer(playerId) { it.copy(name = name) }
 
     fun assignCharacter(state: GameState, playerId: Long, characterId: String?, isTraveller: Boolean = false): GameState =
-        state.updatePlayer(playerId) { it.copy(characterId = characterId, isTraveller = isTraveller) }
+        state.updatePlayer(playerId) {
+            it.copy(
+                characterId = characterId,
+                shownCharacterId = null,
+                isTraveller = isTraveller,
+            )
+        }
+
+    fun setShownCharacter(state: GameState, playerId: Long, shownCharacterId: String?): GameState =
+        state.updatePlayer(playerId) { it.copy(shownCharacterId = shownCharacterId) }
 
     /** Swaps two seats' characters (Barber, Snake Charmer...). */
     fun swapCharacters(state: GameState, id1: Long, id2: Long): GameState {
         val p1 = state.player(id1) ?: return state
         val p2 = state.player(id2) ?: return state
         return state
-            .updatePlayer(id1) { it.copy(characterId = p2.characterId) }
-            .updatePlayer(id2) { it.copy(characterId = p1.characterId) }
+            .updatePlayer(id1) {
+                it.copy(
+                    characterId = p2.characterId,
+                    shownCharacterId = p2.shownCharacterId,
+                )
+            }
+            .updatePlayer(id2) {
+                it.copy(
+                    characterId = p1.characterId,
+                    shownCharacterId = p1.shownCharacterId,
+                )
+            }
     }
 
     /**
@@ -74,7 +93,12 @@ object GameActions {
         state.updatePlayer(playerId) { it.copy(note = note) }
 
     /** Kills a player, recording the cause. Dead players gain a ghost vote. */
-    fun kill(state: GameState, playerId: Long, cause: DeathCause): GameState {
+    fun kill(
+        state: GameState,
+        playerId: Long,
+        cause: DeathCause,
+        lookup: (String) -> Character? = { null },
+    ): GameState {
         val player = state.player(playerId) ?: return state
         if (!player.alive) return state
         return state
@@ -85,6 +109,8 @@ object GameActions {
                     day = state.cycle,
                     atNight = state.phase == Phase.NIGHT,
                     cause = cause,
+                    characterIdAtDeath = player.characterId,
+                    abilityImpairedAtDeath = StatusEffects.isImpaired(state, lookup, player),
                 ),
             )
     }
@@ -182,15 +208,24 @@ object GameActions {
     }
 
     /**
-     * Randomly deals characters to seats from [bag]. The bag must already
-     * match the player count; extra players stay unassigned.
+     * Randomly deals characters to non-Traveller seats from [bag]. A size
+     * mismatch is rejected before any assignments are produced, preventing a
+     * partial re-deal from retaining stale characters on leftover seats.
      */
     fun deal(state: GameState, bag: List<String>, random: Random = Random): GameState {
+        val recipientCount = state.players.count { !it.isTraveller }
+        require(bag.size == recipientCount) {
+            "Bag has ${bag.size} characters for $recipientCount non-Traveller players"
+        }
         val shuffled = bag.shuffled(random)
         var i = 0
         return state.copy(
             players = state.players.map { p ->
-                if (p.isTraveller || i >= shuffled.size) p else p.copy(characterId = shuffled[i++])
+                if (p.isTraveller) {
+                    p
+                } else {
+                    p.copy(characterId = shuffled[i++], shownCharacterId = null)
+                }
             },
         )
     }
@@ -286,22 +321,41 @@ object GameActions {
             issues += "Bag has ${bag.size} characters for $playerCount players"
         }
         val modifiers = bag.mapNotNull { Setup.modifierFor(it) }
-        val relaxedTeams = modifiers.flatMap { it.choiceTeams }.toSet()
-        val dist = Setup.adjustedDistribution(playerCount, bag)
-        val counts = bag.groupingBy { it.team }.eachCount()
-
-        fun check(team: Team, expected: Int) {
-            val actual = counts[team] ?: 0
-            // Teams under a storyteller-choice modifier aren't strictly
-            // checkable; everything else must match exactly.
-            if (actual != expected && team !in relaxedTeams) {
-                issues += "${team.displayName}: $actual in bag, expected $expected"
+        val unboundedChoiceTeams = modifiers
+            .flatMap { it.choiceTeams - it.choiceDeltas.keys }
+            .toSet()
+        val relaxedTeams = buildSet {
+            addAll(unboundedChoiceTeams)
+            // A variable Outsider/Minion/Demon count is paid for by the
+            // Townsfolk count, so both sides of that trade must be flexible.
+            if (any { it == Team.OUTSIDER || it == Team.MINION || it == Team.DEMON }) {
+                add(Team.TOWNSFOLK)
             }
         }
-        check(Team.TOWNSFOLK, dist.townsfolk)
-        check(Team.OUTSIDER, dist.outsiders)
-        check(Team.MINION, dist.minions)
-        check(Team.DEMON, dist.demons)
+        val allowedDistributions = Setup.allowedDistributions(playerCount, bag)
+        val counts = bag.groupingBy { it.team }.eachCount()
+        val checkedTeams = listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)
+            .filterNot { it in relaxedTeams }
+        val matchesAllowedDistribution = allowedDistributions.any { distribution ->
+            checkedTeams.all { team ->
+                (counts[team] ?: 0) == distribution.count(team)
+            }
+        }
+        if (!matchesAllowedDistribution) {
+            var explained = false
+            for (team in checkedTeams) {
+                val actual = counts[team] ?: 0
+                val expected = allowedDistributions.map { it.count(team) }.toSortedSet()
+                if (actual !in expected) {
+                    val expectedText = expected.joinToString(" or ")
+                    issues += "${team.displayName}: $actual in bag, expected $expectedText"
+                    explained = true
+                }
+            }
+            if (!explained) {
+                issues += "Team counts do not form one legal setup-modifier combination"
+            }
+        }
 
         for (mod in modifiers) {
             val companion = mod.requiredCompanionId ?: continue
@@ -314,8 +368,75 @@ object GameActions {
         for ((id, n) in dupes) {
             if (id !in DUPLICABLE) {
                 issues += "$id appears $n times"
+            } else if (id == "villageidiot" && n > 3) {
+                issues += "villageidiot appears $n times, maximum 3"
             }
         }
         return issues
+    }
+
+    /**
+     * Validates both the bag and mandatory first-night setup choices. This is
+     * used again at the phase boundary so manually assigned games cannot
+     * bypass setup requirements.
+     */
+    fun validateSetupState(
+        state: GameState,
+        lookup: (String) -> Character?,
+    ): List<String> {
+        val residents = state.players.filterNot { it.isTraveller }
+        val characters = residents.mapNotNull { player ->
+            player.characterId?.let(lookup)
+        }
+        val issues = validateBag(characters, residents.size).toMutableList()
+        val inPlayIds = residents.mapNotNull { it.characterId }.toSet()
+
+        for (player in residents) {
+            val shown = player.shownCharacterId?.let(lookup)
+            when (player.characterId) {
+                "drunk" -> if (shown == null || shown.team != Team.TOWNSFOLK ||
+                    shown.id in inPlayIds
+                ) {
+                    issues += "${player.name}: choose a not-in-play Townsfolk token to show the Drunk"
+                }
+                "lunatic" -> if (shown?.team != Team.DEMON) {
+                    issues += "${player.name}: choose the Demon token shown to the Lunatic"
+                }
+                "marionette" -> {
+                    if (shown == null || shown.team.isEvil || !shown.team.isTownResident ||
+                        shown.id in inPlayIds
+                    ) {
+                        issues += "${player.name}: choose a not-in-play good token to show the Marionette"
+                    }
+                    val index = state.players.indexOfFirst { it.id == player.id }
+                    val neighbours = if (index >= 0 && state.players.size > 1) {
+                        listOf(
+                            state.players[(index - 1 + state.players.size) % state.players.size],
+                            state.players[(index + 1) % state.players.size],
+                        )
+                    } else {
+                        emptyList()
+                    }
+                    if (neighbours.none { it.characterId?.let(lookup)?.team == Team.DEMON }) {
+                        issues += "${player.name}: the Marionette must neighbor the Demon"
+                    }
+                }
+            }
+        }
+
+        if (residents.any { it.characterId == "fortuneteller" }) {
+            val herringSeats = state.players.filter { player ->
+                player.reminders.any {
+                    it.sourceId == "fortuneteller" && it.label.equals("Red herring", true)
+                }
+            }
+            when {
+                herringSeats.size != 1 ->
+                    issues += "Fortune Teller: choose exactly one good red herring"
+                herringSeats.single().isEvil(lookup) ->
+                    issues += "Fortune Teller: the red herring must be a good player"
+            }
+        }
+        return issues.distinct()
     }
 }

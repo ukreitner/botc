@@ -51,8 +51,12 @@ fun RevealFlow(
         return
     }
     val player = seats[index]
-    val character = viewModel.characterById(player.characterId)
-    val evil = player.isEvil(viewModel::characterById)
+    val character = viewModel.characterById(player.characterShownToPlayerId)
+    val evil = if (player.shownCharacterId != null) {
+        character?.team?.isEvil == true
+    } else {
+        player.isEvil(viewModel::characterById)
+    }
 
     Dialog(
         onDismissRequest = onDone,

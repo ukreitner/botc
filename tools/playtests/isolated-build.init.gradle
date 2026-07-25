@@ -1,0 +1,14 @@
+// Optional Gradle init script for running playtests away from a synced
+// workspace (for example OneDrive, where Kotlin's mapped caches can lock).
+// Usage:
+//   BOTC_PLAYTEST_BUILD_DIR=/tmp/botc-playtest-build \
+//     ./gradlew -I tools/playtests/isolated-build.init.gradle :engine:test
+
+def isolatedRoot = System.getenv("BOTC_PLAYTEST_BUILD_DIR")
+if (isolatedRoot) {
+    gradle.beforeProject { project ->
+        def projectKey = project.path.replace(':', '_').replaceAll('^_+', '')
+        if (!projectKey) projectKey = 'root'
+        project.layout.buildDirectory.set(new File(isolatedRoot, projectKey))
+    }
+}

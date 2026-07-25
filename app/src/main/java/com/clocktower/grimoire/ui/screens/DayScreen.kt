@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -57,6 +58,15 @@ fun DayScreen(
     var nominatorId by rememberSaveable { mutableStateOf<Long?>(null) }
     var nomineeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var voters by rememberSaveable { mutableStateOf(setOf<Long>()) }
+    val currentPlayerIds = state.players.map { it.id }.toSet()
+
+    // Draft votes survive tab switches. Reconcile them when a Traveller
+    // leaves or another seat edit removes one of the selected players.
+    LaunchedEffect(currentPlayerIds) {
+        if (nominatorId !in currentPlayerIds) nominatorId = null
+        if (nomineeId !in currentPlayerIds) nomineeId = null
+        voters = voters.intersect(currentPlayerIds)
+    }
 
     val aliveCount = state.alivePlayers.size
     val threshold = Voting.executionThreshold(aliveCount)
@@ -129,12 +139,6 @@ fun DayScreen(
                         val nominee = state.player(nomineeId!!)
                         val isExile = nominee?.isTraveller == true
                         val voteThreshold = if (isExile) Voting.exileThreshold(state.players.size) else threshold
-                        HorizontalDivider()
-                        Text(
-                            text = (if (isExile) "Exile vote — " else "Vote — ") +
-                                "tap everyone whose hand is up (${voters.size} so far, needs $voteThreshold)",
-                            style = MaterialTheme.typography.titleSmall,
-                        )
                         // Hands are counted clockwise starting left of the
                         // nominee — list voters in that order.
                         val voteOrder = run {
@@ -142,6 +146,13 @@ fun DayScreen(
                             if (start < 0) state.players
                             else (1..state.players.size).map { state.players[(start + it) % state.players.size] }
                         }
+                        val orderedVoterIds = voteOrder.map { it.id }.filter { it in voters }
+                        HorizontalDivider()
+                        Text(
+                            text = (if (isExile) "Exile vote — " else "Vote — ") +
+                                "tap everyone whose hand is up (${orderedVoterIds.size} so far, needs $voteThreshold)",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -161,9 +172,13 @@ fun DayScreen(
                             }
                         }
                         val result = if (isExile) {
-                            if (voters.size >= voteThreshold) NominationResult.ABOUT_TO_DIE else NominationResult.SAFE
+                            if (orderedVoterIds.size >= voteThreshold) {
+                                NominationResult.ABOUT_TO_DIE
+                            } else {
+                                NominationResult.SAFE
+                            }
                         } else {
-                            Voting.outcome(voters.size, voteThreshold, highest)
+                            Voting.outcome(orderedVoterIds.size, voteThreshold, highest)
                         }
                         Text(
                             text = when (result) {
@@ -178,14 +193,14 @@ fun DayScreen(
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilledTonalButton(
-                                enabled = nominatorId != null,
+                                enabled = nominatorId in currentPlayerIds && nomineeId in currentPlayerIds,
                                 onClick = {
                                     val nomination = Nomination(
                                         day = state.cycle,
                                         nominatorId = nominatorId!!,
                                         nomineeId = nomineeId!!,
-                                        votes = voters.size,
-                                        voterIds = voters.toList(),
+                                        votes = orderedVoterIds.size,
+                                        voterIds = orderedVoterIds,
                                         result = result,
                                         isExile = isExile,
                                     )
@@ -193,7 +208,7 @@ fun DayScreen(
                                         var next = GameActions.recordNomination(current, nomination)
                                         // Spend ghost votes for dead voters (not on exiles).
                                         if (!isExile) {
-                                            for (id in voters) {
+                                            for (id in orderedVoterIds) {
                                                 val voter = next.player(id)
                                                 if (voter != null && !voter.alive && !voter.ghostVoteUsed) {
                                                     next = GameActions.toggleGhostVote(next, id)

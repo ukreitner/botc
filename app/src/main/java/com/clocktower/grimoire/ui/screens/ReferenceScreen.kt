@@ -13,12 +13,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -45,6 +47,7 @@ fun ReferenceScreen(
     script: Script,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var query by rememberSaveable(script.id) { mutableStateOf("") }
     val characters = remember(script) { viewModel.gameData.resolve(script) }
     val jinxes = remember(script) {
         viewModel.gameData.activeJinxes(characters.map { it.id })
@@ -57,7 +60,29 @@ fun ReferenceScreen(
             Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Jinxes (${jinxes.size})") })
         }
         when (tab) {
-            0 -> CharacterSheet(characters)
+            0 -> Column(Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Search names and abilities") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                val filtered = remember(characters, query) {
+                    val needle = query.trim()
+                    if (needle.isEmpty()) {
+                        characters
+                    } else {
+                        characters.filter {
+                            it.name.contains(needle, ignoreCase = true) ||
+                                it.ability.contains(needle, ignoreCase = true)
+                        }
+                    }
+                }
+                CharacterSheet(filtered, Modifier.weight(1f))
+            }
             1 -> NightOrderSheet(viewModel, characters)
             else -> JinxSheet(viewModel, jinxes.map { it })
         }
@@ -65,11 +90,23 @@ fun ReferenceScreen(
 }
 
 @Composable
-private fun CharacterSheet(characters: List<Character>) {
+private fun CharacterSheet(
+    characters: List<Character>,
+    modifier: Modifier = Modifier,
+) {
     LazyColumn(
+        modifier = modifier,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        if (characters.isEmpty()) {
+            item {
+                Text(
+                    "No characters match that search.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         val order = listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON, Team.TRAVELLER, Team.FABLED)
         for (team in order) {
             val members = characters.filter { it.team == team }

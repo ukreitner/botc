@@ -123,4 +123,42 @@ class InfoCalcTest {
         val result = assertNotNull(InfoCalc.compute(data, state, "seamstress", 3, targets = listOf(0, 7)))
         assertTrue(result.headline.startsWith("YES"), result.headline)
     }
+
+    @Test
+    fun `two-target calculators reject missing stale duplicate and extra selections`() {
+        val invalidSelections = listOf(
+            listOf(0L),
+            listOf(0L, 999L),
+            listOf(0L, 0L),
+            listOf(0L, 1L, 2L),
+        )
+        for (role in listOf("fortuneteller", "seamstress", "chambermaid")) {
+            for (targets in invalidSelections) {
+                val result = assertNotNull(InfoCalc.compute(data, game(), role, 3, targets))
+                assertTrue(
+                    result.headline.startsWith("Pick"),
+                    "$role should reject $targets, got ${result.headline}",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `one-target calculators reject stale duplicate and extra selections`() {
+        val invalidSelections = listOf(
+            emptyList(),
+            listOf(999L),
+            listOf(0L, 0L),
+            listOf(0L, 1L),
+        )
+        for (role in listOf("dreamer", "villageidiot", "ravenkeeper", "grandmother")) {
+            for (targets in invalidSelections) {
+                val result = assertNotNull(InfoCalc.compute(data, game(), role, 3, targets))
+                assertTrue(
+                    result.headline.startsWith("Pick"),
+                    "$role should reject $targets, got ${result.headline}",
+                )
+            }
+        }
+    }
 }

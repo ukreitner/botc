@@ -122,9 +122,13 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun assign(playerId: Long, characterId: String?, isTraveller: Boolean = false) =
         update { GameActions.assignCharacter(it, playerId, characterId, isTraveller) }
 
+    fun setShownCharacter(playerId: Long, characterId: String?) =
+        update { GameActions.setShownCharacter(it, playerId, characterId) }
+
     fun flipAlignment(playerId: Long) = update { GameActions.flipAlignment(it, playerId) }
     fun setNote(playerId: Long, note: String) = update { GameActions.setNote(it, playerId, note) }
-    fun kill(playerId: Long, cause: DeathCause) = update { GameActions.kill(it, playerId, cause) }
+    fun kill(playerId: Long, cause: DeathCause) =
+        update { GameActions.kill(it, playerId, cause, ::characterById) }
     fun revive(playerId: Long) = update { GameActions.revive(it, playerId) }
     fun toggleGhostVote(playerId: Long) = update { GameActions.toggleGhostVote(it, playerId) }
     fun addReminder(playerId: Long, reminder: PlacedReminder) =

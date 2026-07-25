@@ -52,6 +52,11 @@ data class SetupModifier(
      * Kazali "-? to +? Outsiders"). Bag validation relaxes only these teams.
      */
     val choiceTeams: Set<Team> = emptySet(),
+    /**
+     * Exact deltas for bounded choices such as Godfather's -1 or +1
+     * Outsider. Choice teams absent from this map are genuinely open-ended.
+     */
+    val choiceDeltas: Map<Team, Set<Int>> = emptyMap(),
     /** A specific character that must join the bag (Huntsman -> Damsel). */
     val requiredCompanionId: String? = null,
 ) {
@@ -73,37 +78,39 @@ object Setup {
     )
 
     /**
-     * Official Trouble Brewing rulebook distribution. Above 15 players the
-     * extras are travellers in real games, but we allow the pattern to
-     * continue for very large casual games.
+     * Official Trouble Brewing rulebook distribution through 15 players.
+     * Above 15, extra players would normally be Travellers; for the app's
+     * larger casual-game option, continue the table's repeating three-player
+     * pattern so the distribution still accounts for every requested seat.
      */
     fun distributionFor(playerCount: Int): Distribution {
         require(playerCount >= MIN_PLAYERS) { "Need at least $MIN_PLAYERS players" }
-        val capped = playerCount.coerceAtMost(15)
-        val townsfolk = when (capped) {
-            5, 6 -> 3
-            7, 8, 9 -> 5
-            10, 11, 12 -> 7
-            else -> 9
+        require(playerCount <= MAX_PLAYERS) { "At most $MAX_PLAYERS players are supported" }
+        if (playerCount <= 6) {
+            return Distribution(
+                townsfolk = 3,
+                outsiders = playerCount - 5,
+                minions = 1,
+                demons = 1,
+            )
         }
-        val outsiders = when (capped) {
-            5, 7, 10, 13 -> 0
-            6, 8, 11, 14 -> 1
-            else -> 2
-        }
-        val minions = when (capped) {
-            in 5..9 -> 1
-            in 10..12 -> 2
-            else -> 3
-        }
-        return Distribution(townsfolk, outsiders, minions, demons = 1)
+
+        val threePlayerBlock = (playerCount - 7) / 3
+        return Distribution(
+            townsfolk = 5 + 2 * threePlayerBlock,
+            outsiders = (playerCount - 7) % 3,
+            minions = 1 + threePlayerBlock,
+            demons = 1,
+        )
     }
 
     private val bracketRegex = Regex("""\[(.*?)]""")
     private val deltaRegex =
         Regex("""([+-]\d+)\s+(Townsfolk|Outsider|Minion|Demon)s?""", RegexOption.IGNORE_CASE)
-    private val teamWordRegex =
-        Regex("""(Townsfolk|Outsider|Minion|Demon)s?""", RegexOption.IGNORE_CASE)
+    private val boundedChoiceRegex = Regex(
+        """([+-]\d+)\s+(?:or|to)\s+([+-]\d+)\s+(Townsfolk|Outsider|Minion|Demon)s?""",
+        RegexOption.IGNORE_CASE,
+    )
 
     /**
      * Extracts a [SetupModifier] from a character's bracketed setup text.
@@ -137,9 +144,21 @@ object Setup {
             bracket.contains(" to ", ignoreCase = true) ||
             bracket.contains('?') ||
             bracket.contains(Regex("""\bX\b"""))
+        val matches = deltaRegex.findAll(bracket).toList()
         if (isChoice) {
-            for (m in teamWordRegex.findAll(bracket)) {
-                choiceTeams += when (m.groupValues[1].lowercase()) {
+            val variableTeamNames = when {
+                bracket.contains('?') -> Regex(
+                    """\?(?:\s+to\s+[+-]\?)?\s+(Townsfolk|Outsider|Minion|Demon)s?""",
+                    RegexOption.IGNORE_CASE,
+                ).findAll(bracket).map { it.groupValues[1] }.toList()
+                bracket.contains(Regex("""\bX\b""")) -> Regex(
+                    """\bX\s+(Townsfolk|Outsider|Minion|Demon)s?""",
+                    RegexOption.IGNORE_CASE,
+                ).findAll(bracket).map { it.groupValues[1] }.toList()
+                else -> matches.map { it.groupValues[2] }
+            }
+            for (teamName in variableTeamNames) {
+                choiceTeams += when (teamName.lowercase()) {
                     "townsfolk" -> Team.TOWNSFOLK
                     "outsider" -> Team.OUTSIDER
                     "minion" -> Team.MINION
@@ -151,7 +170,36 @@ object Setup {
             if (choiceTeams.isEmpty()) choiceTeams += Team.TOWNSFOLK
         }
 
-        val matches = deltaRegex.findAll(bracket).toList()
+        val boundedChoice = boundedChoiceRegex.find(bracket)
+        val choiceDeltas = if (isChoice && !bracket.contains('?') && boundedChoice != null) {
+            val team = when (boundedChoice.groupValues[3].lowercase()) {
+                "townsfolk" -> Team.TOWNSFOLK
+                "outsider" -> Team.OUTSIDER
+                "minion" -> Team.MINION
+                else -> Team.DEMON
+            }
+            mapOf(
+                team to setOf(
+                    boundedChoice.groupValues[1].toInt(),
+                    boundedChoice.groupValues[2].toInt(),
+                ),
+            )
+        } else if (isChoice && !bracket.contains('?')) {
+            matches.groupBy { match ->
+                when (match.groupValues[2].lowercase()) {
+                    "townsfolk" -> Team.TOWNSFOLK
+                    "outsider" -> Team.OUTSIDER
+                    "minion" -> Team.MINION
+                    else -> Team.DEMON
+                }
+            }
+                .mapValues { (_, teamMatches) ->
+                    teamMatches.map { it.groupValues[1].toInt() }.toSet()
+                }
+                .filterValues { it.isNotEmpty() }
+        } else {
+            emptyMap()
+        }
         if (isChoice && matches.isNotEmpty()) {
             // Ranged choice ("-1 or +1"): apply the last listed option as the
             // suggested default; validation stays relaxed for those teams.
@@ -178,6 +226,7 @@ object Setup {
             demonDelta = demons,
             townsfolkRemoved = townsfolkRemoved,
             choiceTeams = choiceTeams,
+            choiceDeltas = choiceDeltas,
             requiredCompanionId = companion,
         )
     }
@@ -195,12 +244,58 @@ object Setup {
         }
     }
 
-    /** Applies every selected character's modifier to the base distribution. */
+    /**
+     * Applies every selected character's modifier to the base distribution.
+     * Deltas are aggregated before clamping so the result cannot depend on
+     * the order in which characters were selected.
+     */
     fun adjustedDistribution(playerCount: Int, selected: List<Character>): Distribution {
-        var dist = distributionFor(playerCount)
-        for (c in selected) {
-            modifierFor(c)?.let { dist += it }
-        }
-        return dist
+        val modifiers = selected.mapNotNull(::modifierFor)
+        return distributionFor(playerCount) + combine(modifiers)
     }
+
+    /**
+     * Every legal distribution produced by bounded setup choices. Open-ended
+     * choices remain marked in [SetupModifier.choiceTeams] for the validator.
+     */
+    fun allowedDistributions(playerCount: Int, selected: List<Character>): Set<Distribution> {
+        val modifiers = selected.mapNotNull(::modifierFor)
+        var combinations = listOf(SetupModifier(characterId = "", text = ""))
+        for (modifier in modifiers) {
+            combinations = combinations.flatMap { accumulated ->
+                variants(modifier).map { variant ->
+                    combine(listOf(accumulated, variant))
+                }
+            }
+        }
+        return combinations.map { distributionFor(playerCount) + it }.toSet()
+    }
+
+    private fun variants(modifier: SetupModifier): List<SetupModifier> {
+        var variants = listOf(modifier)
+        for ((team, deltas) in modifier.choiceDeltas) {
+            variants = variants.flatMap { current ->
+                deltas.map { delta ->
+                    when (team) {
+                        Team.TOWNSFOLK -> current.copy(townsfolkRemoved = -delta)
+                        Team.OUTSIDER -> current.copy(outsiderDelta = delta)
+                        Team.MINION -> current.copy(minionDelta = delta)
+                        Team.DEMON -> current.copy(demonDelta = delta)
+                        else -> current
+                    }
+                }
+            }
+        }
+        return variants
+    }
+
+    private fun combine(modifiers: List<SetupModifier>): SetupModifier =
+        SetupModifier(
+            characterId = "",
+            text = "",
+            outsiderDelta = modifiers.sumOf { it.outsiderDelta },
+            minionDelta = modifiers.sumOf { it.minionDelta },
+            demonDelta = modifiers.sumOf { it.demonDelta },
+            townsfolkRemoved = modifiers.sumOf { it.townsfolkRemoved },
+        )
 }

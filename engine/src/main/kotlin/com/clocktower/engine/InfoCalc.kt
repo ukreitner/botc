@@ -98,6 +98,18 @@ object InfoCalc {
     }
 
     /**
+     * Resolves an exact number of distinct target ids. Selection state can
+     * outlive a removed seat in the UI, so stale ids are treated as an
+     * incomplete choice rather than silently omitted.
+     */
+    private fun validTargets(ctx: Ctx, targets: List<Long>, expected: Int): List<Player>? {
+        if (targets.size != expected || targets.toSet().size != expected) return null
+        val players = targets.map { ctx.state.player(it) }
+        if (players.any { it == null }) return null
+        return players.filterNotNull()
+    }
+
+    /**
      * The day a night-time "today" question refers to: during NIGHT of
      * cycle N the preceding day was N-1 (night 1 has no preceding day).
      */
@@ -122,6 +134,9 @@ object InfoCalc {
         val notes = mutableListOf<String>()
         if (player.characterId == "drunk") {
             notes += "${player.name} IS the Drunk — their ability malfunctions."
+        }
+        if (player.characterId == "marionette") {
+            notes += "${player.name} IS the Marionette — their shown good ability has no effect; give arbitrary information."
         }
         for (r in player.reminders) {
             val label = r.label.lowercase()
@@ -289,7 +304,12 @@ object InfoCalc {
     }
 
     private fun flowergirl(ctx: Ctx): InfoResult {
-        val today = ctx.state.nominations.filter { it.day == relevantDay(ctx.state) }
+        // Supporting a Traveller exile is not a vote and never registers to
+        // the Flowergirl, even though the UI records exile supporters in the
+        // same Nomination structure for auditability.
+        val today = ctx.state.nominations.filter {
+            it.day == relevantDay(ctx.state) && !it.isExile
+        }
         val demonIds = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }.map { it.id }.toSet()
         val voted = today.any { n -> n.voterIds.any { it in demonIds } }
         return InfoResult(
@@ -302,8 +322,8 @@ object InfoCalc {
     }
 
     private fun fortuneTeller(ctx: Ctx, targets: List<Long>): InfoResult {
-        if (targets.size < 2) return InfoResult("Pick the 2 players the Fortune Teller chose")
-        val chosen = targets.mapNotNull { ctx.state.player(it) }
+        val chosen = validTargets(ctx, targets, 2)
+            ?: return InfoResult("Pick 2 different valid players the Fortune Teller chose")
         val demonHit = chosen.filter { ctx.character(it)?.team == Team.DEMON }
         val herringHit = chosen.filter { p -> p.reminders.any { it.label.equals("Red herring", true) } }
         val yes = demonHit.isNotEmpty() || herringHit.isNotEmpty()
@@ -321,7 +341,7 @@ object InfoCalc {
     }
 
     private fun dreamer(ctx: Ctx, targets: List<Long>): InfoResult {
-        val target = targets.firstOrNull()?.let { ctx.state.player(it) }
+        val target = validTargets(ctx, targets, 1)?.single()
             ?: return InfoResult("Pick the player the Dreamer chose")
         val character = ctx.character(target)
         val good = character?.team?.isEvil == false
@@ -333,8 +353,8 @@ object InfoCalc {
     }
 
     private fun seamstress(ctx: Ctx, targets: List<Long>): InfoResult {
-        if (targets.size < 2) return InfoResult("Pick the 2 players the Seamstress chose")
-        val chosen = targets.mapNotNull { ctx.state.player(it) }
+        val chosen = validTargets(ctx, targets, 2)
+            ?: return InfoResult("Pick 2 different valid players the Seamstress chose")
         val same = ctx.isEvil(chosen[0]) == ctx.isEvil(chosen[1])
         return InfoResult(
             headline = if (same) "YES — same alignment" else "NO — different alignments",
@@ -344,7 +364,7 @@ object InfoCalc {
     }
 
     private fun villageIdiot(ctx: Ctx, targets: List<Long>): InfoResult {
-        val target = targets.firstOrNull()?.let { ctx.state.player(it) }
+        val target = validTargets(ctx, targets, 1)?.single()
             ?: return InfoResult("Pick the player the Village Idiot chose")
         return InfoResult(
             headline = "${ctx.name(target)} is ${if (ctx.isEvil(target)) "EVIL" else "GOOD"}",
@@ -353,7 +373,7 @@ object InfoCalc {
     }
 
     private fun revealCharacter(ctx: Ctx, targets: List<Long>, who: String): InfoResult {
-        val target = targets.firstOrNull()?.let { ctx.state.player(it) }
+        val target = validTargets(ctx, targets, 1)?.single()
             ?: return InfoResult("Pick the player the $who chose/knows")
         val character = ctx.character(target)
         return InfoResult(
@@ -436,9 +456,9 @@ object InfoCalc {
     }
 
     private fun chambermaid(ctx: Ctx, targets: List<Long>): InfoResult {
-        if (targets.size < 2) return InfoResult("Pick the 2 players the Chambermaid chose")
+        val chosen = validTargets(ctx, targets, 2)
+            ?: return InfoResult("Pick 2 different valid players the Chambermaid chose")
         val order = if (ctx.state.cycle == 1) ctx.data.firstNightOrder else ctx.data.otherNightOrder
-        val chosen = targets.mapNotNull { ctx.state.player(it) }
         val wakers = chosen.filter { p ->
             p.alive && p.characterId != null && p.characterId in order
         }

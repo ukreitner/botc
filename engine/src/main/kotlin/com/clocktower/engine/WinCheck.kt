@@ -23,6 +23,25 @@ object WinCheck {
         val alive = players.filter { it.alive }
         val inPlayIds = players.mapNotNull { it.characterId }.toSet()
 
+        val executedSaint = state.deaths.lastOrNull {
+            if (it.cause != DeathCause.EXECUTION) return@lastOrNull false
+            val currentPlayer = players.find { player -> player.id == it.playerId }
+            val wasSaint = it.characterIdAtDeath?.let { id -> id == "saint" }
+                ?: (currentPlayer?.characterId == "saint")
+            val wasImpaired = it.abilityImpairedAtDeath
+                ?: currentPlayer?.let { player ->
+                    StatusEffects.isImpaired(state, lookup, player)
+                }
+                ?: false
+            wasSaint && !wasImpaired
+        }
+        if (executedSaint != null) {
+            return Advisory(
+                goodWins = false,
+                reason = "The Saint died by execution - the good team loses.",
+            )
+        }
+
         if (demons.isNotEmpty() && aliveDemons.isEmpty()) {
             val cautions = mutableListOf<String>()
             if ("scarletwoman" in inPlayIds) {

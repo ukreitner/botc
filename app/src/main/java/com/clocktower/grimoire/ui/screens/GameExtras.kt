@@ -303,6 +303,10 @@ fun RevealSheet(
                         Text(
                             buildString {
                                 append(character?.name ?: "no character")
+                                p.shownCharacterId?.let { shownId ->
+                                    append(" · shown as ")
+                                    append(viewModel.characterById(shownId)?.name ?: shownId)
+                                }
                                 character?.team?.let { if (it == Team.TRAVELLER) append(" (traveller)") }
                                 if (death != null) {
                                     append(" · ")

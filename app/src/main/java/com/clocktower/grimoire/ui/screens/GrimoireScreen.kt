@@ -17,7 +17,11 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -30,6 +34,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -107,7 +115,12 @@ fun GrimoireScreen(
                     viewModel = viewModel,
                     state = state,
                     player = player,
-                    wakeNumber = player.characterId?.let { wakeOrder[it] },
+                    compactLevel = when {
+                        state.players.size > 16 -> 2
+                        state.players.size > 12 -> 1
+                        else -> 0
+                    },
+                    wakeNumber = player.nightRoleId?.let { wakeOrder[it] },
                     onClick = { onOpenSeat(player.id) },
                 )
             }
@@ -133,6 +146,25 @@ fun GrimoireScreen(
                 for (id in state.fabledIds) {
                     CharacterToken(character = viewModel.characterById(id), size = 34.dp)
                 }
+            }
+        }
+
+        if (scale != 1f || offsetX != 0f || offsetY != 0f) {
+            FilledTonalIconButton(
+                onClick = {
+                    scale = 1f
+                    offsetX = 0f
+                    offsetY = 0f
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(12.dp)
+                    .size(48.dp),
+            ) {
+                Icon(
+                    Icons.Filled.CenterFocusStrong,
+                    contentDescription = "Reset zoom and recenter grimoire",
+                )
             }
         }
 
@@ -196,16 +228,49 @@ private fun SeatView(
     viewModel: GameViewModel,
     state: GameState,
     player: Player,
+    compactLevel: Int,
     wakeNumber: Int?,
     onClick: () -> Unit,
 ) {
     val character = viewModel.characterById(player.characterId)
     val isEvil = player.isEvil(viewModel::characterById)
+    val impaired = com.clocktower.engine.StatusEffects.isImpaired(state, viewModel::characterById, player)
+    val seatDescription = buildString {
+        append(player.name)
+        append(", ")
+        append(character?.name ?: "no character assigned")
+        player.shownCharacterId?.let { shownId ->
+            append(", shown as ")
+            append(viewModel.characterById(shownId)?.name ?: shownId)
+        }
+        append(if (player.alive) ", alive" else ", dead")
+        if (character != null) append(if (isEvil) ", evil" else ", good")
+        if (player.isTraveller) append(", traveller")
+        if (!player.alive) {
+            append(if (player.ghostVoteUsed) ", ghost vote spent" else ", ghost vote available")
+        }
+        if (impaired) append(", drunk or poisoned")
+        if (player.reminders.isNotEmpty()) {
+            append(", reminders: ")
+            append(player.reminders.joinToString { it.label })
+        }
+    }
+    val tokenSize = when (compactLevel) {
+        2 -> 48.dp
+        1 -> 52.dp
+        else -> 64.dp
+    }
+    val visibleReminders = if (compactLevel == 0) 4 else 2
+    val reminderSize = if (compactLevel == 0) 26.dp else 22.dp
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .wrapContentSize()
             .clip(RoundedCornerShape(12.dp))
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = seatDescription
+            }
             .clickable(onClick = onClick)
             .padding(2.dp),
     ) {
@@ -227,7 +292,7 @@ private fun SeatView(
         Box(contentAlignment = Alignment.Center) {
             CharacterToken(
                 character = character,
-                size = 64.dp,
+                size = tokenSize,
                 dimmed = !player.alive,
             )
             if (!player.alive) {
@@ -257,7 +322,7 @@ private fun SeatView(
                     Text("T", style = MaterialTheme.typography.labelSmall, color = Color.Black)
                 }
             }
-            if (com.clocktower.engine.StatusEffects.isImpaired(state, viewModel::characterById, player)) {
+            if (impaired) {
                 Text(
                     "🧪",
                     style = MaterialTheme.typography.labelMedium,
@@ -291,17 +356,19 @@ private fun SeatView(
         if (player.reminders.isNotEmpty()) {
             Spacer(Modifier.height(2.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                for (reminder in player.reminders.take(4)) {
+                // Newly placed nightly reminders are the ones the
+                // storyteller most urgently needs to see at a glance.
+                for (reminder in player.reminders.takeLast(visibleReminders)) {
                     val source = viewModel.characterById(reminder.sourceId)
                     ReminderToken(
                         label = reminder.label,
                         color = source?.team?.color ?: BloodRed,
-                        size = 26.dp,
+                        size = reminderSize,
                     )
                 }
-                if (player.reminders.size > 4) {
+                if (player.reminders.size > visibleReminders) {
                     Text(
-                        "+${player.reminders.size - 4}",
+                        "+${player.reminders.size - visibleReminders}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

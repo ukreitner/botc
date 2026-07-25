@@ -3,6 +3,7 @@ package com.clocktower.engine
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -114,6 +115,22 @@ class GameActionsTest {
         assertEquals("beggar", state.player(5)?.characterId)
         val assigned = state.players.filter { !it.isTraveller }.mapNotNull { it.characterId }
         assertEquals(bag.toSet(), assigned.toSet())
+    }
+
+    @Test
+    fun `deal rejects partial bags instead of retaining stale assignments`() {
+        var state = newGame(6)
+        repeat(6) { i ->
+            state = GameActions.assignCharacter(state, i.toLong(), "old$i")
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            GameActions.deal(state, listOf("imp", "poisoner", "chef"), Random(1))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            GameActions.deal(state, List(7) { "role$it" }, Random(1))
+        }
+        assertEquals(List(6) { "old$it" }, state.players.map { it.characterId })
     }
 
     @Test
@@ -249,6 +266,147 @@ class GameActionsTest {
     }
 
     @Test
+    fun `15 player vigormortis bag requires one outsider compensated by ten townsfolk`() {
+        val sv = data.builtInScripts().first { it.id == "sv" }
+        val chars = data.resolve(sv)
+        val townsfolk = chars.filter { it.team == Team.TOWNSFOLK }
+        val outsiders = chars.filter { it.team == Team.OUTSIDER }
+        val minions = chars.filter { it.team == Team.MINION }
+        val vigormortis = assertNotNull(chars.find { it.id == "vigormortis" })
+
+        val uncompensated = townsfolk.take(9) + outsiders.take(2) + minions.take(3) + vigormortis
+        val invalidIssues = GameActions.validateBag(uncompensated, 15)
+        assertTrue(invalidIssues.any { it == "Townsfolk: 9 in bag, expected 10" }, invalidIssues.toString())
+        assertTrue(invalidIssues.any { it == "Outsider: 2 in bag, expected 1" }, invalidIssues.toString())
+
+        val compensated = townsfolk.take(10) + outsiders.take(1) + minions.take(3) + vigormortis
+        assertEquals(15, compensated.size)
+        assertTrue(
+            GameActions.validateBag(compensated, 15).isEmpty(),
+            GameActions.validateBag(compensated, 15).toString(),
+        )
+    }
+
+    @Test
+    fun `godfather setup choice accepts either outsider count and compensating townsfolk`() {
+        fun characters(vararg ids: String): List<Character> =
+            ids.map { assertNotNull(data.character(it), it) }
+
+        val noOutsider = characters("washerwoman", "chef", "empath", "godfather", "imp")
+        val plusOneOutsider = characters("washerwoman", "chef", "recluse", "godfather", "imp")
+
+        assertTrue(
+            GameActions.validateBag(noOutsider, 5).isEmpty(),
+            GameActions.validateBag(noOutsider, 5).toString(),
+        )
+        assertTrue(
+            GameActions.validateBag(plusOneOutsider, 5).isEmpty(),
+            GameActions.validateBag(plusOneOutsider, 5).toString(),
+        )
+    }
+
+    @Test
+    fun `godfather setup choice rejects outsider counts outside its two options`() {
+        val bmr = data.builtInScripts().first { it.id == "bmr" }
+        val chars = data.resolve(bmr)
+        val townsfolk = chars.filter { it.team == Team.TOWNSFOLK }
+        val outsiders = chars.filter { it.team == Team.OUTSIDER }
+        val godfather = assertNotNull(chars.find { it.id == "godfather" })
+        val minions = listOf(godfather) +
+            chars.filter { it.team == Team.MINION && it.id != "godfather" }.take(2)
+        val demon = assertNotNull(chars.find { it.team == Team.DEMON })
+
+        fun bag(townsfolkCount: Int, outsiderCount: Int): List<Character> =
+            townsfolk.take(townsfolkCount) + outsiders.take(outsiderCount) + minions + demon
+
+        val unchanged = bag(townsfolkCount = 9, outsiderCount = 2)
+        val issues = GameActions.validateBag(unchanged, 15)
+        assertTrue(
+            issues.any { it == "Outsider: 2 in bag, expected 1 or 3" },
+            issues.toString(),
+        )
+        for (legal in listOf(
+            bag(townsfolkCount = 10, outsiderCount = 1),
+            bag(townsfolkCount = 8, outsiderCount = 3),
+        )) {
+            assertEquals(15, legal.size)
+            assertTrue(
+                GameActions.validateBag(legal, 15).isEmpty(),
+                GameActions.validateBag(legal, 15).toString(),
+            )
+        }
+    }
+
+    @Test
+    fun `Village Idiot allows at most two extra copies`() {
+        val villageIdiot = assertNotNull(data.character("villageidiot"))
+        val washerwoman = assertNotNull(data.character("washerwoman"))
+        val chef = assertNotNull(data.character("chef"))
+        val poisoner = assertNotNull(data.character("poisoner"))
+        val imp = assertNotNull(data.character("imp"))
+
+        val legal = List(3) { villageIdiot } + washerwoman + chef + poisoner + imp
+        assertTrue(
+            GameActions.validateBag(legal, 7).isEmpty(),
+            GameActions.validateBag(legal, 7).toString(),
+        )
+
+        val tooMany = List(4) { villageIdiot } + washerwoman + poisoner + imp
+        val issues = GameActions.validateBag(tooMany, 7)
+        assertTrue(issues.any { "maximum 3" in it }, issues.toString())
+    }
+
+    @Test
+    fun `setup state requires hidden information and Marionette seating`() {
+        var drunkState = newGame(5)
+        listOf("imp", "baron", "drunk", "recluse", "chef").forEachIndexed { i, id ->
+            drunkState = GameActions.assignCharacter(drunkState, i.toLong(), id)
+        }
+        assertTrue(
+            GameActions.validateSetupState(drunkState, data::character)
+                .any { "show the Drunk" in it },
+        )
+        drunkState = GameActions.setShownCharacter(drunkState, 2, "washerwoman")
+        assertTrue(
+            GameActions.validateSetupState(drunkState, data::character).isEmpty(),
+            GameActions.validateSetupState(drunkState, data::character).toString(),
+        )
+
+        var fortuneState = newGame(5)
+        listOf("imp", "poisoner", "fortuneteller", "chef", "mayor").forEachIndexed { i, id ->
+            fortuneState = GameActions.assignCharacter(fortuneState, i.toLong(), id)
+        }
+        assertTrue(
+            GameActions.validateSetupState(fortuneState, data::character)
+                .any { "red herring" in it },
+        )
+        fortuneState = GameActions.addReminder(
+            fortuneState,
+            4,
+            PlacedReminder("fortuneteller", "Red herring"),
+        )
+        assertTrue(
+            GameActions.validateSetupState(fortuneState, data::character).isEmpty(),
+            GameActions.validateSetupState(fortuneState, data::character).toString(),
+        )
+
+        var marionetteState = newGame(5)
+        listOf("imp", "chef", "marionette", "empath", "mayor").forEachIndexed { i, id ->
+            marionetteState = GameActions.assignCharacter(marionetteState, i.toLong(), id)
+        }
+        marionetteState = GameActions.setShownCharacter(marionetteState, 2, "washerwoman")
+        assertTrue(
+            GameActions.validateSetupState(marionetteState, data::character)
+                .any { "neighbor the Demon" in it },
+        )
+        marionetteState = GameActions.moveSeat(marionetteState, 2, -1)
+        assertTrue(
+            GameActions.validateSetupState(marionetteState, data::character).isEmpty(),
+            GameActions.validateSetupState(marionetteState, data::character).toString(),
+        )
+    }
+
+    @Test
     fun `atheist bag with no evil validates`() {
         val chars = data.resolve(tb) + listOf(assertNotNull(data.character("atheist")))
         val bag = chars.filter { it.team == Team.TOWNSFOLK }.take(6) +
@@ -311,9 +469,85 @@ class GameActionsTest {
         var state = newGame(5)
         state = GameActions.assignCharacter(state, 0, "imp")
         state = GameActions.assignCharacter(state, 1, "mayor")
+        state = GameActions.setShownCharacter(state, 1, "chef")
         state = GameActions.swapCharacters(state, 0, 1)
         assertEquals("mayor", state.player(0)?.characterId)
+        assertEquals("chef", state.player(0)?.shownCharacterId)
         assertEquals("imp", state.player(1)?.characterId)
+        assertEquals(null, state.player(1)?.shownCharacterId)
+    }
+
+    @Test
+    fun `Drunk shown identity drives wake row while truth drives impairment`() {
+        var state = newGame(5)
+        state = GameActions.assignCharacter(state, 0, "drunk")
+        state = GameActions.assignCharacter(state, 1, "imp")
+        state = GameActions.assignCharacter(state, 2, "poisoner")
+        state = GameActions.setShownCharacter(state, 0, "empath")
+
+        val player = assertNotNull(state.player(0))
+        assertEquals("drunk", player.characterId)
+        assertEquals("empath", player.characterShownToPlayerId)
+        assertEquals("empath", player.nightRoleId)
+
+        val empathStep = assertNotNull(
+            data.nightOrder.firstNight(state, data::character).find { it.id == "empath" },
+        )
+        assertEquals(listOf(0L), empathStep.playerIds)
+        val result = assertNotNull(InfoCalc.compute(data, state, "empath", 0))
+        assertTrue(result.caveats.any { "IS the Drunk" in it })
+
+        state = GameActions.assignCharacter(state, 0, "chef")
+        assertEquals(null, state.player(0)?.shownCharacterId)
+    }
+
+    @Test
+    fun `Marionette wakes as shown character but stays out of Minion info`() {
+        var state = newGame(8)
+        val assignments = listOf(
+            "imp",
+            "poisoner",
+            "marionette",
+            "washerwoman",
+            "empath",
+            "fortuneteller",
+            "butler",
+            "mayor",
+        )
+        assignments.forEachIndexed { i, id ->
+            state = GameActions.assignCharacter(state, i.toLong(), id)
+        }
+        state = GameActions.setShownCharacter(state, 2, "chef")
+        state = GameActions.advancePhase(state)
+
+        val first = data.nightOrder.firstNight(state, data::character)
+        val minionInfo = assertNotNull(first.find { it.id == NightMarkers.MINION_INFO })
+        assertEquals(listOf(1L), minionInfo.playerIds)
+        assertFalse("P3" in minionInfo.detail)
+
+        val demonInfo = assertNotNull(first.find { it.id == NightMarkers.DEMON_INFO })
+        assertTrue("Marionette (P3)" in demonInfo.detail)
+
+        val chefStep = assertNotNull(first.find { it.id == "chef" })
+        assertEquals(listOf(2L), chefStep.playerIds)
+        val result = assertNotNull(InfoCalc.compute(data, state, "chef", 2))
+        assertTrue(result.caveats.any { "IS the Marionette" in it })
+    }
+
+    @Test
+    fun `teensyville Demon still receives Marionette info`() {
+        var state = newGame(5)
+        listOf("imp", "chef", "marionette", "empath", "mayor").forEachIndexed { i, id ->
+            state = GameActions.assignCharacter(state, i.toLong(), id)
+        }
+        state = GameActions.setShownCharacter(state, 2, "washerwoman")
+        state = GameActions.advancePhase(state)
+
+        val first = data.nightOrder.firstNight(state, data::character)
+        assertFalse(first.any { it.id == NightMarkers.DEMON_INFO })
+        val marionetteInfo = assertNotNull(first.find { it.id == "marionette" })
+        assertEquals(listOf(0L), marionetteInfo.playerIds)
+        assertTrue("P3" in marionetteInfo.detail)
     }
 
     @Test
@@ -336,6 +570,7 @@ class GameActionsTest {
     fun `game state survives serialization round trip`() {
         var state = newGame(7)
         state = GameActions.assignCharacter(state, 0, "imp")
+        state = GameActions.setShownCharacter(state, 0, "po")
         state = GameActions.addReminder(state, 0, PlacedReminder("imp", "Dead"))
         state = GameActions.advancePhase(state)
         state = GameActions.kill(state, 1, DeathCause.DEMON)

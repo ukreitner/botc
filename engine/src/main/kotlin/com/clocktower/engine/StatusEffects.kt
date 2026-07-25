@@ -140,7 +140,9 @@ object StatusEffects {
         val nominee = nomineeId?.let { state.player(it) }
 
         if (nominator != null) {
-            if (nominator.reminders.any { it.label.equals("Cursed", true) }) {
+            if (state.alivePlayers.size >= 4 &&
+                nominator.reminders.any { it.label.equals("Cursed", true) }
+            ) {
                 notes += "${nominator.name} is Witch-cursed — they die immediately for nominating (if 4+ alive)."
             }
             if (nominator.characterId == "golem") {

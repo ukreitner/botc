@@ -17,7 +17,8 @@ val PaleGold = Color(0xFFEFD9A0)
 val Parchment = Color(0xFFEFE6D0)
 val FadedInk = Color(0xFFB9AECB)
 val BloodRed = Color(0xFF9C2B2B)
-val EmberRed = Color(0xFFC94F4F)
+// Bright enough to keep small warning text readable on every dark surface.
+val EmberRed = Color(0xFFD96B6B)
 
 // Token ring colors per team, matching physical token conventions.
 val TownsfolkBlue = Color(0xFF4E8FD9)

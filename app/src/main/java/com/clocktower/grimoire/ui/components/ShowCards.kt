@@ -15,10 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -27,14 +28,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -177,8 +181,21 @@ fun ShowToolSheet(
     onDismiss: () -> Unit,
 ) {
     var customText by rememberSaveable { mutableStateOf("") }
-    var characterPrefix by rememberSaveable { mutableStateOf<String?>(null) }
+    var characterPrefix by rememberSaveable { mutableStateOf("THIS PLAYER IS") }
+    var characterSearch by rememberSaveable { mutableStateOf("") }
     val scriptCharacters = viewModel.gameData.resolve(state.script)
+    val inPlayIds = state.players.mapNotNull { it.characterId }.toSet()
+    val visibleCharacters = remember(scriptCharacters, inPlayIds, characterSearch) {
+        val needle = characterSearch.trim()
+        scriptCharacters
+            .filter { it.team != Team.FABLED }
+            .filter { needle.isEmpty() || it.name.contains(needle, ignoreCase = true) }
+            .sortedWith(
+                compareByDescending<Character> { it.id in inPlayIds }
+                    .thenBy { it.team.ordinal }
+                    .thenBy { it.name },
+            )
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(
@@ -197,6 +214,46 @@ fun ShowToolSheet(
                 )
             }
             item {
+                Text("Character tokens", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Characters in play are first. Pick a phrase, then tap a symbol.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    for (prefix in listOf("THIS PLAYER IS", "YOU ARE", "THIS CHARACTER SELECTED YOU")) {
+                        FilterChip(
+                            selected = characterPrefix == prefix,
+                            onClick = { characterPrefix = prefix },
+                            label = { Text(prefix) },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = characterSearch,
+                    onValueChange = { characterSearch = it },
+                    placeholder = { Text("Find a character…") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (character in visibleCharacters) {
+                        ShowCharacterTile(character) {
+                            onShow(ShowCard.CharacterCard(characterPrefix, character.id))
+                        }
+                    }
+                }
+            }
+            item {
+                HorizontalDivider()
                 Text("Phrases", style = MaterialTheme.typography.titleSmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (phrase in listOf(
@@ -243,45 +300,28 @@ fun ShowToolSheet(
                     ) { Text("Show") }
                 }
             }
-            item {
-                HorizontalDivider()
-                Text("Character card", style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (prefix in listOf("YOU ARE", "THIS PLAYER IS", "THIS CHARACTER SELECTED YOU")) {
-                        AssistChip(
-                            onClick = { characterPrefix = if (characterPrefix == prefix) null else prefix },
-                            label = { Text(if (characterPrefix == prefix) "$prefix ✓" else prefix) },
-                        )
-                    }
-                }
-                if (characterPrefix != null) {
-                    Text(
-                        "…then pick the character:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            if (characterPrefix != null) {
-                items(scriptCharacters.filter { it.team != Team.FABLED }, key = { "show-" + it.id }) { c ->
-                    ShowCharacterRow(c) { onShow(ShowCard.CharacterCard(characterPrefix!!, c.id)) }
-                }
-            }
         }
     }
 }
 
 @Composable
-private fun ShowCharacterRow(character: Character, onClick: () -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+private fun ShowCharacterTile(character: Character, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .fillMaxWidth()
+            .width(76.dp)
+            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 6.dp),
     ) {
-        CharacterToken(character = character, size = 40.dp)
-        Spacer(Modifier.width(12.dp))
-        Text(character.name, style = MaterialTheme.typography.titleSmall)
+        CharacterToken(character = character, size = 52.dp)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            character.name,
+            style = MaterialTheme.typography.labelSmall,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

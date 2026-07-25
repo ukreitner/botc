@@ -88,6 +88,9 @@ fun SetupScreen(
             onImport = { showImport = true },
             onDelete = { viewModel.deleteScript(it) },
             onPick = { picked ->
+                if (scriptId != picked.id) {
+                    bagIds = emptyList()
+                }
                 scriptId = picked.id
                 stage = SetupStage.PLAYERS
             },
@@ -107,11 +110,11 @@ fun SetupScreen(
                 bagIds = bagIds,
                 onBagIds = { bagIds = it },
                 onBack = { stage = SetupStage.PLAYERS },
-                onStart = { deal ->
+                onStart = { deal, validatedBagIds ->
                     viewModel.startGame(s, names.mapIndexed { i, n -> n.ifBlank { "Player ${i + 1}" } })
-                    if (deal && bagIds.isNotEmpty()) {
+                    if (deal && validatedBagIds.isNotEmpty()) {
                         viewModel.update { state ->
-                            GameActions.deal(state, bagIds, Random(System.nanoTime()))
+                            GameActions.deal(state, validatedBagIds, Random(System.nanoTime()))
                         }
                     }
                     onGameStarted()
@@ -144,6 +147,7 @@ private fun ScriptStage(
 ) {
     val context = LocalContext.current
     var fileError by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             fileError = try {
@@ -166,7 +170,14 @@ private fun ScriptStage(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Choose a script", style = MaterialTheme.typography.headlineMedium, color = AgedGold)
+                Column {
+                    Text(
+                        "STEP 1 OF 3",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text("Choose a script", style = MaterialTheme.typography.headlineMedium, color = AgedGold)
+                }
                 TextButton(onClick = onBack) { Text("Cancel") }
             }
         }
@@ -203,7 +214,7 @@ private fun ScriptStage(
                         }
                     }
                     if (!script.isBuiltIn) {
-                        IconButton(onClick = { onDelete(script.id) }) {
+                        IconButton(onClick = { pendingDeleteId = script.id }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete script")
                         }
                     }
@@ -225,6 +236,23 @@ private fun ScriptStage(
             }
         }
     }
+    pendingDeleteId?.let { scriptId ->
+        val scriptName = scripts.find { it.id == scriptId }?.name ?: "this script"
+        AlertDialog(
+            onDismissRequest = { pendingDeleteId = null },
+            title = { Text("Delete imported script?") },
+            text = { Text("$scriptName will be removed from this device. This cannot be undone.") },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    pendingDeleteId = null
+                    onDelete(scriptId)
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteId = null }) { Text("Keep script") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -240,6 +268,11 @@ private fun PlayersStage(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
+            Text(
+                "STEP 2 OF 3",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text("Players", style = MaterialTheme.typography.headlineMedium, color = AgedGold)
             Text(
                 "${names.size} seats, clockwise from the top of the circle. " +
@@ -306,13 +339,14 @@ private fun BagStage(
     bagIds: List<String>,
     onBagIds: (List<String>) -> Unit,
     onBack: () -> Unit,
-    onStart: (deal: Boolean) -> Unit,
+    onStart: (deal: Boolean, validatedBagIds: List<String>) -> Unit,
 ) {
     val characters = remember(script) {
         viewModel.gameData.resolve(script).filter { it.team.isTownResident }
     }
     val byId = remember(characters) { characters.associateBy { it.id } }
     var search by rememberSaveable { mutableStateOf("") }
+    var randomizeError by rememberSaveable(script.id, playerCount) { mutableStateOf<String?>(null) }
     val selected = bagIds.mapNotNull { byId[it] }
     val issues = GameActions.validateBag(selected, playerCount)
     val adjusted = Setup.adjustedDistribution(playerCount, selected)
@@ -324,6 +358,11 @@ private fun BagStage(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
+            Text(
+                "STEP 3 OF 3",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text("Build the bag", style = MaterialTheme.typography.headlineMedium, color = AgedGold)
             Text(
                 "Need: ${adjusted.townsfolk} townsfolk · ${adjusted.outsiders} outsiders · " +
@@ -342,9 +381,28 @@ private fun BagStage(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = {
                     val bag = GameActions.randomBag(characters, playerCount)
-                    if (bag != null) onBagIds(bag.map { it.id })
+                    if (bag != null) {
+                        randomizeError = null
+                        onBagIds(bag.map { it.id })
+                    } else {
+                        randomizeError =
+                            "This script couldn't make a legal bag for $playerCount players. " +
+                                "Check that it has enough characters in every team."
+                    }
                 }) { Text("Randomize") }
-                TextButton(onClick = { onBagIds(emptyList()) }) { Text("Clear") }
+                TextButton(onClick = {
+                    randomizeError = null
+                    onBagIds(emptyList())
+                }) { Text("Clear") }
+            }
+        }
+        randomizeError?.let { message ->
+            item {
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         if (issues.isNotEmpty() && selected.isNotEmpty()) {
@@ -383,10 +441,14 @@ private fun BagStage(
                     character = c,
                     count = bagIds.count { it == c.id },
                     duplicable = c.id in GameActions.DUPLICABLE,
-                    onAdd = { onBagIds(bagIds + c.id) },
+                    onAdd = {
+                        randomizeError = null
+                        onBagIds(bagIds + c.id)
+                    },
                     onRemove = {
                         val index = bagIds.lastIndexOf(c.id)
                         if (index >= 0) {
+                            randomizeError = null
                             onBagIds(bagIds.filterIndexed { i, _ -> i != index })
                         }
                     },
@@ -398,10 +460,12 @@ private fun BagStage(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onBack) { Text("Back") }
                 FilledTonalButton(
-                    enabled = selected.size == playerCount,
-                    onClick = { onStart(true) },
+                    enabled = selected.size == playerCount && issues.isEmpty(),
+                    onClick = { onStart(true, selected.map { it.id }) },
                 ) { Text("Deal randomly & start") }
-                OutlinedButton(onClick = { onStart(false) }) { Text("Start empty (assign in grimoire)") }
+                OutlinedButton(onClick = { onStart(false, emptyList()) }) {
+                    Text("Start empty (assign in grimoire)")
+                }
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.clocktower.grimoire.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -75,6 +79,7 @@ fun SeatSheet(
                 player = player,
                 character = character,
                 onPickCharacter = { mode = SeatSheetMode.PICK_CHARACTER },
+                onPickShownCharacter = { mode = SeatSheetMode.PICK_SHOWN_CHARACTER },
                 onAddReminder = { mode = SeatSheetMode.ADD_REMINDER },
                 onSwap = { mode = SeatSheetMode.SWAP },
                 onDismiss = onDismiss,
@@ -84,6 +89,18 @@ fun SeatSheet(
                 state = state,
                 onPick = { picked, traveller ->
                     viewModel.assign(player.id, picked?.id, traveller)
+                    mode = SeatSheetMode.ACTIONS
+                },
+                onBack = { mode = SeatSheetMode.ACTIONS },
+            )
+            SeatSheetMode.PICK_SHOWN_CHARACTER -> CharacterPicker(
+                viewModel = viewModel,
+                state = state,
+                title = "Identity shown to player",
+                clearLabel = "Show their actual character",
+                includeTravellers = false,
+                onPick = { picked, _ ->
+                    viewModel.setShownCharacter(player.id, picked?.id)
                     mode = SeatSheetMode.ACTIONS
                 },
                 onBack = { mode = SeatSheetMode.ACTIONS },
@@ -100,6 +117,8 @@ fun SeatSheet(
             SeatSheetMode.SWAP -> Column(
                 Modifier
                     .fillMaxWidth()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 24.dp),
             ) {
@@ -123,7 +142,13 @@ fun SeatSheet(
     }
 }
 
-private enum class SeatSheetMode { ACTIONS, PICK_CHARACTER, ADD_REMINDER, SWAP }
+private enum class SeatSheetMode {
+    ACTIONS,
+    PICK_CHARACTER,
+    PICK_SHOWN_CHARACTER,
+    ADD_REMINDER,
+    SWAP,
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -133,6 +158,7 @@ private fun SeatActions(
     player: Player,
     character: Character?,
     onPickCharacter: () -> Unit,
+    onPickShownCharacter: () -> Unit,
     onAddReminder: () -> Unit,
     onSwap: () -> Unit,
     onDismiss: () -> Unit,
@@ -143,6 +169,8 @@ private fun SeatActions(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -166,6 +194,29 @@ private fun SeatActions(
         }
         character?.ability?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium)
+        }
+        player.shownCharacterId?.let { shownId ->
+            val shown = viewModel.characterById(shownId)
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(10.dp),
+                ) {
+                    CharacterToken(character = shown, size = 44.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Shown to ${player.name}", style = MaterialTheme.typography.labelMedium)
+                        Text(shown?.name ?: shownId, style = MaterialTheme.typography.titleSmall)
+                    }
+                    TextButton(onClick = { viewModel.setShownCharacter(player.id, null) }) {
+                        Text("Clear")
+                    }
+                }
+            }
         }
         // Jinxes between this character and others currently in play.
         if (character != null) {
@@ -220,6 +271,9 @@ private fun SeatActions(
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onPickCharacter) { Text("Change character") }
+            OutlinedButton(onClick = onPickShownCharacter) {
+                Text(if (player.shownCharacterId == null) "Set shown identity" else "Change shown identity")
+            }
             OutlinedButton(onClick = onAddReminder) { Text("Add reminder") }
             OutlinedButton(onClick = { viewModel.flipAlignment(player.id) }) { Text("Flip alignment") }
             OutlinedButton(onClick = onSwap) { Text("Swap characters") }
@@ -240,7 +294,11 @@ private fun SeatActions(
                     val source = viewModel.characterById(reminder.sourceId)
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { viewModel.removeReminder(player.id, index) },
+                        modifier = Modifier.clickable(
+                            onClickLabel = "Remove reminder: ${reminder.label}",
+                        ) {
+                            viewModel.removeReminder(player.id, index)
+                        },
                     ) {
                         ReminderToken(
                             label = reminder.label,
@@ -293,6 +351,9 @@ private fun SeatActions(
 fun CharacterPicker(
     viewModel: GameViewModel,
     state: GameState,
+    title: String = "Choose character",
+    clearLabel: String = "Clear seat (no character)",
+    includeTravellers: Boolean = true,
     onPick: (Character?, Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -304,6 +365,7 @@ fun CharacterPicker(
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
+            .imePadding()
             .padding(horizontal = 20.dp)
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -314,12 +376,12 @@ fun CharacterPicker(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Choose character", style = MaterialTheme.typography.headlineSmall)
+                Text(title, style = MaterialTheme.typography.headlineSmall)
                 TextButton(onClick = onBack) { Text("Back") }
             }
         }
         item {
-            AssistChip(onClick = { onPick(null, false) }, label = { Text("Clear seat (no character)") })
+            AssistChip(onClick = { onPick(null, false) }, label = { Text(clearLabel) })
         }
         val groups = scriptCharacters
             .filter { it.team != Team.TRAVELLER && it.team != Team.FABLED }
@@ -337,16 +399,18 @@ fun CharacterPicker(
                 CharacterPickRow(c, inPlay.contains(c.id)) { onPick(c, false) }
             }
         }
-        item {
-            Text(
-                "Travellers",
-                style = MaterialTheme.typography.titleMedium,
-                color = Team.TRAVELLER.color,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
-        items(travellers, key = { "pick-t-" + it.id }) { c ->
-            CharacterPickRow(c, inPlay.contains(c.id)) { onPick(c, true) }
+        if (includeTravellers) {
+            item {
+                Text(
+                    "Travellers",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Team.TRAVELLER.color,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+            items(travellers, key = { "pick-t-" + it.id }) { c ->
+                CharacterPickRow(c, inPlay.contains(c.id)) { onPick(c, true) }
+            }
         }
     }
 }
@@ -403,6 +467,7 @@ fun ReminderPicker(
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
+            .imePadding()
             .padding(horizontal = 20.dp)
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),

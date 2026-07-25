@@ -14,7 +14,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
@@ -22,7 +25,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +39,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.clocktower.engine.Character
+import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
 import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.NightMarkers
@@ -42,10 +49,12 @@ import com.clocktower.engine.PlacedReminder
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
 import com.clocktower.grimoire.ui.components.FullScreenShow
+import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.components.ShowCard
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.Twilight
+import com.clocktower.grimoire.ui.theme.color
 
 /**
  * The night sheet: in-play characters in official wake order with prompts,
@@ -57,6 +66,7 @@ import com.clocktower.grimoire.ui.theme.Twilight
 fun NightScreen(
     viewModel: GameViewModel,
     state: GameState,
+    onOpenShowTool: () -> Unit = {},
 ) {
     val isFirstNight = state.cycle == 1
     val steps = remember(state.players, state.fabledIds, state.cycle, state.demonBluffIds) {
@@ -66,52 +76,232 @@ fun NightScreen(
             viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
         }
     }
-    var expandedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var expandedId by rememberSaveable(state.cycle) {
+        mutableStateOf(steps.firstOrNull { it.id !in state.nightStepsDone }?.id)
+    }
+    var previousDone by remember(state.cycle) { mutableStateOf(state.nightStepsDone) }
     var showCard by remember { mutableStateOf<ShowCard?>(null) }
+    var pendingReminderLabel by rememberSaveable(state.cycle) { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+    val activeCharacter = expandedId
+        ?.takeUnless { it in NightMarkers.all }
+        ?.let(viewModel::characterById)
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item {
-            Text(
-                text = if (isFirstNight) "First Night" else "Night ${state.cycle}",
-                style = MaterialTheme.typography.headlineMedium,
-                color = AgedGold,
-            )
-            Text(
-                text = "${steps.count { it.id in state.nightStepsDone }} of ${steps.size} steps done · tap a step for details",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    LaunchedEffect(state.nightStepsDone) {
+        val newlyUnchecked = previousDone - state.nightStepsDone
+        if (newlyUnchecked.isNotEmpty()) {
+            expandedId = steps.firstOrNull { it.id in newlyUnchecked }?.id
         }
-        items(steps, key = { it.id }) { step ->
-            NightStepRow(
-                viewModel = viewModel,
-                state = state,
-                step = step,
-                done = step.id in state.nightStepsDone,
-                expanded = expandedId == step.id,
-                onExpand = { expandedId = if (expandedId == step.id) null else step.id },
-                onToggleDone = { viewModel.toggleNightStep(step.id) },
-                onShow = { showCard = it },
-            )
+        previousDone = state.nightStepsDone
+    }
+
+    LaunchedEffect(expandedId) {
+        pendingReminderLabel = null
+        val stepIndex = steps.indexOfFirst { it.id == expandedId }
+        if (stepIndex >= 0) {
+            // +1 for the progress header before the first checklist row.
+            listState.animateScrollToItem(stepIndex + 1)
         }
-        item {
-            Text(
-                text = "Only characters currently in the grimoire appear here. " +
-                    "Dead players usually don't act — skip them unless their ability says otherwise.",
-                style = MaterialTheme.typography.bodySmall,
-                fontStyle = FontStyle.Italic,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 12.dp),
-            )
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item {
+                Text(
+                    text = if (isFirstNight) "First Night" else "Night ${state.cycle}",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = AgedGold,
+                )
+                Text(
+                    text = "${steps.count { it.id in state.nightStepsDone }} of ${steps.size} steps done · tap a step for details",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            itemsIndexed(steps, key = { _, step -> step.id }) { index, step ->
+                val done = step.id in state.nightStepsDone
+                NightStepRow(
+                    viewModel = viewModel,
+                    state = state,
+                    step = step,
+                    done = done,
+                    expanded = expandedId == step.id,
+                    onExpand = { expandedId = if (expandedId == step.id) null else step.id },
+                    onToggleDone = {
+                        viewModel.toggleNightStep(step.id)
+                        expandedId = if (done) {
+                            step.id
+                        } else {
+                            steps.drop(index + 1)
+                                .firstOrNull { it.id !in state.nightStepsDone }
+                                ?.id
+                        }
+                    },
+                    onShow = { showCard = it },
+                )
+            }
+            item {
+                Text(
+                    text = "Only characters currently in the grimoire appear here. " +
+                        "Dead players usually don't act — skip them unless their ability says otherwise.",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontStyle = FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
         }
+        NightToolTray(
+            viewModel = viewModel,
+            state = state,
+            character = activeCharacter,
+            pendingReminderLabel = pendingReminderLabel,
+            onPendingReminder = { pendingReminderLabel = it },
+            onShow = { showCard = it },
+            onOpenShowTool = onOpenShowTool,
+        )
     }
 
     showCard?.let { card ->
         FullScreenShow(card = card, viewModel = viewModel, onDismiss = { showCard = null })
+    }
+}
+
+/**
+ * A persistent physical-style tray for the currently expanded night
+ * character. Pick a reminder token, then a seat; no sheet/menu round-trip.
+ */
+@Composable
+private fun NightToolTray(
+    viewModel: GameViewModel,
+    state: GameState,
+    character: Character?,
+    pendingReminderLabel: String?,
+    onPendingReminder: (String?) -> Unit,
+    onShow: (ShowCard) -> Unit,
+    onOpenShowTool: () -> Unit,
+) {
+    val reminders = character?.allReminders.orEmpty()
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 8.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (character != null) {
+                    CharacterToken(character = character, size = 36.dp)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        character?.let { "${it.name} night tools" } ?: "Night tools",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        if (character == null) {
+                            "Open a character step to load its reminder tokens."
+                        } else if (reminders.isEmpty()) {
+                            "No reminder tokens for this character."
+                        } else {
+                            "Tap a reminder, then tap the player who gets it."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                character?.let {
+                    AssistChip(
+                        onClick = {
+                            onShow(ShowCard.CharacterCard("THIS PLAYER IS", it.id))
+                        },
+                        label = { Text("Show token") },
+                    )
+                }
+                TextButton(onClick = onOpenShowTool) { Text("All tokens") }
+            }
+
+            if (character != null && reminders.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(reminders) { label ->
+                        FilterChip(
+                            selected = pendingReminderLabel == label,
+                            onClick = {
+                                onPendingReminder(
+                                    if (pendingReminderLabel == label) null else label,
+                                )
+                            },
+                            leadingIcon = {
+                                ReminderToken(
+                                    label = label,
+                                    color = character.team.color,
+                                    size = 28.dp,
+                                )
+                            },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+            }
+
+            if (character != null && pendingReminderLabel != null) {
+                Text(
+                    "Place “$pendingReminderLabel” on:",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = AgedGold,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(state.players, key = { it.id }) { player ->
+                        AssistChip(
+                            onClick = {
+                                val reminder = PlacedReminder(character.id, pendingReminderLabel)
+                                val availableCopies = character.allReminders.count {
+                                    it == pendingReminderLabel
+                                }
+                                viewModel.update { current ->
+                                    if (availableCopies <= 1) {
+                                        GameActions.placeExclusiveReminder(current, player.id, reminder)
+                                    } else {
+                                        val placed = current.players.flatMap { seat ->
+                                            seat.reminders.mapIndexedNotNull { index, token ->
+                                                if (token == reminder) seat.id to index else null
+                                            }
+                                        }
+                                        val roomForAnother = placed.size < availableCopies
+                                        val cleared = if (roomForAnother) {
+                                            current
+                                        } else {
+                                            val (seatId, index) = placed.first()
+                                            GameActions.removeReminder(current, seatId, index)
+                                        }
+                                        GameActions.addReminder(cleared, player.id, reminder)
+                                    }
+                                }
+                                onPendingReminder(null)
+                            },
+                            leadingIcon = {
+                                CharacterToken(
+                                    character = viewModel.characterById(player.characterId),
+                                    size = 26.dp,
+                                    dimmed = !player.alive,
+                                )
+                            },
+                            label = { Text(player.name + if (!player.alive) " †" else "") },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -214,47 +404,6 @@ private fun StepDetailPanel(
                 onClick = { onShow(ShowCard.BluffsCard(state.demonBluffIds)) },
                 label = { Text("Show bluffs full-screen") },
             )
-        }
-
-        // Place this character's reminder tokens without leaving the sheet:
-        // pick the token, then the seat it goes on.
-        val stepCharacter = viewModel.characterById(step.id)
-        val tokens = stepCharacter?.allReminders.orEmpty()
-        if (tokens.isNotEmpty()) {
-            var pendingLabel by rememberSaveable(step.id) { mutableStateOf<String?>(null) }
-            Text("Place reminder:", style = MaterialTheme.typography.labelLarge)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (label in tokens) {
-                    FilterChip(
-                        selected = pendingLabel == label,
-                        onClick = { pendingLabel = if (pendingLabel == label) null else label },
-                        label = { Text(label) },
-                    )
-                }
-            }
-            pendingLabel?.let { label ->
-                Text(
-                    "…on whom?",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (p in state.players) {
-                        AssistChip(
-                            onClick = {
-                                // Nightly tokens move rather than stack.
-                                viewModel.update { s ->
-                                    com.clocktower.engine.GameActions.placeExclusiveReminder(
-                                        s, p.id, PlacedReminder(step.id, label),
-                                    )
-                                }
-                                pendingLabel = null
-                            },
-                            label = { Text(p.name) },
-                        )
-                    }
-                }
-            }
         }
 
         if (InfoCalc.supports(step.id)) {

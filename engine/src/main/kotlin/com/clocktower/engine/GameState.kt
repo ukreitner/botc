@@ -16,6 +16,11 @@ data class Player(
     val id: Long,
     val name: String,
     val characterId: String? = null,
+    /**
+     * Character identity presented to this player when it differs from the
+     * truth (Drunk, Lunatic, Marionette). Null means show [characterId].
+     */
+    val shownCharacterId: String? = null,
     /** True when this player's alignment differs from their character's default. */
     val alignmentFlipped: Boolean = false,
     val alive: Boolean = true,
@@ -25,6 +30,19 @@ data class Player(
     val reminders: List<PlacedReminder> = emptyList(),
     val note: String = "",
 ) {
+    val characterShownToPlayerId: String? get() = shownCharacterId ?: characterId
+
+    /**
+     * Drunk and Marionette wake as the good character they believe they are.
+     * A Lunatic keeps its own dedicated wake row, despite seeing a Demon token.
+     */
+    val nightRoleId: String?
+        get() = if (characterId == "drunk" || characterId == "marionette") {
+            shownCharacterId ?: characterId
+        } else {
+            characterId
+        }
+
     fun team(lookup: (String) -> Character?): Team? =
         characterId?.let { lookup(it)?.team }
 
@@ -63,6 +81,10 @@ data class DeathRecord(
     val day: Int,
     val atNight: Boolean,
     val cause: DeathCause,
+    /** Snapshots prevent later character changes from rewriting a death. */
+    val characterIdAtDeath: String? = null,
+    /** Null only for saves created before impairment snapshots existed. */
+    val abilityImpairedAtDeath: Boolean? = null,
 )
 
 /** Everything the storyteller tracks for one game. */

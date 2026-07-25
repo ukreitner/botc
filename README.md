@@ -63,12 +63,16 @@ Open the project in Android Studio (Ladybug or newer) and run the `app`
 configuration, or build from the command line:
 
 ```
+# Character art is downloaded separately and is intentionally not committed.
+bash tools/fetch-icons.sh
 ./gradlew :app:assembleDebug
 # APK lands in app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Requires JDK 17+. The Android SDK (compileSdk 35) is fetched/managed by
 Android Studio as usual. Minimum supported device: Android 8.0 (API 26).
+If the icon-fetch step is skipped, the app still builds but uses emoji
+fallbacks. On Windows, run the script with Git Bash.
 
 The GitHub Actions workflow also assembles a debug APK on every push —
 grab it from the workflow run's artifacts if you don't have Android

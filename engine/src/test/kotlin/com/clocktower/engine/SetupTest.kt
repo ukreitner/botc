@@ -23,7 +23,12 @@ class SetupTest {
         assertEquals(Distribution(9, 0, 3, 1), Setup.distributionFor(13))
         assertEquals(Distribution(9, 1, 3, 1), Setup.distributionFor(14))
         assertEquals(Distribution(9, 2, 3, 1), Setup.distributionFor(15))
-        for (n in 5..15) {
+        assertEquals(Distribution(11, 0, 4, 1), Setup.distributionFor(16))
+        assertEquals(Distribution(11, 1, 4, 1), Setup.distributionFor(17))
+        assertEquals(Distribution(11, 2, 4, 1), Setup.distributionFor(18))
+        assertEquals(Distribution(13, 0, 5, 1), Setup.distributionFor(19))
+        assertEquals(Distribution(13, 1, 5, 1), Setup.distributionFor(20))
+        for (n in Setup.MIN_PLAYERS..Setup.MAX_PLAYERS) {
             assertEquals(n, Setup.distributionFor(n).total)
         }
     }
@@ -44,6 +49,16 @@ class SetupTest {
         assertEquals(1, fangGu.outsiderDelta)
         val vigor = assertNotNull(Setup.modifierFor(assertNotNull(data.character("vigormortis"))))
         assertEquals(-1, vigor.outsiderDelta)
+    }
+
+    @Test
+    fun `combined setup modifiers are applied before clamping regardless of order`() {
+        val baron = assertNotNull(data.character("baron"))
+        val vigor = assertNotNull(data.character("vigormortis"))
+        val expected = Distribution(6, 1, 2, 1)
+
+        assertEquals(expected, Setup.adjustedDistribution(10, listOf(baron, vigor)))
+        assertEquals(expected, Setup.adjustedDistribution(10, listOf(vigor, baron)))
     }
 
     @Test

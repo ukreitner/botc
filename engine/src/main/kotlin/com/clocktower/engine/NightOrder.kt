@@ -44,12 +44,13 @@ class NightOrder(
         isFirstNight: Boolean,
     ): List<NightStep> {
         val inPlay: Map<String, List<Player>> = state.players
-            .filter { it.characterId != null }
-            .groupBy { it.characterId!! }
+            .filter { it.nightRoleId != null }
+            .groupBy { it.nightRoleId!! }
         val fabled = state.fabledIds.toSet()
         // Minion/demon info happens in games of 7+ players (total seats,
         // not alive count — a night-1 death must not remove the steps).
         val infoSteps = state.players.count { !it.isTraveller } >= 7
+        val actualMarionettes = state.players.filter { it.characterId == "marionette" }
 
         val steps = mutableListOf<NightStep>()
         for (id in order) {
@@ -58,7 +59,8 @@ class NightOrder(
                 NightMarkers.DAWN -> steps += NightStep(id, "Dawn", "Wait a few seconds. Everyone opens their eyes. Announce who died.")
                 NightMarkers.MINION_INFO -> if (isFirstNight && infoSteps) {
                     val minions = state.players.filter { p ->
-                        p.characterId?.let(lookup)?.team == Team.MINION
+                        p.characterId != "marionette" &&
+                            p.characterId?.let(lookup)?.team == Team.MINION
                     }
                     val demon = state.players.filter { p ->
                         p.characterId?.let(lookup)?.team == Team.DEMON
@@ -78,7 +80,8 @@ class NightOrder(
                 }
                 NightMarkers.DEMON_INFO -> if (isFirstNight && infoSteps) {
                     val minions = state.players.filter { p ->
-                        p.characterId?.let(lookup)?.team == Team.MINION
+                        p.characterId != "marionette" &&
+                            p.characterId?.let(lookup)?.team == Team.MINION
                     }
                     val demon = state.players.filter { p ->
                         p.characterId?.let(lookup)?.team == Team.DEMON
@@ -92,6 +95,10 @@ class NightOrder(
                             if (demon.isNotEmpty()) append(" (${demon.joinToString { it.name }})")
                             append(". Point out the Minions")
                             if (minions.isNotEmpty()) append(" (${minions.joinToString { it.name }})")
+                            if (actualMarionettes.isNotEmpty()) {
+                                append(". Point out the Marionette")
+                                append(" (${actualMarionettes.joinToString { it.name }})")
+                            }
                             append(", then show 3 not-in-play good characters as bluffs")
                             if (bluffs.isNotEmpty()) {
                                 append(": ${bluffs.joinToString()}")
@@ -104,6 +111,27 @@ class NightOrder(
                     )
                 }
                 else -> {
+                    if (id == "marionette") {
+                        if (isFirstNight && !infoSteps && actualMarionettes.isNotEmpty()) {
+                            val demons = state.players.filter { player ->
+                                player.characterId?.let(lookup)?.team == Team.DEMON
+                            }
+                            steps += NightStep(
+                                id = id,
+                                title = "Marionette info",
+                                detail = buildString {
+                                    append("Wake the Demon")
+                                    if (demons.isNotEmpty()) {
+                                        append(" (${demons.joinToString { it.name }})")
+                                    }
+                                    append(". Show the “This player is” and Marionette tokens, then point to")
+                                    append(" ${actualMarionettes.joinToString { it.name }}.")
+                                },
+                                playerIds = demons.map { it.id },
+                            )
+                        }
+                        continue
+                    }
                     val character = lookup(id) ?: continue
                     val holders = inPlay[id].orEmpty()
                     val isFabledActive = fabled.contains(id)
