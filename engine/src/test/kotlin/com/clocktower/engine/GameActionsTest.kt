@@ -166,6 +166,98 @@ class GameActionsTest {
     }
 
     @Test
+    fun `about to die follows the nomination sequence including ties`() {
+        var state = GameActions.advancePhase(GameActions.advancePhase(newGame(8))) // day 1
+        fun nominate(nominator: Long, nominee: Long, votes: Int) {
+            val result = Voting.outcome(votes, state.executionThreshold, GameActions.highestVotesToday(state))
+            state = GameActions.recordNomination(
+                state,
+                Nomination(state.cycle, nominator, nominee, votes, emptyList(), result),
+            )
+        }
+        nominate(0, 3, 5)
+        assertEquals(3L, GameActions.aboutToDie(state))
+        nominate(1, 4, 5) // tie — block clears
+        assertEquals(null, GameActions.aboutToDie(state))
+        nominate(2, 5, 6) // beats the tally — new block
+        assertEquals(5L, GameActions.aboutToDie(state))
+        nominate(3, 6, 4) // below the tally — no change
+        assertEquals(5L, GameActions.aboutToDie(state))
+    }
+
+    @Test
+    fun `revive drops only the most recent death record`() {
+        var state = GameActions.advancePhase(newGame())
+        state = GameActions.kill(state, 2, DeathCause.DEMON)
+        state = GameActions.kill(state, 3, DeathCause.OTHER_NIGHT_DEATH)
+        state = GameActions.revive(state, 2)
+        assertEquals(listOf(3L), state.deaths.map { it.playerId })
+        // Kill, revive, kill again in one cycle keeps exactly one record.
+        state = GameActions.kill(state, 2, DeathCause.DEMON)
+        state = GameActions.revive(state, 2)
+        state = GameActions.kill(state, 2, DeathCause.DEMON)
+        assertEquals(2, state.deaths.size)
+    }
+
+    @Test
+    fun `random bag handles lil monsta as the only demon`() {
+        val pool = data.resolve(data.builtInScripts().first { it.id == "bmr" })
+            .filter { it.team != Team.DEMON } + listOf(assertNotNull(data.character("lilmonsta")))
+        val bag = assertNotNull(GameActions.randomBag(pool, 10, Random(7)))
+        assertEquals(10, bag.size)
+        assertEquals(3, bag.count { it.team == Team.MINION }, "+1 Minion applied")
+        assertEquals(1, bag.count { it.id == "lilmonsta" })
+        assertTrue(GameActions.validateBag(bag, 10).isEmpty())
+    }
+
+    @Test
+    fun `random bag with summoner has no demon`() {
+        val tbChars = data.resolve(tb).filter { it.team != Team.MINION }
+        val pool = tbChars + listOf(assertNotNull(data.character("summoner")))
+        val bag = assertNotNull(GameActions.randomBag(pool, 8, Random(3)))
+        assertEquals(8, bag.size)
+        assertEquals(0, bag.count { it.team == Team.DEMON })
+        assertTrue(GameActions.validateBag(bag, 8).isEmpty())
+    }
+
+    @Test
+    fun `random bag with huntsman always includes the damsel`() {
+        val pool = data.resolve(tb).filter { it.team != Team.TOWNSFOLK } +
+            listOf("huntsman", "damsel").map { assertNotNull(data.character(it)) } +
+            data.resolve(tb).filter { it.team == Team.TOWNSFOLK }.take(5)
+        var seenHuntsman = false
+        for (seed in 0..40) {
+            val bag = GameActions.randomBag(pool, 8, Random(seed)) ?: continue
+            assertTrue(GameActions.validateBag(bag, 8).isEmpty(), "seed $seed invalid: ${GameActions.validateBag(bag, 8)}")
+            if (bag.any { it.id == "huntsman" }) {
+                seenHuntsman = true
+                assertTrue(bag.any { it.id == "damsel" }, "huntsman without damsel (seed $seed)")
+            }
+        }
+        assertTrue(seenHuntsman, "huntsman never drawn")
+    }
+
+    @Test
+    fun `vigormortis bag validates at zero outsider counts`() {
+        val sv = data.builtInScripts().first { it.id == "sv" }
+        val chars = data.resolve(sv)
+        val bag = chars.filter { it.team == Team.TOWNSFOLK }.take(7) +
+            chars.filter { it.id == "pithag" || it.id == "cerenovus" } +
+            chars.filter { it.id == "vigormortis" }
+        assertEquals(10, bag.size)
+        assertTrue(GameActions.validateBag(bag, 10).isEmpty(), GameActions.validateBag(bag, 10).toString())
+    }
+
+    @Test
+    fun `atheist bag with no evil validates`() {
+        val chars = data.resolve(tb) + listOf(assertNotNull(data.character("atheist")))
+        val bag = chars.filter { it.team == Team.TOWNSFOLK }.take(6) +
+            chars.filter { it.id == "atheist" }
+        assertEquals(7, bag.size)
+        assertTrue(GameActions.validateBag(bag, 7).isEmpty(), GameActions.validateBag(bag, 7).toString())
+    }
+
+    @Test
     fun `add and remove seats keep ids unique`() {
         var state = newGame(6)
         state = GameActions.addSeat(state, "Traveller Tim")

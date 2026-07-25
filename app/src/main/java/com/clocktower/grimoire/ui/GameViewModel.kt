@@ -44,6 +44,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.importedScripts }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** False until the initial DataStore read completes (splash gate). */
+    private val _ready = MutableStateFlow(false)
+    val ready: StateFlow<Boolean> = _ready
+
     init {
         viewModelScope.launch {
             // Adopt the persisted game once at startup; afterwards this
@@ -52,6 +56,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             if (_game.value == null && saved != null) {
                 _game.value = saved
             }
+            _ready.value = true
         }
     }
 

@@ -11,8 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -21,20 +20,21 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
 /**
- * A compact discussion timer: preset chips start a countdown; the running
- * chip shows remaining time and taps to cancel. Ticks once per second.
+ * A compact discussion timer anchored to a wall-clock deadline, so it keeps
+ * counting while other tabs are open. When it expires it shows "Time!"
+ * until the storyteller taps it away.
  */
 @Composable
 fun DiscussionTimer(modifier: Modifier = Modifier) {
-    var secondsLeft by rememberSaveable { mutableIntStateOf(0) }
-    var running by rememberSaveable { mutableStateOf(false) }
+    // 0 = idle; otherwise the epoch-millis deadline.
+    var endAt by rememberSaveable { mutableLongStateOf(0L) }
+    var now by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
 
-    LaunchedEffect(running) {
-        while (running && secondsLeft > 0) {
-            delay(1000)
-            secondsLeft -= 1
+    LaunchedEffect(endAt) {
+        while (endAt != 0L) {
+            now = System.currentTimeMillis()
+            delay(250)
         }
-        if (secondsLeft <= 0) running = false
     }
 
     Surface(
@@ -48,11 +48,12 @@ fun DiscussionTimer(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
-            if (running) {
-                val expired = secondsLeft == 0
-                FilledTonalButton(onClick = { running = false; secondsLeft = 0 }) {
+            if (endAt != 0L) {
+                val remaining = ((endAt - now) / 1000).coerceAtLeast(0)
+                val expired = now >= endAt
+                FilledTonalButton(onClick = { endAt = 0L }) {
                     Text(
-                        text = if (expired) "Time!" else "%d:%02d  ✕".format(secondsLeft / 60, secondsLeft % 60),
+                        text = if (expired) "Time!  ✕" else "%d:%02d  ✕".format(remaining / 60, remaining % 60),
                         color = if (expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -60,7 +61,7 @@ fun DiscussionTimer(modifier: Modifier = Modifier) {
                 Text("Timer", style = MaterialTheme.typography.labelLarge)
                 for ((label, secs) in listOf("1m" to 60, "2m" to 120, "5m" to 300)) {
                     AssistChip(
-                        onClick = { secondsLeft = secs; running = true },
+                        onClick = { endAt = System.currentTimeMillis() + secs * 1000L },
                         label = { Text(label) },
                     )
                 }

@@ -47,19 +47,22 @@ class NightOrder(
             .filter { it.characterId != null }
             .groupBy { it.characterId!! }
         val fabled = state.fabledIds.toSet()
+        // Minion/demon info happens in games of 7+ players (total seats,
+        // not alive count — a night-1 death must not remove the steps).
+        val infoSteps = state.players.count { !it.isTraveller } >= 7
 
         val steps = mutableListOf<NightStep>()
         for (id in order) {
             when (id) {
                 NightMarkers.DUSK -> steps += NightStep(id, "Dusk", "Everyone closes their eyes. Wait for quiet.")
                 NightMarkers.DAWN -> steps += NightStep(id, "Dawn", "Wait a few seconds. Everyone opens their eyes. Announce who died.")
-                NightMarkers.MINION_INFO -> if (isFirstNight && state.aliveNonTravellers.size >= 7) {
+                NightMarkers.MINION_INFO -> if (isFirstNight && infoSteps) {
                     steps += NightStep(
                         id, "Minion info",
                         "Wake all Minions. They see each other and learn who the Demon is.",
                     )
                 }
-                NightMarkers.DEMON_INFO -> if (isFirstNight && state.aliveNonTravellers.size >= 7) {
+                NightMarkers.DEMON_INFO -> if (isFirstNight && infoSteps) {
                     steps += NightStep(
                         id, "Demon info",
                         "Wake the Demon. Show who the Minions are, then show 3 not-in-play good characters as bluffs.",
@@ -80,6 +83,32 @@ class NightOrder(
                     )
                 }
             }
+        }
+
+        // Custom (homebrew) characters aren't on the canonical order lists;
+        // slot the ones that act tonight in before dawn, sorted by the night
+        // position their script JSON declared.
+        val known = order.toSet()
+        val customs = inPlay.keys
+            .filter { it !in known }
+            .mapNotNull { id -> lookup(id)?.let { id to it } }
+            .filter { (_, c) ->
+                (if (isFirstNight) c.firstNightReminder else c.otherNightReminder).isNotBlank() ||
+                    (if (isFirstNight) c.firstNight else c.otherNight) > 0
+            }
+            .sortedBy { (_, c) -> if (isFirstNight) c.firstNight else c.otherNight }
+            .map { (id, c) ->
+                val reminder = if (isFirstNight) c.firstNightReminder else c.otherNightReminder
+                NightStep(
+                    id = id,
+                    title = "${c.name} (homebrew)",
+                    detail = reminder.ifEmpty { c.ability },
+                    playerIds = inPlay[id].orEmpty().map { it.id },
+                )
+            }
+        if (customs.isNotEmpty()) {
+            val dawnIndex = steps.indexOfFirst { it.id == NightMarkers.DAWN }
+            if (dawnIndex >= 0) steps.addAll(dawnIndex, customs) else steps.addAll(customs)
         }
         return steps
     }

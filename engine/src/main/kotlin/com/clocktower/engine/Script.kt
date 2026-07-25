@@ -75,8 +75,10 @@ object ScriptParser {
             id = "imported-" + Character.normalizeId(name).ifEmpty { "script" },
             name = name,
             author = author,
-            characterIds = ids,
-            customCharacters = custom,
+            // Hand-edited scripts sometimes repeat an id; duplicates would
+            // crash keyed lists downstream, so keep first occurrence only.
+            characterIds = ids.distinct(),
+            customCharacters = custom.distinctBy { it.id },
         )
     }
 
@@ -95,6 +97,9 @@ object ScriptParser {
         fun strList(key: String): List<String> =
             (obj[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
 
+        fun int(key: String): Int =
+            (obj[key] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: 0
+
         return Character(
             id = id,
             name = str("name").ifEmpty { id.replaceFirstChar { c -> c.uppercase() } },
@@ -107,6 +112,8 @@ object ScriptParser {
             otherNightReminder = str("otherNightReminder"),
             reminders = strList("reminders"),
             remindersGlobal = strList("remindersGlobal"),
+            firstNight = int("firstNight"),
+            otherNight = int("otherNight"),
         )
     }
 }

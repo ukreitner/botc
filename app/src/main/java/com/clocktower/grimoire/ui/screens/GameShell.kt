@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import com.clocktower.grimoire.ui.components.DiscussionTimer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.DarkMode
@@ -35,8 +36,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -65,6 +69,9 @@ fun GameShell(
     var showMenu by rememberSaveable { mutableStateOf(false) }
     var showAddSeat by rememberSaveable { mutableStateOf(false) }
     val canUndo by viewModel.canUndo.collectAsState()
+    val canRedo by viewModel.canRedo.collectAsState()
+    val stateHolder = rememberSaveableStateHolder()
+    var lastAdvanceAt by remember { mutableLongStateOf(0L) }
 
     val phaseLabel = when (state.phase) {
         Phase.SETUP -> "Setup"
@@ -89,8 +96,16 @@ fun GameShell(
                     IconButton(enabled = canUndo, onClick = { viewModel.undo() }) {
                         Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
                     }
+                    IconButton(enabled = canRedo, onClick = { viewModel.redo() }) {
+                        Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
+                    }
                     FilledTonalButton(
                         onClick = {
+                            // Debounce: an accidental double tap must not skip
+                            // a whole phase.
+                            val nowMs = System.currentTimeMillis()
+                            if (nowMs - lastAdvanceAt < 800) return@FilledTonalButton
+                            lastAdvanceAt = nowMs
                             viewModel.advancePhase()
                             // Jump to the tab that matters for the new phase.
                             tab = when (state.phase) {
@@ -154,11 +169,15 @@ fun GameShell(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            when (tab) {
-                GameTab.GRIMOIRE -> GrimoireScreen(viewModel, state) { openSeat = it }
-                GameTab.NIGHT -> NightScreen(viewModel, state)
-                GameTab.DAY -> DayScreen(viewModel, state)
-                GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script)
+            // SaveableStateProvider keeps each tab's in-progress state (an
+            // unrecorded vote tally, scroll positions) across tab switches.
+            stateHolder.SaveableStateProvider(tab.name) {
+                when (tab) {
+                    GameTab.GRIMOIRE -> GrimoireScreen(viewModel, state) { openSeat = it }
+                    GameTab.NIGHT -> NightScreen(viewModel, state)
+                    GameTab.DAY -> DayScreen(viewModel, state)
+                    GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script)
+                }
             }
             if (tab == GameTab.GRIMOIRE || tab == GameTab.DAY) {
                 DiscussionTimer(

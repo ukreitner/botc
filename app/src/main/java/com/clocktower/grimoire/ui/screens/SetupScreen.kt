@@ -2,6 +2,7 @@ package com.clocktower.grimoire.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -66,7 +68,8 @@ fun SetupScreen(
     var stage by rememberSaveable { mutableStateOf(SetupStage.SCRIPT) }
     var scriptId by rememberSaveable { mutableStateOf<String?>(null) }
     var names by rememberSaveable { mutableStateOf(List(8) { "" }) }
-    var bagIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    // A list, not a set: Village Idiot / Legion / Riot bags legally repeat ids.
+    var bagIds by rememberSaveable { mutableStateOf(listOf<String>()) }
     var showImport by rememberSaveable { mutableStateOf(false) }
 
     val imported by viewModel.importedScripts.collectAsState()
@@ -74,7 +77,8 @@ fun SetupScreen(
     val allScripts = builtIn + imported
     val script = allScripts.find { it.id == scriptId }
 
-    when (stage) {
+    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+        when (stage) {
         SetupStage.SCRIPT -> ScriptStage(
             scripts = allScripts,
             viewModel = viewModel,
@@ -104,13 +108,14 @@ fun SetupScreen(
                     viewModel.startGame(s, names.mapIndexed { i, n -> n.ifBlank { "Player ${i + 1}" } })
                     if (deal && bagIds.isNotEmpty()) {
                         viewModel.update { state ->
-                            GameActions.deal(state, bagIds.toList(), Random(System.nanoTime()))
+                            GameActions.deal(state, bagIds, Random(System.nanoTime()))
                         }
                     }
                     onGameStarted()
                 },
             )
         } ?: run { stage = SetupStage.SCRIPT }
+        }
     }
 
     if (showImport) {
@@ -273,15 +278,16 @@ private fun BagStage(
     viewModel: GameViewModel,
     script: Script,
     playerCount: Int,
-    bagIds: Set<String>,
-    onBagIds: (Set<String>) -> Unit,
+    bagIds: List<String>,
+    onBagIds: (List<String>) -> Unit,
     onBack: () -> Unit,
     onStart: (deal: Boolean) -> Unit,
 ) {
     val characters = remember(script) {
         viewModel.gameData.resolve(script).filter { it.team.isTownResident }
     }
-    val selected = characters.filter { it.id in bagIds }
+    val byId = remember(characters) { characters.associateBy { it.id } }
+    val selected = bagIds.mapNotNull { byId[it] }
     val issues = GameActions.validateBag(selected, playerCount)
     val adjusted = Setup.adjustedDistribution(playerCount, selected)
     val modifiers = selected.mapNotNull { Setup.modifierFor(it) }
@@ -310,9 +316,9 @@ private fun BagStage(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = {
                     val bag = GameActions.randomBag(characters, playerCount)
-                    if (bag != null) onBagIds(bag.map { it.id }.toSet())
+                    if (bag != null) onBagIds(bag.map { it.id })
                 }) { Text("Randomize") }
-                TextButton(onClick = { onBagIds(emptySet()) }) { Text("Clear") }
+                TextButton(onClick = { onBagIds(emptyList()) }) { Text("Clear") }
             }
         }
         if (issues.isNotEmpty() && selected.isNotEmpty()) {
@@ -338,9 +344,14 @@ private fun BagStage(
             items(members, key = { it.id }) { c ->
                 BagRow(
                     character = c,
-                    checked = c.id in bagIds,
-                    onToggle = {
-                        onBagIds(if (c.id in bagIds) bagIds - c.id else bagIds + c.id)
+                    count = bagIds.count { it == c.id },
+                    duplicable = c.id in GameActions.DUPLICABLE,
+                    onAdd = { onBagIds(bagIds + c.id) },
+                    onRemove = {
+                        val index = bagIds.lastIndexOf(c.id)
+                        if (index >= 0) {
+                            onBagIds(bagIds.filterIndexed { i, _ -> i != index })
+                        }
                     },
                 )
             }
@@ -360,14 +371,31 @@ private fun BagStage(
 }
 
 @Composable
-private fun BagRow(character: Character, checked: Boolean, onToggle: () -> Unit) {
+private fun BagRow(
+    character: Character,
+    count: Int,
+    duplicable: Boolean,
+    onAdd: () -> Unit,
+    onRemove: () -> Unit,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle),
+            .clickable(onClick = { if (count == 0) onAdd() else if (!duplicable) onRemove() }),
     ) {
-        Checkbox(checked = checked, onCheckedChange = { onToggle() })
+        if (duplicable) {
+            // Legal duplicates get a stepper instead of a checkbox.
+            IconButton(enabled = count > 0, onClick = onRemove) {
+                Icon(Icons.Filled.Close, contentDescription = "Remove copy")
+            }
+            Text("$count", style = MaterialTheme.typography.titleSmall, modifier = Modifier.width(20.dp))
+            IconButton(onClick = onAdd) {
+                Icon(Icons.Filled.Add, contentDescription = "Add copy")
+            }
+        } else {
+            Checkbox(checked = count > 0, onCheckedChange = { if (count > 0) onRemove() else onAdd() })
+        }
         CharacterToken(character = character, size = 40.dp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {

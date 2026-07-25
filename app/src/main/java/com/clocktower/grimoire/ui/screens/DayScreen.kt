@@ -61,6 +61,8 @@ fun DayScreen(
     val aliveCount = state.alivePlayers.size
     val threshold = Voting.executionThreshold(aliveCount)
     val highest = GameActions.highestVotesToday(state)
+    val onBlockId = GameActions.aboutToDie(state)
+    val onBlock = onBlockId?.let { state.player(it) }
     val todaysNominations = state.nominations.filter { it.day == state.cycle }
 
     LazyColumn(
@@ -71,10 +73,20 @@ fun DayScreen(
         item {
             Text("Day ${state.cycle}", style = MaterialTheme.typography.headlineMedium, color = AgedGold)
             Text(
-                "$aliveCount alive · $threshold votes to execute · " +
-                    if (highest > 0) "$highest votes is the tally to beat" else "no one is about to die",
+                "$aliveCount alive · $threshold votes to execute" +
+                    (if (highest > 0) " · $highest votes is the tally to beat" else ""),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = when {
+                    onBlock != null -> "On the block: ${onBlock.name}"
+                    highest > 0 -> "Tie — no one is about to die"
+                    else -> "No one is about to die"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (onBlock != null) EmberRed else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -97,8 +109,13 @@ fun DayScreen(
                         label = "Nominee",
                         players = state.players,
                         selected = nomineeId,
-                        enabled = { p -> !GameActions.hasBeenNominatedToday(state, p.id) },
-                        onSelect = { nomineeId = if (nomineeId == it) null else it },
+                        // Only living players can be nominated (or exiled).
+                        enabled = { p -> p.alive && !GameActions.hasBeenNominatedToday(state, p.id) },
+                        onSelect = {
+                            nomineeId = if (nomineeId == it) null else it
+                            // A fresh nominee always starts from an empty tally.
+                            voters = emptySet()
+                        },
                     )
 
                     if (nomineeId != null) {
@@ -191,7 +208,7 @@ fun DayScreen(
             }
             for (n in todaysNominations.reversed()) {
                 item {
-                    NominationRow(viewModel, state, n)
+                    NominationRow(viewModel, state, n, onBlockId)
                 }
             }
         }
@@ -241,9 +258,17 @@ private fun NominationRow(
     viewModel: GameViewModel,
     state: GameState,
     nomination: Nomination,
+    onBlockId: Long?,
 ) {
     val nominator = state.player(nomination.nominatorId)
     val nominee = state.player(nomination.nomineeId)
+    // A record's stored result can be superseded by a later tie; only the
+    // currently-blocked player (or a passed exile) gets an execute button.
+    val executable = if (nomination.isExile) {
+        nomination.result == NominationResult.ABOUT_TO_DIE
+    } else {
+        nomination.result == NominationResult.ABOUT_TO_DIE && nomination.nomineeId == onBlockId
+    }
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -270,7 +295,7 @@ private fun NominationRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (nomination.result == NominationResult.ABOUT_TO_DIE && nominee?.alive == true) {
+            if (executable && nominee?.alive == true) {
                 OutlinedButton(onClick = {
                     viewModel.kill(
                         nomination.nomineeId,

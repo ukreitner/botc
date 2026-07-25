@@ -57,10 +57,16 @@ object GameActions {
             )
     }
 
-    /** Brings a player back to life (Professor, storyteller correction...). */
-    fun revive(state: GameState, playerId: Long): GameState =
-        state.updatePlayer(playerId) { it.copy(alive = true, ghostVoteUsed = false) }
-            .copy(deaths = state.deaths.filterNot { it.playerId == playerId && it.day == state.cycle })
+    /**
+     * Brings a player back to life (Professor, storyteller correction...).
+     * Only the most recent death record is dropped, so earlier deaths in the
+     * log stay intact.
+     */
+    fun revive(state: GameState, playerId: Long): GameState {
+        val lastDeath = state.deaths.indexOfLast { it.playerId == playerId }
+        return state.updatePlayer(playerId) { it.copy(alive = true, ghostVoteUsed = false) }
+            .copy(deaths = state.deaths.filterIndexed { i, _ -> i != lastDeath })
+    }
 
     fun toggleGhostVote(state: GameState, playerId: Long): GameState =
         state.updatePlayer(playerId) { it.copy(ghostVoteUsed = !it.ghostVoteUsed) }
@@ -113,6 +119,23 @@ object GameActions {
         state.nominations.any { it.day == state.cycle && it.nomineeId == playerId && !it.isExile }
 
     /**
+     * Who is currently on the block today, derived from the nomination
+     * sequence: a passing tally that beats the previous highest puts its
+     * nominee on the block; a later equal tally clears the block (tie).
+     */
+    fun aboutToDie(state: GameState): Long? {
+        var onBlock: Long? = null
+        for (n in state.nominations.filter { it.day == state.cycle && !it.isExile }) {
+            when (n.result) {
+                NominationResult.ABOUT_TO_DIE -> onBlock = n.nomineeId
+                NominationResult.TIED -> onBlock = null
+                else -> Unit
+            }
+        }
+        return onBlock
+    }
+
+    /**
      * Randomly deals characters to seats from [bag]. The bag must already
      * match the player count; extra players stay unassigned.
      */
@@ -127,10 +150,11 @@ object GameActions {
     }
 
     /**
-     * Picks a random legal bag for [playerCount] from [script] characters:
-     * correct base counts, adjusted by setup modifiers of the drawn set.
-     * Retries until the adjusted distribution is satisfied or attempts run out;
-     * returns null when the script can't fill the distribution.
+     * Picks a random legal bag for [playerCount] from the script's
+     * characters, folding in setup modifiers as they are drawn (demons
+     * first, then minions, outsiders, townsfolk) and reconciling companions
+     * ([+the Damsel], [+the King]) and count drift afterwards. Returns null
+     * when the script can't fill the distribution.
      */
     fun randomBag(
         available: List<Character>,
@@ -138,26 +162,59 @@ object GameActions {
         random: Random = Random,
         attempts: Int = 200,
     ): List<Character>? {
-        val townsfolk = available.filter { it.team == Team.TOWNSFOLK }
-        val outsiders = available.filter { it.team == Team.OUTSIDER }
-        val minions = available.filter { it.team == Team.MINION }
-        val demons = available.filter { it.team == Team.DEMON }
+        val byTeam = available.groupBy { it.team }
+        val teamsInOrder = listOf(Team.DEMON, Team.MINION, Team.OUTSIDER, Team.TOWNSFOLK)
 
         repeat(attempts) {
-            val base = Setup.distributionFor(playerCount)
-            // Draw evil + outsiders first, then re-check against modifiers.
-            val demon = demons.shuffled(random).take(base.demons)
-            val minion = minions.shuffled(random).take(base.minions)
-            var dist = base
-            (demon + minion).forEach { c -> Setup.modifierFor(c)?.let { dist += it } }
+            var dist = Setup.distributionFor(playerCount)
+            val picked = linkedMapOf<Team, MutableList<Character>>()
 
-            val outsider = outsiders.shuffled(random).take(dist.outsiders.coerceAtLeast(0))
-            outsider.forEach { c -> Setup.modifierFor(c)?.let { dist += it } }
+            // Draw team by team, folding each drawn character's modifier
+            // before the next team (and next member) is drawn.
+            for (team in teamsInOrder) {
+                val pool = byTeam[team].orEmpty().shuffled(random)
+                val chosen = mutableListOf<Character>()
+                for (candidate in pool) {
+                    if (chosen.size >= dist.count(team)) break
+                    chosen += candidate
+                    Setup.modifierFor(candidate)?.let { dist += it }
+                }
+                picked[team] = chosen
+            }
 
-            val town = townsfolk.shuffled(random).take(dist.townsfolk.coerceAtLeast(0))
-            town.forEach { c -> Setup.modifierFor(c)?.let { dist += it } }
+            // Reconcile: force required companions in, then trim/fill drift
+            // caused by modifiers of later-drawn characters.
+            var bag = picked.values.flatten().toMutableList()
+            repeat(4) {
+                for (c in bag.toList()) {
+                    val companionId = Setup.modifierFor(c)?.requiredCompanionId ?: continue
+                    if (bag.none { it.id == companionId }) {
+                        available.find { it.id == companionId }?.let { bag.add(it) }
+                    }
+                }
+                val target = Setup.adjustedDistribution(playerCount, bag)
+                for (team in teamsInOrder) {
+                    val members = bag.filter { it.team == team }
+                    var excess = members.size - target.count(team)
+                    if (excess > 0) {
+                        // Never trim characters that modify setup or are
+                        // required companions — trim plain members instead.
+                        val required = bag.mapNotNull { Setup.modifierFor(it)?.requiredCompanionId }.toSet()
+                        for (m in members.shuffled(random)) {
+                            if (excess == 0) break
+                            if (m.setup || m.id in required) continue
+                            bag.remove(m); excess--
+                        }
+                    } else if (excess < 0) {
+                        val unused = byTeam[team].orEmpty().filter { c -> bag.none { it.id == c.id } }
+                        for (m in unused.shuffled(random)) {
+                            if (excess == 0) break
+                            bag.add(m); excess++
+                        }
+                    }
+                }
+            }
 
-            val bag = town + outsider + minion + demon
             if (bag.size == playerCount && validateBag(bag, playerCount).isEmpty()) {
                 return bag
             }
@@ -165,31 +222,51 @@ object GameActions {
         return null
     }
 
+    private fun Distribution.count(team: Team): Int = when (team) {
+        Team.TOWNSFOLK -> townsfolk
+        Team.OUTSIDER -> outsiders
+        Team.MINION -> minions
+        Team.DEMON -> demons
+        else -> 0
+    }
+
+    /** Ids that may legally appear multiple times in a bag. */
+    val DUPLICABLE = setOf("villageidiot", "legion", "riot")
+
     /** Human-readable problems with a proposed bag, empty when legal. */
     fun validateBag(bag: List<Character>, playerCount: Int): List<String> {
         val issues = mutableListOf<String>()
         if (bag.size != playerCount) {
             issues += "Bag has ${bag.size} characters for $playerCount players"
         }
+        val modifiers = bag.mapNotNull { Setup.modifierFor(it) }
+        val relaxedTeams = modifiers.flatMap { it.choiceTeams }.toSet()
         val dist = Setup.adjustedDistribution(playerCount, bag)
         val counts = bag.groupingBy { it.team }.eachCount()
+
         fun check(team: Team, expected: Int) {
             val actual = counts[team] ?: 0
-            if (actual != expected) {
-                val hasChoice = bag.any { Setup.modifierFor(it)?.choice == true }
-                if (!hasChoice) {
-                    issues += "${team.displayName}: $actual in bag, expected $expected"
-                }
+            // Teams under a storyteller-choice modifier aren't strictly
+            // checkable; everything else must match exactly.
+            if (actual != expected && team !in relaxedTeams) {
+                issues += "${team.displayName}: $actual in bag, expected $expected"
             }
         }
         check(Team.TOWNSFOLK, dist.townsfolk)
         check(Team.OUTSIDER, dist.outsiders)
         check(Team.MINION, dist.minions)
         check(Team.DEMON, dist.demons)
+
+        for (mod in modifiers) {
+            val companion = mod.requiredCompanionId ?: continue
+            if (bag.none { it.id == companion }) {
+                issues += "${mod.characterId} requires the $companion in the bag [${mod.text}]"
+            }
+        }
+
         val dupes = bag.groupingBy { it.id }.eachCount().filterValues { it > 1 }
         for ((id, n) in dupes) {
-            // Village Idiot legally duplicates; anything else is a mistake.
-            if (id != "villageidiot" && id != "legion" && id != "riot") {
+            if (id !in DUPLICABLE) {
                 issues += "$id appears $n times"
             }
         }

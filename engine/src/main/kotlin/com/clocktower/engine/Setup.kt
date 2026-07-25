@@ -12,18 +12,29 @@ data class Distribution(
 ) {
     val total: Int get() = townsfolk + outsiders + minions + demons
 
-    operator fun plus(mod: SetupModifier): Distribution = Distribution(
-        townsfolk = townsfolk - mod.outsiderDelta - mod.minionDelta - mod.demonDelta - mod.townsfolkRemoved,
-        outsiders = outsiders + mod.outsiderDelta,
-        minions = minions + mod.minionDelta,
-        demons = demons + mod.demonDelta,
-    )
+    /**
+     * Applies a setup modifier the way the physical game does: deltas trade
+     * against the Townsfolk count so the total stays equal to the player
+     * count, and no team can go below zero (a "-1 Outsider" on a
+     * 0-outsider count simply doesn't apply).
+     */
+    operator fun plus(mod: SetupModifier): Distribution {
+        val newOutsiders = (outsiders + mod.outsiderDelta).coerceAtLeast(0)
+        val newMinions = (minions + mod.minionDelta).coerceAtLeast(0)
+        val newDemons = (demons + mod.demonDelta).coerceAtLeast(0)
+        val applied = (newOutsiders - outsiders) + (newMinions - minions) + (newDemons - demons)
+        return Distribution(
+            townsfolk = (townsfolk - applied - mod.townsfolkRemoved).coerceAtLeast(0),
+            outsiders = newOutsiders,
+            minions = newMinions,
+            demons = newDemons,
+        )
+    }
 }
 
 /**
  * How a setup-modifying character (square-bracket ability text) changes the
- * bag. Deltas trade against the Townsfolk count so the total stays equal to
- * the player count, matching how the physical game is set up.
+ * bag.
  */
 @Serializable
 data class SetupModifier(
@@ -36,17 +47,30 @@ data class SetupModifier(
     /** Extra townsfolk removed without a matching add (rare). */
     val townsfolkRemoved: Int = 0,
     /**
-     * True when the delta is a storyteller choice (e.g. "+0 or +1 Outsider",
-     * Godfather's "-1 or +1 Outsider", Xaan's "X Outsiders") and the default
-     * applied here is only a suggestion.
+     * Teams whose final count is a storyteller choice rather than a fixed
+     * delta (e.g. Godfather "-1 or +1 Outsider", Xaan "[X Outsiders]",
+     * Kazali "-? to +? Outsiders"). Bag validation relaxes only these teams.
      */
-    val choice: Boolean = false,
-)
+    val choiceTeams: Set<Team> = emptySet(),
+    /** A specific character that must join the bag (Huntsman -> Damsel). */
+    val requiredCompanionId: String? = null,
+) {
+    val choice: Boolean get() = choiceTeams.isNotEmpty()
+}
 
 object Setup {
 
     const val MIN_PLAYERS = 5
     const val MAX_PLAYERS = 20
+
+    /** Characters whose bracket rewrites the whole team structure. */
+    private val TEAM_WARPING_IDS = setOf("atheist", "legion", "riot")
+
+    /** Bracket-mandated companions: this character forces another into play. */
+    val COMPANIONS: Map<String, String> = mapOf(
+        "huntsman" to "damsel",
+        "choirboy" to "king",
+    )
 
     /**
      * Official Trouble Brewing rulebook distribution. Above 15 players the
@@ -76,40 +100,75 @@ object Setup {
     }
 
     private val bracketRegex = Regex("""\[(.*?)]""")
-    private val deltaRegex = Regex("""([+-]\d+)\s+(Townsfolk|Outsider|Minion|Demon)s?""", RegexOption.IGNORE_CASE)
+    private val deltaRegex =
+        Regex("""([+-]\d+)\s+(Townsfolk|Outsider|Minion|Demon)s?""", RegexOption.IGNORE_CASE)
+    private val teamWordRegex =
+        Regex("""(Townsfolk|Outsider|Minion|Demon)s?""", RegexOption.IGNORE_CASE)
 
     /**
      * Extracts a [SetupModifier] from a character's bracketed setup text.
      * Returns null for characters without setup effects. Non-numeric setup
-     * effects (Marionette, Atheist, Legion, Summoner...) yield a modifier
-     * with zero deltas but carry the text so the UI can surface it.
+     * effects (Marionette, Lunatic...) yield a modifier with zero deltas but
+     * carry the text so the UI can surface it.
      */
     fun modifierFor(character: Character): SetupModifier? {
         if (!character.setup) return null
         val bracket = bracketRegex.find(character.ability)?.groupValues?.get(1)
             ?: return SetupModifier(character.id, "Modifies setup")
+
+        // Characters that rewrite the whole structure: relax every count.
+        if (character.id in TEAM_WARPING_IDS) {
+            return SetupModifier(character.id, bracket, choiceTeams = Team.entries.toSet())
+        }
+        // Summoner: the game starts with no Demon in the bag.
+        if (bracket.contains("No Demon", ignoreCase = true)) {
+            return SetupModifier(character.id, bracket, demonDelta = -1)
+        }
+
         var outsiders = 0
         var minions = 0
         var demons = 0
         var townsfolkRemoved = 0
-        var choice = false
+        val choiceTeams = mutableSetOf<Team>()
 
-        // "+0 or +1 Outsider" / "-1 or +1 Outsider": a storyteller choice.
-        if (bracket.contains(" or ", ignoreCase = true) || bracket.contains(" to ", ignoreCase = true)) {
-            choice = true
+        // Storyteller-choice ranges: "+0 or +1 Outsider", "-1 or +1 Outsider",
+        // "+0 to +2 Village Idiots", "-? to +? Outsiders", "[X Outsiders]".
+        val isChoice = bracket.contains(" or ", ignoreCase = true) ||
+            bracket.contains(" to ", ignoreCase = true) ||
+            bracket.contains('?') ||
+            bracket.contains(Regex("""\bX\b"""))
+        if (isChoice) {
+            for (m in teamWordRegex.findAll(bracket)) {
+                choiceTeams += when (m.groupValues[1].lowercase()) {
+                    "townsfolk" -> Team.TOWNSFOLK
+                    "outsider" -> Team.OUTSIDER
+                    "minion" -> Team.MINION
+                    else -> Team.DEMON
+                }
+            }
+            // Village Idiot's "+0 to +2 Village Idiots" mentions no team word;
+            // extra copies replace townsfolk.
+            if (choiceTeams.isEmpty()) choiceTeams += Team.TOWNSFOLK
         }
 
         val matches = deltaRegex.findAll(bracket).toList()
-        if (choice && matches.isNotEmpty()) {
-            // Default to the last listed option (e.g. "+1" from "-1 or +1").
-            val m = matches.last()
-            applyDelta(m) { o, mi, d, t -> outsiders += o; minions += mi; demons += d; townsfolkRemoved += t }
+        if (isChoice && matches.isNotEmpty()) {
+            // Ranged choice ("-1 or +1"): apply the last listed option as the
+            // suggested default; validation stays relaxed for those teams.
+            applyDelta(matches.last()) { o, mi, d, t ->
+                outsiders += o; minions += mi; demons += d; townsfolkRemoved += t
+            }
         } else {
             for (m in matches) {
-                applyDelta(m) { o, mi, d, t -> outsiders += o; minions += mi; demons += d; townsfolkRemoved += t }
+                applyDelta(m) { o, mi, d, t ->
+                    outsiders += o; minions += mi; demons += d; townsfolkRemoved += t
+                }
             }
         }
-        if (bracket.contains("X Outsiders", ignoreCase = true)) choice = true
+
+        val companion = COMPANIONS[character.id]
+        // "+the Damsel" adds an Outsider slot filled by the companion.
+        if (character.id == "huntsman") outsiders += 1
 
         return SetupModifier(
             characterId = character.id,
@@ -118,7 +177,8 @@ object Setup {
             minionDelta = minions,
             demonDelta = demons,
             townsfolkRemoved = townsfolkRemoved,
-            choice = choice,
+            choiceTeams = choiceTeams,
+            requiredCompanionId = companion,
         )
     }
 

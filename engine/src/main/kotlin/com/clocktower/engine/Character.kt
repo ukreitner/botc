@@ -44,6 +44,13 @@ data class Character(
     val otherNightReminder: String = "",
     val reminders: List<String> = emptyList(),
     val remindersGlobal: List<String> = emptyList(),
+    /**
+     * Night-sheet positions for custom characters (from imported script
+     * JSON); bundled characters use the canonical global order lists and
+     * leave these at 0.
+     */
+    val firstNight: Int = 0,
+    val otherNight: Int = 0,
 ) {
     /** All reminder-token labels this character can put into the grimoire. */
     val allReminders: List<String> get() = reminders + remindersGlobal

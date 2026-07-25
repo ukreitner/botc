@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
@@ -37,7 +38,7 @@ fun LibraryScreen(
     var index by rememberSaveable { mutableIntStateOf(0) }
     val safeIndex = index.coerceIn(0, (scripts.size - 1).coerceAtLeast(0))
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             TextButton(onClick = onBack) { Text("← Home") }
             Text("Library", style = MaterialTheme.typography.headlineMedium)

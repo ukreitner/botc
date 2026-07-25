@@ -68,6 +68,42 @@ class SetupTest {
     }
 
     @Test
+    fun `negative outsider modifier clamps at zero`() {
+        // 10 players base has 0 outsiders; Vigormortis's -1 must not go
+        // negative or steal an extra townsfolk.
+        val vigor = assertNotNull(Setup.modifierFor(assertNotNull(data.character("vigormortis"))))
+        val dist = Setup.distributionFor(10) + vigor
+        assertEquals(Distribution(7, 0, 2, 1), dist)
+        // With outsiders present it applies normally: 14p is 9/1/3/1.
+        assertEquals(Distribution(10, 0, 3, 1), Setup.distributionFor(14) + vigor)
+    }
+
+    @Test
+    fun `summoner removes the demon from setup`() {
+        val mod = assertNotNull(Setup.modifierFor(assertNotNull(data.character("summoner"))))
+        assertEquals(-1, mod.demonDelta)
+        val dist = Setup.distributionFor(7) + mod
+        assertEquals(Distribution(6, 0, 1, 0), dist)
+        assertEquals(7, dist.total)
+    }
+
+    @Test
+    fun `team warping brackets relax all counts`() {
+        for (id in listOf("atheist", "legion", "riot")) {
+            val mod = assertNotNull(Setup.modifierFor(assertNotNull(data.character(id))), id)
+            assertEquals(Team.entries.toSet(), mod.choiceTeams, id)
+        }
+    }
+
+    @Test
+    fun `huntsman adds an outsider slot and requires the damsel`() {
+        val mod = assertNotNull(Setup.modifierFor(assertNotNull(data.character("huntsman"))))
+        assertEquals(1, mod.outsiderDelta)
+        assertEquals("damsel", mod.requiredCompanionId)
+        assertEquals("king", Setup.modifierFor(assertNotNull(data.character("choirboy")))?.requiredCompanionId)
+    }
+
+    @Test
     fun `marionette carries text but zero deltas`() {
         val mod = assertNotNull(Setup.modifierFor(assertNotNull(data.character("marionette"))))
         assertEquals(0, mod.outsiderDelta)

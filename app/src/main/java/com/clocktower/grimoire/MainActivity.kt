@@ -4,11 +4,15 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -19,6 +23,7 @@ import com.clocktower.grimoire.ui.screens.GameShell
 import com.clocktower.grimoire.ui.screens.HomeScreen
 import com.clocktower.grimoire.ui.screens.LibraryScreen
 import com.clocktower.grimoire.ui.screens.SetupScreen
+import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.GrimoireTheme
 
 class MainActivity : ComponentActivity() {
@@ -46,6 +51,16 @@ private object Routes {
 private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
     val nav = rememberNavController()
     val game by viewModel.game.collectAsState()
+    val ready by viewModel.ready.collectAsState()
+
+    // Hold rendering until the saved game has been read, so a process-death
+    // restore doesn't flash the "no game" fallback before the grimoire loads.
+    if (!ready) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Clocktower Grimoire", style = MaterialTheme.typography.headlineMedium, color = AgedGold)
+        }
+        return
+    }
 
     NavHost(navController = nav, startDestination = Routes.HOME) {
         composable(Routes.HOME) {

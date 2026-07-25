@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,7 +57,13 @@ fun SeatSheet(
     playerId: Long,
     onDismiss: () -> Unit,
 ) {
-    val player = state.player(playerId) ?: run { onDismiss(); return }
+    val player = state.player(playerId)
+    // Dismiss as an effect, not during composition, if the seat vanished
+    // (undo of an added seat, removal from another control).
+    LaunchedEffect(player == null) {
+        if (player == null) onDismiss()
+    }
+    if (player == null) return
     val character = viewModel.characterById(player.characterId)
     var mode by rememberSaveable { mutableStateOf(SeatSheetMode.ACTIONS) }
 
