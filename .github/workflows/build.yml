@@ -3,7 +3,10 @@ name: Build
 on:
   push:
     branches: ["**"]
-  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   engine-tests:
@@ -15,7 +18,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+          cache: gradle
       - run: ./gradlew :engine:test
 
   ui-typecheck:
@@ -27,11 +30,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+          cache: gradle
       - run: gradle -p tools/uicheck compileKotlin
 
   apk:
-    name: Assemble debug APK
+    name: Assemble & publish debug APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,11 +42,23 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
+          cache: gradle
+      # ubuntu-latest runners ship with the Android SDK preinstalled and
+      # licenses accepted; AGP fetches the exact platform it needs.
       - run: ./gradlew :app:assembleDebug
-      - name: Upload APK
+      - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: clocktower-grimoire-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish APK to the rolling "latest-apk" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk clocktower-grimoire.apk
+          gh release delete latest-apk --yes --cleanup-tag || true
+          gh release create latest-apk clocktower-grimoire.apk \
+            --title "Clocktower Grimoire (latest build)" \
+            --notes "Debug APK built from ${{ github.sha }} on branch ${{ github.ref_name }}. Download clocktower-grimoire.apk below and open it on your phone to install." \
+            --prerelease \
+            --target ${{ github.sha }}
