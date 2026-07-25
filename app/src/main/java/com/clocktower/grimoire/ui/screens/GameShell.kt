@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import com.clocktower.grimoire.ui.components.DiscussionTimer
+import com.clocktower.grimoire.ui.components.FullScreenShow
+import com.clocktower.grimoire.ui.components.ShowCard
+import com.clocktower.grimoire.ui.components.ShowToolSheet
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -68,6 +71,8 @@ fun GameShell(
     var showNotes by rememberSaveable { mutableStateOf(false) }
     var showMenu by rememberSaveable { mutableStateOf(false) }
     var showAddSeat by rememberSaveable { mutableStateOf(false) }
+    var showCardTool by rememberSaveable { mutableStateOf(false) }
+    var activeCard by remember { mutableStateOf<ShowCard?>(null) }
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val stateHolder = rememberSaveableStateHolder()
@@ -136,6 +141,10 @@ fun GameShell(
                             onClick = { showMenu = false; showNotes = true },
                         )
                         DropdownMenuItem(
+                            text = { Text("Show a card…") },
+                            onClick = { showMenu = false; showCardTool = true },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Add seat (traveller joins)") },
                             onClick = { showMenu = false; showAddSeat = true },
                         )
@@ -199,6 +208,17 @@ fun GameShell(
     }
     if (showBluffs) {
         BluffsSheet(viewModel, state, onDismiss = { showBluffs = false })
+    }
+    if (showCardTool) {
+        ShowToolSheet(
+            viewModel = viewModel,
+            state = state,
+            onShow = { activeCard = it },
+            onDismiss = { showCardTool = false },
+        )
+    }
+    activeCard?.let { card ->
+        FullScreenShow(card = card, viewModel = viewModel, onDismiss = { activeCard = null })
     }
     if (showAddSeat) {
         var seatName by rememberSaveable { mutableStateOf("") }

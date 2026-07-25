@@ -57,15 +57,50 @@ class NightOrder(
                 NightMarkers.DUSK -> steps += NightStep(id, "Dusk", "Everyone closes their eyes. Wait for quiet.")
                 NightMarkers.DAWN -> steps += NightStep(id, "Dawn", "Wait a few seconds. Everyone opens their eyes. Announce who died.")
                 NightMarkers.MINION_INFO -> if (isFirstNight && infoSteps) {
+                    val minions = state.players.filter { p ->
+                        p.characterId?.let(lookup)?.team == Team.MINION
+                    }
+                    val demon = state.players.filter { p ->
+                        p.characterId?.let(lookup)?.team == Team.DEMON
+                    }
                     steps += NightStep(
-                        id, "Minion info",
-                        "Wake all Minions. They see each other and learn who the Demon is.",
+                        id = id,
+                        title = "Minion info",
+                        detail = buildString {
+                            append("Wake all Minions")
+                            if (minions.isNotEmpty()) append(" (${minions.joinToString { it.name }})")
+                            append(". They see each other, then point out the Demon")
+                            if (demon.isNotEmpty()) append(" (${demon.joinToString { it.name }})")
+                            append(".")
+                        },
+                        playerIds = minions.map { it.id },
                     )
                 }
                 NightMarkers.DEMON_INFO -> if (isFirstNight && infoSteps) {
+                    val minions = state.players.filter { p ->
+                        p.characterId?.let(lookup)?.team == Team.MINION
+                    }
+                    val demon = state.players.filter { p ->
+                        p.characterId?.let(lookup)?.team == Team.DEMON
+                    }
+                    val bluffs = state.demonBluffIds.mapNotNull { lookup(it)?.name }
                     steps += NightStep(
-                        id, "Demon info",
-                        "Wake the Demon. Show who the Minions are, then show 3 not-in-play good characters as bluffs.",
+                        id = id,
+                        title = "Demon info",
+                        detail = buildString {
+                            append("Wake the Demon")
+                            if (demon.isNotEmpty()) append(" (${demon.joinToString { it.name }})")
+                            append(". Point out the Minions")
+                            if (minions.isNotEmpty()) append(" (${minions.joinToString { it.name }})")
+                            append(", then show 3 not-in-play good characters as bluffs")
+                            if (bluffs.isNotEmpty()) {
+                                append(": ${bluffs.joinToString()}")
+                            } else {
+                                append(" — no bluffs chosen yet! Pick them from the menu")
+                            }
+                            append(".")
+                        },
+                        playerIds = demon.map { it.id },
                     )
                 }
                 else -> {

@@ -53,6 +53,19 @@ fun CharacterToken(
             .border(width = size / 22, color = ringColor, shape = CircleShape),
         contentAlignment = Alignment.Center,
     ) {
+        // Leaves along the top edge, like the physical tokens: one per night
+        // the character acts (first night / other nights).
+        if (character != null && (character.firstNightReminder.isNotBlank() || character.otherNightReminder.isNotBlank())) {
+            Text(
+                text = buildString {
+                    if (character.firstNightReminder.isNotBlank()) append("☙")
+                    if (character.otherNightReminder.isNotBlank()) append("❧")
+                },
+                fontSize = (size.value / 6.5f).sp,
+                color = Color(0xFF3E5C2E).copy(alpha = if (dimmed) 0.35f else 0.85f),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = size / 22),
+            )
+        }
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -61,7 +74,7 @@ fun CharacterToken(
                 .padding(horizontal = size / 10),
         ) {
             Text(
-                text = character?.let { tokenMonogram(it.name) } ?: "?",
+                text = character?.let { characterGlyphs[it.id] ?: tokenMonogram(it.name) } ?: "?",
                 fontFamily = FontFamily.Serif,
                 fontWeight = FontWeight.Bold,
                 fontSize = (size.value / 3.2f).sp,

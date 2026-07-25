@@ -27,6 +27,21 @@ night sheets and vote counting for any script.
   inline homebrew characters
 - Per-script jinx list (the Djinn's rules), auto-filtered to what's in play
 
+**Storyteller intelligence**
+- The night sheet computes the TRUE answer for information abilities right
+  from the grimoire: Empath neighbour counts, Chef pairs, Clockmaker steps,
+  Shugenja direction, Oracle, Undertaker, Town Crier / Flowergirl (from the
+  recorded nominations and votes), Fortune Teller (with red-herring
+  tracking), Dreamer, Seamstress, Village Idiot, Chambermaid and more —
+  including target selection for "choose a player" abilities
+- Every computed answer carries the caveats that matter: the holder being
+  drunk/poisoned (from reminder tokens or being the Drunk), Spy/Recluse
+  misregistration, and the Vortox forcing false townsfolk info
+- Minion/demon info steps name the actual evil players and your chosen bluffs
+- Full-screen cards to show players silently across the table: YOU ARE /
+  THIS PLAYER IS / THIS CHARACTER SELECTED YOU with character tokens,
+  number and good/evil signals, the three bluffs, and free editable text
+
 **Running the game**
 - Three-stage setup: script → seats → bag, with the official player-count
   distribution, automatic adjustment for setup-modifying characters
