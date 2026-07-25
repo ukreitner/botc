@@ -166,6 +166,21 @@ class GameActionsTest {
     }
 
     @Test
+    fun `add and remove seats keep ids unique`() {
+        var state = newGame(6)
+        state = GameActions.addSeat(state, "Traveller Tim")
+        assertEquals(7, state.players.size)
+        val newId = state.players.last().id
+        assertEquals(1, state.players.count { it.id == newId })
+        state = GameActions.removeSeat(state, newId)
+        assertEquals(6, state.players.size)
+        // Adding after a removal never reuses a live id.
+        state = GameActions.addSeat(state, "Again", afterId = 2)
+        assertEquals(state.players.map { it.id }.toSet().size, state.players.size)
+        assertEquals("Again", state.players[3].name)
+    }
+
+    @Test
     fun `game state survives serialization round trip`() {
         var state = newGame(7)
         state = GameActions.assignCharacter(state, 0, "imp")
