@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import com.clocktower.grimoire.ui.components.DiscussionTimer
+import com.clocktower.grimoire.ui.components.PrivacyCover
 import com.clocktower.grimoire.ui.components.FullScreenShow
 import com.clocktower.grimoire.ui.components.ShowCard
 import com.clocktower.grimoire.ui.components.ShowToolSheet
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
@@ -100,6 +102,7 @@ fun GameShell(
     var unfinishedNightSteps by rememberSaveable { mutableStateOf(listOf<String>()) }
     var dismissedAdvisory by rememberSaveable { mutableStateOf("") }
     var showRevealFlow by rememberSaveable { mutableStateOf(false) }
+    var grimoireLocked by rememberSaveable { mutableStateOf(false) }
     var nightScrim by rememberSaveable { mutableStateOf(false) }
     var drunkPromptDone by rememberSaveable { mutableStateOf(false) }
     var lunaticPromptDone by rememberSaveable { mutableStateOf(false) }
@@ -186,6 +189,9 @@ fun GameShell(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { grimoireLocked = true }) {
+                        Icon(Icons.Filled.VisibilityOff, contentDescription = "Hide the grimoire")
+                    }
                     IconButton(enabled = canUndo, onClick = { viewModel.undo() }) {
                         Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
                     }
@@ -327,7 +333,18 @@ fun GameShell(
         }
     }
     if (showRevealFlow) {
-        RevealFlow(viewModel, state, onDone = { showRevealFlow = false })
+        RevealFlow(
+            viewModel, state,
+            onDone = {
+                showRevealFlow = false
+                // The phone just went around the circle — shield the
+                // grimoire until the storyteller deliberately reopens it.
+                grimoireLocked = true
+            },
+        )
+    }
+    if (grimoireLocked) {
+        PrivacyCover(onUnlock = { grimoireLocked = false })
     }
     // The Fortune Teller needs a red herring before night one.
     var herringPromptDone by rememberSaveable { mutableStateOf(false) }
@@ -495,8 +512,30 @@ fun GameShell(
         WinAdvisoryDialog(
             advisory = advisory,
             onDeclare = { revealGoodWins = it },
+            onMastermindDay = {
+                dismissedAdvisory = advisory.reason
+                viewModel.update { it.copy(mastermindDayActive = true) }
+            },
             onDismiss = { dismissedAdvisory = advisory.reason },
         )
+    }
+    if (state.mastermindDayActive && revealGoodWins == null) {
+        // Persistent banner while the extra day plays out.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 100.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "☠ MASTERMIND DAY — whoever is executed, their team loses",
+                color = AgedGold,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .background(Color(0xE61E1630))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
     }
     revealGoodWins?.let { goodWins ->
         RevealSheet(

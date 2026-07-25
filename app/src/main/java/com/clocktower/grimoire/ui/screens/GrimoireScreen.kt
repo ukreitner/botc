@@ -30,6 +30,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.clocktower.grimoire.ui.theme.NightSky
+import com.clocktower.grimoire.ui.theme.Parchment
+import com.clocktower.grimoire.ui.theme.Twilight
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -92,6 +100,30 @@ fun GrimoireScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // Candlelit table: a warm vignette pooling at the centre of the
+            // circle, and a faint gold ring the seats appear to rest on.
+            .drawBehind {
+                val radius = kotlin.math.min(this.size.width, this.size.height) / 2f
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(Twilight, NightSky),
+                        center = center,
+                        radius = radius * 1.4f,
+                    ),
+                )
+                drawCircle(
+                    color = AgedGold.copy(alpha = 0.10f),
+                    radius = radius * 0.78f,
+                    center = center,
+                    style = Stroke(width = 2.dp.toPx()),
+                )
+                drawCircle(
+                    color = AgedGold.copy(alpha = 0.05f),
+                    radius = radius * 0.5f,
+                    center = center,
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+            }
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(0.6f, 2.5f)
@@ -198,9 +230,9 @@ fun CircleLayout(
 
         // Child size scales down as the circle fills up.
         val childMax = when {
-            count <= 8 -> min(width, height) / 4
-            count <= 12 -> min(width, height) / 5
-            else -> min(width, height) / 6
+            count <= 8 -> (min(width, height) / 3.5f).toInt()
+            count <= 12 -> (min(width, height) / 4.4f).toInt()
+            else -> (min(width, height) / 5.4f).toInt()
         }
         val childConstraints = Constraints(maxWidth = childMax, maxHeight = childMax * 2)
         val placeables = measurables.map { it.measure(childConstraints) }
@@ -255,10 +287,11 @@ private fun SeatView(
             append(player.reminders.joinToString { it.label })
         }
     }
+    // Larger faces: the art should be readable across the table.
     val tokenSize = when (compactLevel) {
-        2 -> 48.dp
-        1 -> 52.dp
-        else -> 64.dp
+        2 -> 56.dp
+        1 -> 62.dp
+        else -> 74.dp
     }
     val visibleReminders = if (compactLevel == 0) 4 else 2
     val reminderSize = if (compactLevel == 0) 26.dp else 22.dp
@@ -345,6 +378,18 @@ private fun SeatView(
                     )
                 }
             }
+        }
+        // The character's full name, never truncated: two lines allowed.
+        if (character != null) {
+            Text(
+                text = character.name,
+                fontSize = (tokenSize.value / 6f).coerceIn(9f, 13f).sp,
+                lineHeight = (tokenSize.value / 5.4f).coerceIn(10f, 14f).sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                color = Parchment.copy(alpha = if (player.alive) 0.95f else 0.5f),
+            )
         }
         if (!player.alive) {
             Text(

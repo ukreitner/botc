@@ -81,35 +81,53 @@ fun CharacterToken(
             } else {
                 null
             }
+            // The token face is art only — names render outside the token
+            // (see TokenWithName) so they are never squeezed or truncated.
             if (icon != null && character != null) {
                 Image(
                     bitmap = icon,
                     contentDescription = character.name,
                     contentScale = ContentScale.Fit,
                     alpha = if (dimmed) 0.4f else 1f,
-                    modifier = Modifier.size(size * 0.62f),
+                    modifier = Modifier.size(size * 0.8f),
                 )
             } else {
                 Text(
                     text = character?.let { characterGlyphs[it.id] ?: tokenMonogram(it.name) } ?: "?",
                     fontFamily = FontFamily.Serif,
                     fontWeight = FontWeight.Bold,
-                    fontSize = (size.value / 3.2f).sp,
+                    fontSize = (size.value / 2.4f).sp,
                     color = Color(0xFF241A38).copy(alpha = if (dimmed) 0.4f else 1f),
                 )
             }
-            if (character != null) {
-                Text(
-                    text = character.name,
-                    fontSize = (size.value / 7.2f).coerceAtLeast(7f).sp,
-                    lineHeight = (size.value / 6.6f).coerceAtLeast(8f).sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = Color(0xFF241A38).copy(alpha = if (dimmed) 0.4f else 0.85f),
-                )
-            }
+        }
+    }
+}
+
+/**
+ * A token with the character's full name beneath it — the name gets two
+ * lines and shrinks before it ever truncates.
+ */
+@Composable
+fun TokenWithName(
+    character: Character?,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    dimmed: Boolean = false,
+    nameColor: Color = Color(0xFFEFE6D0),
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+        CharacterToken(character = character, size = size, dimmed = dimmed)
+        if (character != null) {
+            Text(
+                text = character.name,
+                fontSize = (size.value / 6f).coerceIn(9f, 14f).sp,
+                lineHeight = (size.value / 5.4f).coerceIn(10f, 15f).sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                color = nameColor.copy(alpha = if (dimmed) 0.5f else 0.95f),
+            )
         }
     }
 }

@@ -79,3 +79,44 @@ class StatusEffectsTest {
         assertTrue(notes.any { "Imp self-kill" in it })
     }
 }
+
+class EndgameTest {
+    private val data = GameData.loadDefault()
+    private val tb = data.builtInScripts().first { it.id == "tb" }
+
+    @kotlin.test.Test
+    fun `resurrect keeps the death record marked`() {
+        var state = GameActions.newGame(tb, listOf("A", "B", "C", "D", "E"))
+        state = GameActions.advancePhase(state)
+        state = GameActions.kill(state, 1, DeathCause.DEMON, data::character)
+        state = GameActions.resurrect(state, 1)
+        kotlin.test.assertTrue(state.player(1)!!.alive)
+        kotlin.test.assertEquals(1, state.deaths.size)
+        kotlin.test.assertTrue(state.deaths.single().resurrected)
+        // Undo-style revive removes the newest (unresurrected) record and
+        // leaves the resurrection history intact.
+        state = GameActions.kill(state, 1, DeathCause.DEMON, data::character)
+        state = GameActions.revive(state, 1)
+        kotlin.test.assertEquals(0, state.deaths.count { !it.resurrected })
+        kotlin.test.assertEquals(1, state.deaths.count { it.resurrected })
+    }
+
+    @kotlin.test.Test
+    fun `mastermind day resolves on execution and suppresses demon-dead advisory`() {
+        var state = GameActions.newGame(tb, listOf("A", "B", "C", "D", "E", "F"))
+        listOf("imp", "mastermind", "chef", "empath", "soldier", "mayor")
+            .forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
+        state = GameActions.advancePhase(state) // night 1
+        state = GameActions.advancePhase(state) // day 1
+        state = GameActions.kill(state, 0, DeathCause.EXECUTION, data::character)
+        state = state.copy(mastermindDayActive = true)
+        kotlin.test.assertEquals(null, WinCheck.check(state, data::character), "advisory suppressed mid extra day")
+        // Next day: a good player is executed — good loses.
+        state = GameActions.advancePhase(state)
+        state = GameActions.advancePhase(state)
+        state = GameActions.kill(state, 3, DeathCause.EXECUTION, data::character)
+        val advisory = kotlin.test.assertNotNull(WinCheck.check(state, data::character))
+        kotlin.test.assertEquals(false, advisory.goodWins)
+        kotlin.test.assertTrue("Mastermind day" in advisory.reason)
+    }
+}

@@ -23,6 +23,31 @@ object WinCheck {
         val alive = players.filter { it.alive }
         val inPlayIds = players.mapNotNull { it.characterId }.toSet()
 
+        // The Mastermind's extra day has its own resolution: the first
+        // execution ends the game against the executed player's team.
+        if (state.mastermindDayActive) {
+            // Only executions AFTER the Demon's own fall resolve the extra day.
+            val demonExecIndex = state.deaths.indexOfLast { d ->
+                d.cause == DeathCause.EXECUTION &&
+                    (d.characterIdAtDeath ?: state.player(d.playerId)?.characterId)
+                        ?.let(lookup)?.team == Team.DEMON
+            }
+            val executed = state.deaths.withIndex().lastOrNull { (i, d) ->
+                i > demonExecIndex && d.cause == DeathCause.EXECUTION && !d.resurrected
+            }?.value
+            if (executed != null) {
+                val executedPlayer = state.player(executed.playerId)
+                val executedEvil = executedPlayer?.isEvil(lookup) ?: false
+                return Advisory(
+                    goodWins = executedEvil,
+                    reason = "Mastermind day: ${executedPlayer?.name ?: "a player"} was executed — " +
+                        "their team (${if (executedEvil) "evil" else "good"}) loses.",
+                )
+            }
+            // Suppress the demons-dead advisory while the extra day plays out.
+            return null
+        }
+
         val executedSaint = state.deaths.lastOrNull {
             if (it.cause != DeathCause.EXECUTION) return@lastOrNull false
             val currentPlayer = players.find { player -> player.id == it.playerId }

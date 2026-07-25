@@ -187,6 +187,9 @@ private fun NightToolTray(
     onOpenShowTool: () -> Unit,
 ) {
     val reminders = character?.allReminders.orEmpty()
+    // Once-per-game abilities get a one-tap "spent" mark on their holder.
+    val oncePerGame = character?.ability?.startsWith("Once per game", ignoreCase = true) == true
+    val holders = state.players.filter { it.nightRoleId == character?.id }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 8.dp,
@@ -226,6 +229,23 @@ private fun NightToolTray(
                             onShow(ShowCard.CharacterCard("THIS PLAYER IS", it.id))
                         },
                         label = { Text("Show token") },
+                    )
+                }
+                if (oncePerGame && character != null && holders.isNotEmpty() &&
+                    holders.any { h -> h.reminders.none { it.label.equals("No ability", true) } }
+                ) {
+                    AssistChip(
+                        onClick = {
+                            for (h in holders) {
+                                viewModel.update { s ->
+                                    GameActions.placeExclusiveReminder(
+                                        s, h.id,
+                                        com.clocktower.engine.PlacedReminder(character.id, "No ability"),
+                                    )
+                                }
+                            }
+                        },
+                        label = { Text("Mark spent") },
                     )
                 }
                 TextButton(onClick = onOpenShowTool) { Text("All tokens") }

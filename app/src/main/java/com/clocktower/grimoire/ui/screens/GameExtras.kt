@@ -57,7 +57,10 @@ fun GameLogDialog(state: GameState, onDismiss: () -> Unit) {
                 DeathCause.EXILE -> "exiled"
                 DeathCause.STORYTELLER -> "died (storyteller)"
             }
-            list += Entry(d.day, d.atNight, "$name $cause")
+            list += Entry(
+                d.day, d.atNight,
+                "$name $cause" + if (d.resurrected) " (later resurrected)" else "",
+            )
         }
         for (n in state.nominations) {
             val nominator = state.player(n.nominatorId)?.name ?: "?"
@@ -233,6 +236,7 @@ fun ActiveJinxesDialog(
 fun WinAdvisoryDialog(
     advisory: WinCheck.Advisory,
     onDeclare: (goodWins: Boolean) -> Unit,
+    onMastermindDay: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -247,8 +251,13 @@ fun WinAdvisoryDialog(
             }
         },
         confirmButton = {
-            FilledTonalButton(onClick = { onDeclare(advisory.goodWins ?: true) }) {
-                Text(if (advisory.goodWins == false) "Declare evil victory" else "Declare good victory")
+            Column {
+                FilledTonalButton(onClick = { onDeclare(advisory.goodWins ?: true) }) {
+                    Text(if (advisory.goodWins == false) "Declare evil victory" else "Declare good victory")
+                }
+                if (onMastermindDay != null && advisory.cautions.any { "Mastermind" in it }) {
+                    TextButton(onClick = onMastermindDay) { Text("Play the Mastermind day") }
+                }
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Keep playing") } },

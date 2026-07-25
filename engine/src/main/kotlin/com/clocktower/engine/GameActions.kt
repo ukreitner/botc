@@ -116,14 +116,28 @@ object GameActions {
     }
 
     /**
-     * Brings a player back to life (Professor, storyteller correction...).
-     * Only the most recent death record is dropped, so earlier deaths in the
-     * log stay intact.
+     * Undo a mistaken death: the most recent death record is DROPPED, as if
+     * it never happened. For in-game resurrection use [resurrect].
      */
     fun revive(state: GameState, playerId: Long): GameState {
         val lastDeath = state.deaths.indexOfLast { it.playerId == playerId }
         return state.updatePlayer(playerId) { it.copy(alive = true, ghostVoteUsed = false) }
             .copy(deaths = state.deaths.filterIndexed { i, _ -> i != lastDeath })
+    }
+
+    /**
+     * In-game resurrection (Professor, Shabaloth regurgitation, Bone
+     * Collector...): the player lives again but the death record STAYS in
+     * the log, marked resurrected — Undertaker/Cannibal history survives.
+     */
+    fun resurrect(state: GameState, playerId: Long): GameState {
+        val lastDeath = state.deaths.indexOfLast { it.playerId == playerId && !it.resurrected }
+        return state.updatePlayer(playerId) { it.copy(alive = true, ghostVoteUsed = false) }
+            .copy(
+                deaths = state.deaths.mapIndexed { i, d ->
+                    if (i == lastDeath) d.copy(resurrected = true) else d
+                },
+            )
     }
 
     fun toggleGhostVote(state: GameState, playerId: Long): GameState =

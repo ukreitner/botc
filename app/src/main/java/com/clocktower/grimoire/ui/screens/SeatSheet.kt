@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -249,24 +250,60 @@ private fun SeatActions(
             }
         }
 
-        // Life & death
+        // Life & death. Deaths that a protection could prevent go through a
+        // confirmation listing the reasons — always overridable.
+        var pendingKill by rememberSaveable(player.id) { mutableStateOf<DeathCause?>(null) }
+        val protectionNotes = if (player.alive) {
+            com.clocktower.engine.StatusEffects.deathNotes(state, viewModel::characterById, player.id)
+                .filter { note ->
+                    listOf("can't die", "can not die", "Safe", "Protected", "survives", "safe from", "don't", "Fool").any {
+                        note.contains(it, ignoreCase = true)
+                    }
+                }
+        } else {
+            emptyList()
+        }
+        fun requestKill(cause: DeathCause) {
+            if (protectionNotes.isEmpty()) viewModel.kill(player.id, cause) else pendingKill = cause
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (player.alive) {
-                FilledTonalButton(onClick = { viewModel.kill(player.id, DeathCause.DEMON) }) {
+                FilledTonalButton(onClick = { requestKill(DeathCause.DEMON) }) {
                     Text("Died at night")
                 }
-                FilledTonalButton(onClick = { viewModel.kill(player.id, DeathCause.EXECUTION) }) {
+                FilledTonalButton(onClick = { requestKill(DeathCause.EXECUTION) }) {
                     Text("Executed")
                 }
-                OutlinedButton(onClick = { viewModel.kill(player.id, DeathCause.STORYTELLER) }) {
+                OutlinedButton(onClick = { requestKill(DeathCause.STORYTELLER) }) {
                     Text("Other death")
                 }
             } else {
-                FilledTonalButton(onClick = { viewModel.revive(player.id) }) { Text("Revive") }
+                FilledTonalButton(onClick = { viewModel.resurrect(player.id) }) { Text("Resurrect") }
+                OutlinedButton(onClick = { viewModel.revive(player.id) }) { Text("Undo death") }
                 OutlinedButton(onClick = { viewModel.toggleGhostVote(player.id) }) {
                     Text(if (player.ghostVoteUsed) "Restore ghost vote" else "Use ghost vote")
                 }
             }
+        }
+        pendingKill?.let { cause ->
+            AlertDialog(
+                onDismissRequest = { pendingKill = null },
+                title = { Text("${player.name} might be protected") },
+                text = {
+                    Column {
+                        for (note in protectionNotes) Text("⚠ $note")
+                    }
+                },
+                confirmButton = {
+                    FilledTonalButton(onClick = {
+                        viewModel.kill(player.id, cause)
+                        pendingKill = null
+                    }) { Text("They die anyway") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingKill = null }) { Text("Death prevented") }
+                },
+            )
         }
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

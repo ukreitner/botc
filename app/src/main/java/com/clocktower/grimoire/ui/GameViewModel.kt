@@ -130,6 +130,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun kill(playerId: Long, cause: DeathCause) =
         update { GameActions.kill(it, playerId, cause, ::characterById) }
     fun revive(playerId: Long) = update { GameActions.revive(it, playerId) }
+    fun resurrect(playerId: Long) = update { GameActions.resurrect(it, playerId) }
     fun toggleGhostVote(playerId: Long) = update { GameActions.toggleGhostVote(it, playerId) }
     fun addReminder(playerId: Long, reminder: PlacedReminder) =
         update { GameActions.addReminder(it, playerId, reminder) }

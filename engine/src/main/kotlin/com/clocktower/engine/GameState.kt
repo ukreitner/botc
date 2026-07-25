@@ -85,6 +85,8 @@ data class DeathRecord(
     val characterIdAtDeath: String? = null,
     /** Null only for saves created before impairment snapshots existed. */
     val abilityImpairedAtDeath: Boolean? = null,
+    /** True when this death happened but was later undone in-game. */
+    val resurrected: Boolean = false,
 )
 
 /** Everything the storyteller tracks for one game. */
@@ -102,6 +104,11 @@ data class GameState(
     val deaths: List<DeathRecord> = emptyList(),
     /** Ids of night-order steps already completed tonight. */
     val nightStepsDone: Set<String> = emptySet(),
+    /**
+     * True while the Mastermind's extra day is being played out after the
+     * Demon died by execution: if anyone is executed, their team loses.
+     */
+    val mastermindDayActive: Boolean = false,
     val storytellerNotes: String = "",
     /** Millis timestamp of last modification, for save management. */
     val updatedAt: Long = 0L,
