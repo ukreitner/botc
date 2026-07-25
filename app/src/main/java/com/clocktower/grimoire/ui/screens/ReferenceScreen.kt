@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
@@ -37,6 +38,7 @@ import com.clocktower.grimoire.ui.theme.color
  * Script reference: the character sheet by team, full night order, and
  * active jinxes — everything on the printed sheets, searchable in play.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReferenceScreen(
     viewModel: GameViewModel,

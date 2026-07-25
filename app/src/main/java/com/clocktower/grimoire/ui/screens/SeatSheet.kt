@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameState
+import com.clocktower.engine.Phase
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Player
 import com.clocktower.engine.Team
@@ -162,6 +163,11 @@ private fun SeatActions(
             OutlinedButton(onClick = onPickCharacter) { Text("Change character") }
             OutlinedButton(onClick = onAddReminder) { Text("Add reminder") }
             OutlinedButton(onClick = { viewModel.flipAlignment(player.id) }) { Text("Flip alignment") }
+            if (state.phase == Phase.SETUP || player.isTraveller) {
+                OutlinedButton(onClick = { viewModel.removeSeat(player.id); onDismiss() }) {
+                    Text("Remove seat", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
 
         if (player.reminders.isNotEmpty()) {

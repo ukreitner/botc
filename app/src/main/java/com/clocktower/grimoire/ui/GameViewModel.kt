@@ -111,6 +111,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- Convenience wrappers over GameActions --------------------------
 
+    fun addSeat(name: String) = update { GameActions.addSeat(it, name) }
+    fun removeSeat(playerId: Long) = update { GameActions.removeSeat(it, playerId) }
     fun rename(playerId: Long, name: String) = update { GameActions.rename(it, playerId, name) }
     fun assign(playerId: Long, characterId: String?, isTraveller: Boolean = false) =
         update { GameActions.assignCharacter(it, playerId, characterId, isTraveller) }

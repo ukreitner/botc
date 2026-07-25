@@ -199,7 +199,7 @@
   "otherNightReminder": "",
   "reminders": [],
   "remindersGlobal": [
-   "Drunk"
+   "Is the Drunk"
   ]
  },
  {
@@ -733,7 +733,7 @@
   "name": "Bishop",
   "edition": "bmr",
   "team": "traveler",
-  "ability": "Only the Storyteller can nominate. At least 1 opposite player must be nominated each day.",
+  "ability": "Only the Storyteller can nominate. At least 1 opposing player must be nominated each day.",
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
@@ -1041,7 +1041,7 @@
   "name": "Pit-Hag",
   "edition": "sv",
   "team": "minion",
-  "ability": "Each night*, choose a player & a character they become (if not-in-play). If a Demon is made, deaths tonight are arbitrary.",
+  "ability": "Each night*, choose a player & a character they become (if not in play). If a Demon is made, deaths tonight are arbitrary.",
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "The Pit-Hag points to a player and a character on the sheet. If this character is not in play, wake that player and show them the 'You are' card and the relevant character token. If the character is in play, nothing happens.",
@@ -1932,18 +1932,6 @@
   "remindersGlobal": []
  },
  {
-  "id": "wraith",
-  "name": "Wraith",
-  "edition": "exp",
-  "team": "minion",
-  "ability": "You may choose to open your eyes at night. You wake when other evil players do.",
-  "setup": false,
-  "firstNightReminder": "Wake the Wraith whenever other evil players wake.",
-  "otherNightReminder": "Wake the Wraith whenever other evil players wake.",
-  "reminders": [],
-  "remindersGlobal": []
- },
- {
   "id": "xaan",
   "name": "Xaan",
   "edition": "exp",
@@ -2087,8 +2075,8 @@
   "name": "Riot",
   "edition": "exp",
   "team": "demon",
-  "ability": "On day 3, Minions become Riot & nominees die but nominate an alive player immediately. This must happen.",
-  "setup": false,
+  "ability": "Nominees die, but may nominate again immediately (on day 3, they must). After day 3, evil wins. [All Minions are Riot]",
+  "setup": true,
   "firstNightReminder": "",
   "otherNightReminder": "Change the Riot reminder token to the relevant day. If it is night 3, you may wake the Minions. Show the 'You are' & Riot tokens.",
   "reminders": [
@@ -2302,7 +2290,7 @@
   "edition": "fabled",
   "team": "fabled",
   "ability": "There might be 1 extra or 1 fewer Outsider in play.",
-  "setup": true,
+  "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
   "reminders": [],
@@ -2347,6 +2335,20 @@
   "otherNightReminder": "If it is a night when a Demon attack could end the game, and the Demon is marked \"Final night: No Attack,\" then the Demon does not act tonight. (Do not wake them.)",
   "reminders": [
    "Final Night: No Attack"
+  ],
+  "remindersGlobal": []
+ },
+ {
+  "id": "deusexfiasco",
+  "name": "Deus ex Fiasco",
+  "edition": "fabled",
+  "team": "fabled",
+  "ability": "Once per game, the Storyteller will make a mistake, correct it, & publicly admit to it.",
+  "setup": false,
+  "firstNightReminder": "",
+  "otherNightReminder": "",
+  "reminders": [
+   "Mistake"
   ],
   "remindersGlobal": []
  }

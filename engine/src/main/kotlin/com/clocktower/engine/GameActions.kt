@@ -15,6 +15,20 @@ object GameActions {
         },
     )
 
+    /** Adds a seat (e.g. a traveller arriving mid-game) after [afterId], or at the end. */
+    fun addSeat(state: GameState, name: String, afterId: Long? = null): GameState {
+        val id = (state.players.maxOfOrNull { it.id } ?: -1L) + 1
+        val player = Player(id = id, name = name.ifBlank { "Player ${state.players.size + 1}" })
+        val index = afterId?.let { anchor -> state.players.indexOfFirst { it.id == anchor } } ?: -1
+        val players = state.players.toMutableList()
+        if (index >= 0) players.add(index + 1, player) else players.add(player)
+        return state.copy(players = players)
+    }
+
+    /** Removes a seat entirely (only sensible during setup or for departed travellers). */
+    fun removeSeat(state: GameState, playerId: Long): GameState =
+        state.copy(players = state.players.filterNot { it.id == playerId })
+
     fun rename(state: GameState, playerId: Long, name: String): GameState =
         state.updatePlayer(playerId) { it.copy(name = name) }
 

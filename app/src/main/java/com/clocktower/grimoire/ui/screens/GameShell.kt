@@ -1,10 +1,13 @@
 package com.clocktower.grimoire.ui.screens
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import com.clocktower.grimoire.ui.components.DiscussionTimer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AutoStories
@@ -60,6 +63,7 @@ fun GameShell(
     var showBluffs by rememberSaveable { mutableStateOf(false) }
     var showNotes by rememberSaveable { mutableStateOf(false) }
     var showMenu by rememberSaveable { mutableStateOf(false) }
+    var showAddSeat by rememberSaveable { mutableStateOf(false) }
     val canUndo by viewModel.canUndo.collectAsState()
 
     val phaseLabel = when (state.phase) {
@@ -117,6 +121,10 @@ fun GameShell(
                             onClick = { showMenu = false; showNotes = true },
                         )
                         DropdownMenuItem(
+                            text = { Text("Add seat (traveller joins)") },
+                            onClick = { showMenu = false; showAddSeat = true },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Back to home") },
                             onClick = { showMenu = false; onExit() },
                         )
@@ -141,7 +149,7 @@ fun GameShell(
             }
         },
     ) { padding ->
-        Column(
+        Box(
             Modifier
                 .fillMaxSize()
                 .padding(padding),
@@ -151,6 +159,13 @@ fun GameShell(
                 GameTab.NIGHT -> NightScreen(viewModel, state)
                 GameTab.DAY -> DayScreen(viewModel, state)
                 GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script)
+            }
+            if (tab == GameTab.GRIMOIRE || tab == GameTab.DAY) {
+                DiscussionTimer(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp),
+                )
             }
         }
     }
@@ -165,6 +180,28 @@ fun GameShell(
     }
     if (showBluffs) {
         BluffsSheet(viewModel, state, onDismiss = { showBluffs = false })
+    }
+    if (showAddSeat) {
+        var seatName by rememberSaveable { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddSeat = false },
+            title = { Text("Add seat") },
+            text = {
+                OutlinedTextField(
+                    value = seatName,
+                    onValueChange = { seatName = it },
+                    label = { Text("Player name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(onClick = {
+                    viewModel.addSeat(seatName)
+                    showAddSeat = false
+                }) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { showAddSeat = false }) { Text("Cancel") } },
+        )
     }
     if (showNotes) {
         var notes by rememberSaveable { mutableStateOf(state.storytellerNotes) }
