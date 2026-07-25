@@ -1,5 +1,6 @@
 package com.clocktower.grimoire.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -12,11 +13,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -73,13 +76,28 @@ fun CharacterToken(
                 .fillMaxSize()
                 .padding(horizontal = size / 10),
         ) {
-            Text(
-                text = character?.let { characterGlyphs[it.id] ?: tokenMonogram(it.name) } ?: "?",
-                fontFamily = FontFamily.Serif,
-                fontWeight = FontWeight.Bold,
-                fontSize = (size.value / 3.2f).sp,
-                color = Color(0xFF241A38).copy(alpha = if (dimmed) 0.4f else 1f),
-            )
+            val icon = if (character != null) {
+                remember(character.id) { IconStore.icon(character.id) }
+            } else {
+                null
+            }
+            if (icon != null && character != null) {
+                Image(
+                    bitmap = icon,
+                    contentDescription = character.name,
+                    contentScale = ContentScale.Fit,
+                    alpha = if (dimmed) 0.4f else 1f,
+                    modifier = Modifier.size(size * 0.62f),
+                )
+            } else {
+                Text(
+                    text = character?.let { characterGlyphs[it.id] ?: tokenMonogram(it.name) } ?: "?",
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (size.value / 3.2f).sp,
+                    color = Color(0xFF241A38).copy(alpha = if (dimmed) 0.4f else 1f),
+                )
+            }
             if (character != null) {
                 Text(
                     text = character.name,

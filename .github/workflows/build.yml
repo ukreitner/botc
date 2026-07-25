@@ -43,6 +43,8 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+      - name: Fetch official character art
+        run: bash tools/fetch-icons.sh
       # ubuntu-latest runners ship with the Android SDK preinstalled and
       # licenses accepted; AGP fetches the exact platform it needs.
       - run: ./gradlew :app:assembleDebug

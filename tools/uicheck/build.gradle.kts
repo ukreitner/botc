@@ -20,6 +20,10 @@ sourceSets {
             srcDir("stubs")                                // Android framework stand-ins
             srcDir("../../engine/src/main/kotlin")         // real engine sources
             srcDir("../../app/src/main/java")              // the app UI under test
+            // Android-only image loading (BitmapFactory/assets); the stubs
+            // directory provides a JVM stand-in for GrimoireApp instead.
+            exclude("**/IconLoader.kt")
+            exclude("**/GrimoireApp.kt")
         }
         resources {
             srcDir("../../engine/src/main/resources")

@@ -8,3 +8,6 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+# Official character art is fetched at build time (tools/fetch-icons.sh),
+# never committed.
+app/src/main/assets/icons/
