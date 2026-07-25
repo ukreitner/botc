@@ -118,6 +118,13 @@ fun DayScreen(
                         },
                     )
 
+                    val nominationNotes = com.clocktower.engine.StatusEffects.nominationWarnings(
+                        state, viewModel::characterById, nominatorId, nomineeId,
+                    )
+                    for (note in nominationNotes) {
+                        Text("⚠ $note", color = EmberRed, style = MaterialTheme.typography.bodySmall)
+                    }
+
                     if (nomineeId != null) {
                         val nominee = state.player(nomineeId!!)
                         val isExile = nominee?.isTraveller == true

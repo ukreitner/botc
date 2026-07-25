@@ -110,10 +110,17 @@ class NightOrder(
                     if (holders.isEmpty() && !isFabledActive) continue
                     val reminder =
                         if (isFirstNight) character.firstNightReminder else character.otherNightReminder
+                    var detail = reminder.ifEmpty { character.ability }
+                    // The Exorcist silences a chosen Demon for the night.
+                    if (character.team == Team.DEMON &&
+                        holders.any { h -> h.reminders.any { it.sourceId == "exorcist" && it.label.equals("Chosen", true) } }
+                    ) {
+                        detail += " — EXORCIST chose them: the Demon does not act tonight."
+                    }
                     steps += NightStep(
                         id = id,
                         title = character.name,
-                        detail = reminder.ifEmpty { character.ability },
+                        detail = detail,
                         playerIds = holders.map { it.id },
                     )
                 }

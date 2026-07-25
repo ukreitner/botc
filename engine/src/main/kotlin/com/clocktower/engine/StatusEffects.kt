@@ -110,6 +110,9 @@ object StatusEffects {
         if (character?.team == Team.MINION && seats.any { it.characterId == "minstrel" && it.alive }) {
             notes += "Minstrel: if executed, everyone (but Travellers) is drunk until dusk tomorrow."
         }
+        if (character?.team == Team.MINION && seats.any { it.characterId == "vigormortis" && it.alive }) {
+            notes += "Vigormortis kill: the Minion keeps their ability and one Townsfolk neighbour is poisoned."
+        }
         if (character?.team == Team.OUTSIDER && seats.any { it.characterId == "godfather" && it.alive }) {
             notes += "Godfather kills tonight because an Outsider died today."
         }
@@ -121,6 +124,41 @@ object StatusEffects {
             player.reminders.any { it.label.equals("Grandchild", true) }
         ) {
             notes += "Grandmother dies too if the Demon killed her grandchild."
+        }
+        return notes
+    }
+
+    /** Rule triggers to surface the moment a nomination is declared. */
+    fun nominationWarnings(
+        state: GameState,
+        lookup: (String) -> Character?,
+        nominatorId: Long?,
+        nomineeId: Long?,
+    ): List<String> {
+        val notes = mutableListOf<String>()
+        val nominator = nominatorId?.let { state.player(it) }
+        val nominee = nomineeId?.let { state.player(it) }
+
+        if (nominator != null) {
+            if (nominator.reminders.any { it.label.equals("Cursed", true) }) {
+                notes += "${nominator.name} is Witch-cursed — they die immediately for nominating (if 4+ alive)."
+            }
+            if (nominator.characterId == "golem") {
+                notes += "Golem nominates: if the nominee is not the Demon, the nominee dies; the Golem may only nominate once per game."
+            }
+        }
+        if (nominee != null) {
+            if (nominee.characterId == "virgin" &&
+                nominee.reminders.none { it.label.equals("No ability", true) }
+            ) {
+                notes += "Virgin's first nomination: if ${nominator?.name ?: "the nominator"} is a Townsfolk, they are executed immediately."
+            }
+            if (nominee.reminders.any { it.label.equals("Fear", true) }) {
+                notes += "Fearmonger chose ${nominee.name}: if executed from this nomination, their team loses."
+            }
+        }
+        if (nominator?.reminders?.any { it.label.equals("Mad", true) } == true) {
+            notes += "${nominator.name} is Cerenovus-mad — check their claim before this goes further."
         }
         return notes
     }

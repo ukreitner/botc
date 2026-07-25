@@ -39,6 +39,36 @@ class StatusEffectsTest {
     }
 
     @Test
+    fun `nomination warnings cover witch curse and virgin`() {
+        val tb = data.builtInScripts().first { it.id == "tb" }
+        var state = GameActions.newGame(tb, listOf("A", "B", "C", "D", "E"))
+        listOf("imp", "witch", "virgin", "chef", "mayor")
+            .forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
+        state = GameActions.addReminder(state, 3, PlacedReminder("witch", "Cursed"))
+
+        val notes = StatusEffects.nominationWarnings(state, data::character, nominatorId = 3, nomineeId = 2)
+        assertTrue(notes.any { "Witch-cursed" in it })
+        assertTrue(notes.any { "Virgin" in it })
+        // Spent virgin no longer warns.
+        val spent = GameActions.addReminder(state, 2, PlacedReminder("virgin", "No ability"))
+        assertTrue(StatusEffects.nominationWarnings(spent, data::character, 3, 2).none { "Virgin" in it })
+    }
+
+    @Test
+    fun `exorcist chosen demon step is annotated`() {
+        val bmr = data.builtInScripts().first { it.id == "bmr" }
+        var state = GameActions.newGame(bmr, listOf("A", "B", "C", "D", "E"))
+        listOf("zombuul", "exorcist", "chambermaid", "grandmother", "tealady")
+            .forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
+        state = GameActions.advancePhase(state)
+        state = state.copy(cycle = 2)
+        state = GameActions.addReminder(state, 0, PlacedReminder("exorcist", "Chosen"))
+        val steps = data.nightOrder.otherNight(state, data::character)
+        val demonStep = steps.first { it.id == "zombuul" }
+        assertTrue("EXORCIST" in demonStep.detail, demonStep.detail)
+    }
+
+    @Test
     fun `demon death notes mention scarlet woman`() {
         val tb = data.builtInScripts().first { it.id == "tb" }
         var state = GameActions.newGame(tb, listOf("A", "B", "C", "D", "E", "F"))
