@@ -55,6 +55,46 @@ object GameActions {
     fun setShownCharacter(state: GameState, playerId: Long, shownCharacterId: String?): GameState =
         state.updatePlayer(playerId) { it.copy(shownCharacterId = shownCharacterId) }
 
+    /**
+     * Resolves a successful Snake Charmer hit: the charmer and the chosen
+     * Demon swap characters AND alignments (both revert to their new
+     * character's natural alignment), and the new Snake Charmer — the former
+     * Demon player — is poisoned.
+     */
+    fun snakeCharmerSwap(state: GameState, charmerId: Long, demonPlayerId: Long): GameState {
+        var next = swapCharacters(state, charmerId, demonPlayerId)
+        next = next.updatePlayer(charmerId) { it.copy(alignmentFlipped = false, shownCharacterId = null) }
+        next = next.updatePlayer(demonPlayerId) { it.copy(alignmentFlipped = false, shownCharacterId = null) }
+        return placeExclusiveReminder(
+            next, demonPlayerId,
+            PlacedReminder("snakecharmer", "Poisoned"),
+        )
+    }
+
+    /**
+     * Resolves a demon self-kill that passes the mantle: the demon dies and
+     * the chosen heir becomes that same demon (evil). Covers the Imp
+     * star-pass and the Fang Gu jump alike.
+     */
+    fun starPass(
+        state: GameState,
+        demonPlayerId: Long,
+        heirPlayerId: Long,
+        lookup: (String) -> Character? = { null },
+    ): GameState {
+        val demonCharacter = state.player(demonPlayerId)?.characterId ?: return state
+        if (state.player(heirPlayerId) == null) return state
+        var next = kill(state, demonPlayerId, DeathCause.OTHER_NIGHT_DEATH, lookup)
+        next = next.updatePlayer(heirPlayerId) {
+            it.copy(
+                characterId = demonCharacter,
+                shownCharacterId = null,
+                alignmentFlipped = false,
+            )
+        }
+        return next
+    }
+
     /** Swaps two seats' characters (Barber, Snake Charmer...). */
     fun swapCharacters(state: GameState, id1: Long, id2: Long): GameState {
         val p1 = state.player(id1) ?: return state

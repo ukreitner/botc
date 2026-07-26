@@ -86,6 +86,7 @@ class NightOrder(
                     val demon = state.players.filter { p ->
                         p.characterId?.let(lookup)?.team == Team.DEMON
                     }
+                    val lunatics = state.players.filter { it.characterId == "lunatic" }
                     val bluffs = state.demonBluffIds.mapNotNull { lookup(it)?.name }
                     steps += NightStep(
                         id = id,
@@ -106,6 +107,12 @@ class NightOrder(
                                 append(" — no bluffs chosen yet! Pick them from the menu")
                             }
                             append(".")
+                            if (lunatics.isNotEmpty()) {
+                                append(
+                                    " Also show the Demon who the LUNATIC is " +
+                                        "(${lunatics.joinToString { it.name }}) — the Demon can mirror their fake kills.",
+                                )
+                            }
                         },
                         playerIds = demon.map { it.id },
                     )
@@ -144,6 +151,24 @@ class NightOrder(
                         holders.any { h -> h.reminders.any { it.sourceId == "exorcist" && it.label.equals("Chosen", true) } }
                     ) {
                         detail += " — EXORCIST chose them: the Demon does not act tonight."
+                    }
+                    // A real Demon in a Lunatic game hears what the Lunatic
+                    // "did" so they can fake matching deaths.
+                    if (character.team == Team.DEMON && !isFirstNight) {
+                        val lunaticAttacks = state.players.filter { p ->
+                            p.reminders.any { it.sourceId == "lunatic" }
+                        }
+                        val lunaticSeat = state.players.find { it.characterId == "lunatic" }
+                        if (lunaticSeat != null) {
+                            detail += if (lunaticAttacks.isNotEmpty()) {
+                                " LUNATIC (${lunaticSeat.name}) chose: " +
+                                    lunaticAttacks.joinToString { it.name } +
+                                    " — show the Demon those choices first."
+                            } else {
+                                " LUNATIC (${lunaticSeat.name}) is in play — wake them first for their fake attack, " +
+                                    "mark their choices, then show the Demon."
+                            }
+                        }
                     }
                     steps += NightStep(
                         id = id,

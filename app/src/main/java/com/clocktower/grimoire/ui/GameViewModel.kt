@@ -11,6 +11,7 @@ import com.clocktower.engine.GameState
 import com.clocktower.engine.Nomination
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Script
+import com.clocktower.engine.ScriptLink
 import com.clocktower.engine.ScriptParser
 import com.clocktower.grimoire.GrimoireApp
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -147,8 +148,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- Scripts --------------------------------------------------------
 
-    /** Parses and stores a script from pasted/loaded JSON. Returns error text or null. */
-    fun importScript(jsonText: String): String? = try {
+    /** Parses and stores a script from pasted JSON or a script-tool share link. Returns error text or null. */
+    fun importScript(text: String): String? = try {
+        val jsonText = if (ScriptLink.isLink(text)) {
+            ScriptLink.decode(text)
+                ?: throw IllegalArgumentException("that looks like a link, but it has no readable ?script=… payload")
+        } else {
+            text
+        }
         val script = ScriptParser.parse(jsonText)
         if (script.characterIds.isEmpty()) {
             "No characters found in that JSON."
@@ -162,7 +169,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             null
         }
     } catch (e: Exception) {
-        "Couldn't parse script JSON: ${e.message}"
+        "Couldn't import: ${e.message}"
     }
 
     fun deleteScript(scriptId: String) {

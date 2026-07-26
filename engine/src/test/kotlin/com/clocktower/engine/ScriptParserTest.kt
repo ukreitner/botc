@@ -65,3 +65,55 @@ class ScriptParserTest {
         assertEquals(listOf("totallymadeup"), data.unknownIds(script))
     }
 }
+
+class ScriptLinkTest {
+    @kotlin.test.Test
+    fun `decodes an official script tool share link`() {
+        val url = "https://script.bloodontheclocktower.com/?script=H4sIAAAAAAAAAy2QQU5DMQxEr1LNOifoDrHgDiCE%2FBM3MT%2BJKzufUiHujpKyG41Gb%2Bx5%2B4EknPHReBAC6BhFDWe88nAEdGqMM55OLyatnZ6L2uH4Dcjc2agi4EtqpcySRAcCht56NGFDgPS%2BM1%2BXztS2uhR%2Fq0XxGabW2YXibJJcxo1GLI06ArzSfcUv4oXt39SaHugm3YfxPCBS77KtWxI1X16yo%2B%2BzVSs3BFy1ypAoi5I1XWiUxfGjNe1Lkju5y%2BqJZJXHTR%2B1d8qZNtq2ypN17PvcSj91kefTRfiCgEJW1wqfR8ozu3HOZA%2FilbPSwPsfu1ZU%2FnQBAAA%3D"
+        kotlin.test.assertTrue(ScriptLink.isLink(url))
+        val json = kotlin.test.assertNotNull(ScriptLink.decode(url))
+        val script = ScriptParser.parse(json)
+        kotlin.test.assertTrue(script.characterIds.size >= 15, "decoded ${script.characterIds.size} ids")
+        val data = GameData.loadDefault()
+        kotlin.test.assertTrue(data.unknownIds(script).isEmpty(), "unknown: ${data.unknownIds(script)}")
+    }
+
+    @kotlin.test.Test
+    fun `raw json is not treated as a link`() {
+        kotlin.test.assertTrue(!ScriptLink.isLink("""["imp","poisoner"]"""))
+        kotlin.test.assertEquals(null, ScriptLink.decode("""["imp","poisoner"]"""))
+    }
+}
+
+class SnakeCharmerTest {
+    @kotlin.test.Test
+    fun `successful charm swaps characters and alignments and poisons`() {
+        val data = GameData.loadDefault()
+        val sv = data.builtInScripts().first { it.id == "sv" }
+        var state = GameActions.newGame(sv, listOf("A", "B", "C", "D", "E"))
+        state = GameActions.assignCharacter(state, 0, "snakecharmer")
+        state = GameActions.assignCharacter(state, 1, "vortox")
+        state = GameActions.snakeCharmerSwap(state, 0, 1)
+        kotlin.test.assertEquals("vortox", state.player(0)?.characterId)
+        kotlin.test.assertEquals("snakecharmer", state.player(1)?.characterId)
+        kotlin.test.assertTrue(state.player(0)!!.isEvil(data::character), "new demon is evil")
+        kotlin.test.assertTrue(!state.player(1)!!.isEvil(data::character), "new charmer is good")
+        kotlin.test.assertTrue(state.player(1)!!.reminders.any { it.label == "Poisoned" && it.sourceId == "snakecharmer" })
+    }
+}
+
+class StarPassTest {
+    @kotlin.test.Test
+    fun `imp star pass kills the imp and crowns the heir`() {
+        val data = GameData.loadDefault()
+        val tb = data.builtInScripts().first { it.id == "tb" }
+        var state = GameActions.newGame(tb, listOf("A", "B", "C", "D", "E"))
+        state = GameActions.assignCharacter(state, 0, "imp")
+        state = GameActions.assignCharacter(state, 1, "scarletwoman")
+        state = GameActions.starPass(state, 0, 1, data::character)
+        kotlin.test.assertTrue(!state.player(0)!!.alive, "old Imp is dead")
+        kotlin.test.assertEquals("imp", state.player(1)?.characterId)
+        kotlin.test.assertTrue(state.player(1)!!.isEvil(data::character), "new Imp is evil")
+        kotlin.test.assertEquals("imp", state.deaths.last().characterIdAtDeath)
+    }
+}

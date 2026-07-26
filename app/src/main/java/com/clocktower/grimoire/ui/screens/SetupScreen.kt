@@ -239,7 +239,7 @@ private fun ScriptStage(
         }
         item {
             OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) {
-                Text("Import script JSON (paste)")
+                Text("Import script (paste link or JSON)")
             }
             OutlinedButton(
                 onClick = { filePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
@@ -551,14 +551,14 @@ fun ImportScriptDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Paste the script JSON exported from the official script tool " +
-                        "(script.bloodontheclocktower.com) or botc-scripts.",
+                    "Paste a share LINK from the official script tool " +
+                        "(script.bloodontheclocktower.com/?script=…) or the raw script JSON.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    placeholder = { Text("[{\"id\":\"_meta\",...}, \"washerwoman\", ...]") },
+                    placeholder = { Text("https://script.bloodontheclocktower.com/?script=… or [\"washerwoman\", …]") },
                     minLines = 6,
                     modifier = Modifier.fillMaxWidth().height(200.dp),
                 )

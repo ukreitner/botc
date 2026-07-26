@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,6 +55,7 @@ import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.Parchment
 import com.clocktower.grimoire.ui.theme.TownsfolkBlue
+import com.clocktower.grimoire.ui.theme.color
 
 /**
  * A card the storyteller holds up to a player across the table: huge text
@@ -63,6 +68,13 @@ sealed interface ShowCard {
     data class NumberCard(val number: Int) : ShowCard
     data class AlignmentCard(val evil: Boolean) : ShowCard
     data class BluffsCard(val characterIds: List<String>) : ShowCard
+
+    /**
+     * A neutral, full-script character sheet the player can silently point
+     * at (Pit-Hag, Philosopher, Cerenovus…). Shows every script character
+     * with zero game-state hints, so it reveals nothing.
+     */
+    data class SheetCard(val characterIds: List<String>) : ShowCard
 }
 
 /** Full-screen presentation of a [ShowCard]; tap anywhere to close. */
@@ -135,7 +147,73 @@ fun FullScreenShow(
                         }
                     }
                 }
+                is ShowCard.SheetCard -> CharacterSheetGrid(card.characterIds, viewModel)
             }
+        }
+    }
+}
+
+/** The pointable character sheet: every script character, grouped by team. */
+@Composable
+private fun CharacterSheetGrid(characterIds: List<String>, viewModel: GameViewModel) {
+    val byTeam = characterIds
+        .mapNotNull { viewModel.characterById(it) }
+        .sortedBy { it.name }
+        .groupBy { it.team }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(84.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 16.dp, end = 16.dp, top = 40.dp, bottom = 40.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Text(
+                text = "POINT TO A CHARACTER",
+                fontSize = 26.sp,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                color = AgedGold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            )
+        }
+        for (team in listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON, Team.TRAVELLER)) {
+            val characters = byTeam[team] ?: continue
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    text = team.name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    color = team.color,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            items(characters, key = { it.id }) { character ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CharacterToken(character = character, size = 62.dp)
+                    Text(
+                        text = character.name,
+                        fontSize = 11.sp,
+                        color = Parchment,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Text(
+                text = "tap anywhere to close",
+                fontSize = 12.sp,
+                color = Color.Gray,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            )
         }
     }
 }
@@ -211,6 +289,16 @@ fun ShowToolSheet(
                     "Hold the phone up to a player — tap the screen to close it again.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AssistChip(
+                    onClick = {
+                        onShow(
+                            ShowCard.SheetCard(
+                                scriptCharacters.filter { it.team != Team.FABLED }.map { it.id },
+                            ),
+                        )
+                    },
+                    label = { Text("Character sheet — player points silently") },
                 )
             }
             item {

@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -46,6 +47,8 @@ import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
+import com.clocktower.engine.Player
+import com.clocktower.engine.Team
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
 import com.clocktower.grimoire.ui.components.FullScreenShow
@@ -213,7 +216,7 @@ private fun NightToolTray(
                     )
                     Text(
                         if (character == null) {
-                            "Open a character step to load its reminder tokens."
+                            "Open a character step for its tools. “Sheet” lets a player point at a character silently."
                         } else if (reminders.isEmpty()) {
                             "No reminder tokens for this character."
                         } else {
@@ -231,6 +234,15 @@ private fun NightToolTray(
                         label = { Text("Show token") },
                     )
                 }
+                AssistChip(
+                    onClick = {
+                        val ids = viewModel.gameData.resolve(state.script)
+                            .filter { it.team != Team.FABLED }
+                            .map { it.id }
+                        onShow(ShowCard.SheetCard(ids))
+                    },
+                    label = { Text("Sheet") },
+                )
                 if (oncePerGame && character != null && holders.isNotEmpty() &&
                     holders.any { h -> h.reminders.none { it.label.equals("No ability", true) } }
                 ) {
@@ -321,6 +333,131 @@ private fun NightToolTray(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * One-tap resolutions for the fiddly multi-step interactions: Snake Charmer
+ * swap, Imp star-pass, Fang Gu jump, Professor resurrection. Each applies
+ * the full official consequence in a single confirmed action (undoable).
+ */
+@Composable
+private fun QuickResolutions(
+    viewModel: GameViewModel,
+    state: GameState,
+    step: NightStep,
+) {
+    val holder = step.playerIds.firstOrNull()?.let { state.player(it) } ?: return
+    fun teamOf(p: Player): Team? = viewModel.characterById(p.characterId)?.team
+
+    when (step.id) {
+        "snakecharmer" -> if (holder.alive) {
+            ResolutionPicker(
+                key = "snakecharmer-${state.cycle}",
+                title = "Charm hit the Demon? Pick the Demon — they and ${holder.name} swap characters " +
+                    "AND alignments, and the new Snake Charmer is poisoned forever.",
+                candidates = state.players
+                    .filter { it.alive && it.id != holder.id }
+                    .sortedByDescending { teamOf(it) == Team.DEMON },
+                viewModel = viewModel,
+                confirmLabel = { "Swap with ${it.name} & poison" },
+            ) { s, target -> GameActions.snakeCharmerSwap(s, holder.id, target.id) }
+        }
+        "imp" -> if (holder.alive) {
+            ResolutionPicker(
+                key = "imp-${state.cycle}",
+                title = "Star pass — the Imp chose themself. Pick who becomes the new Imp " +
+                    "(usually a Minion; a Scarlet Woman must catch it).",
+                candidates = state.players
+                    .filter { it.alive && it.id != holder.id }
+                    .sortedByDescending { teamOf(it) == Team.MINION },
+                viewModel = viewModel,
+                confirmLabel = { "${holder.name} dies → ${it.name} is the Imp" },
+            ) { s, target -> GameActions.starPass(s, holder.id, target.id, viewModel::characterById) }
+        }
+        "fanggu" -> if (holder.alive) {
+            ResolutionPicker(
+                key = "fanggu-${state.cycle}",
+                title = "Fang Gu jump (once per game) — chose an Outsider? The Fang Gu dies and " +
+                    "the Outsider becomes an evil Fang Gu.",
+                candidates = state.players
+                    .filter { it.alive && it.id != holder.id }
+                    .sortedByDescending { teamOf(it) == Team.OUTSIDER },
+                viewModel = viewModel,
+                confirmLabel = { "${holder.name} dies → ${it.name} is the Fang Gu" },
+            ) { s, target ->
+                val jumped = GameActions.starPass(s, holder.id, target.id, viewModel::characterById)
+                GameActions.placeExclusiveReminder(jumped, target.id, PlacedReminder("fanggu", "Once"))
+            }
+        }
+        "professor" -> {
+            val deadCandidates = state.players
+                .filter { !it.alive }
+                .sortedByDescending { teamOf(it) == Team.TOWNSFOLK }
+            if (deadCandidates.isNotEmpty() &&
+                holder.reminders.none { it.label.equals("No ability", true) }
+            ) {
+                ResolutionPicker(
+                    key = "professor-${state.cycle}",
+                    title = "Professor used their once-per-game — pick a dead Townsfolk to resurrect.",
+                    candidates = deadCandidates,
+                    viewModel = viewModel,
+                    confirmLabel = { "Resurrect ${it.name}" },
+                ) { s, target ->
+                    val revived = GameActions.resurrect(s, target.id)
+                    GameActions.placeExclusiveReminder(revived, holder.id, PlacedReminder("professor", "No ability"))
+                }
+            }
+        }
+    }
+}
+
+/** Pick-a-player-then-confirm widget used by [QuickResolutions]. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ResolutionPicker(
+    key: String,
+    title: String,
+    candidates: List<Player>,
+    viewModel: GameViewModel,
+    confirmLabel: (Player) -> String,
+    action: (GameState, Player) -> GameState,
+) {
+    var selectedId by rememberSaveable(key) { mutableStateOf<Long?>(null) }
+    Text(
+        text = "⚡ $title",
+        style = MaterialTheme.typography.labelLarge,
+        color = AgedGold,
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            for (p in candidates) {
+                FilterChip(
+                    selected = selectedId == p.id,
+                    onClick = { selectedId = if (selectedId == p.id) null else p.id },
+                    leadingIcon = {
+                        CharacterToken(
+                            character = viewModel.characterById(p.characterId),
+                            size = 26.dp,
+                            dimmed = !p.alive,
+                        )
+                    },
+                    label = { Text(p.name + if (!p.alive) " †" else "") },
+                )
+            }
+        }
+        val selected = candidates.find { it.id == selectedId }
+        if (selected != null) {
+            FilledTonalButton(
+                onClick = {
+                    viewModel.update { s -> action(s, selected) }
+                    selectedId = null
+                },
+            ) { Text(confirmLabel(selected)) }
         }
     }
 }
@@ -425,6 +562,8 @@ private fun StepDetailPanel(
                 label = { Text("Show bluffs full-screen") },
             )
         }
+
+        QuickResolutions(viewModel, state, step)
 
         if (InfoCalc.supports(step.id)) {
             val holderId = step.playerIds.firstOrNull()
