@@ -105,26 +105,35 @@ fun GrimoireScreen(
             // Candlelit table: a warm vignette pooling at the centre of the
             // circle, and a faint gold ring the seats appear to rest on.
             .drawBehind {
-                val radius = kotlin.math.min(this.size.width, this.size.height) / 2f
+                val w = this.size.width
+                val h = this.size.height
                 drawRect(
                     Brush.radialGradient(
                         colors = listOf(Twilight, NightSky),
                         center = center,
-                        radius = radius * 1.4f,
+                        radius = kotlin.math.max(w, h) / 1.4f,
                     ),
                 )
-                drawCircle(
-                    color = AgedGold.copy(alpha = 0.10f),
-                    radius = radius * 0.78f,
-                    center = center,
-                    style = Stroke(width = 2.dp.toPx()),
-                )
-                drawCircle(
-                    color = AgedGold.copy(alpha = 0.05f),
-                    radius = radius * 0.5f,
-                    center = center,
-                    style = Stroke(width = 1.dp.toPx()),
-                )
+                // The decorative ring follows the SAME ellipse the seats
+                // sit on, so the two never disagree.
+                val childMax = SeatGeometry.childMax(state.players.size.coerceAtLeast(1), w.toInt(), h.toInt())
+                val inset = childMax / 2f + 8.dp.toPx()
+                val rx = w / 2f - inset
+                val ry = h / 2f - inset
+                if (rx > 0 && ry > 0) {
+                    drawOval(
+                        color = AgedGold.copy(alpha = 0.12f),
+                        topLeft = androidx.compose.ui.geometry.Offset(center.x - rx, center.y - ry),
+                        size = androidx.compose.ui.geometry.Size(rx * 2, ry * 2),
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                    drawOval(
+                        color = AgedGold.copy(alpha = 0.05f),
+                        topLeft = androidx.compose.ui.geometry.Offset(center.x - rx * 0.55f, center.y - ry * 0.55f),
+                        size = androidx.compose.ui.geometry.Size(rx * 1.1f, ry * 1.1f),
+                        style = Stroke(width = 1.dp.toPx()),
+                    )
+                }
             }
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
@@ -264,21 +273,18 @@ fun CircleLayout(
             return@Layout layout(width, height) {}
         }
 
-        // Child size scales down as the circle fills up.
-        val childMax = when {
-            count <= 8 -> (min(width, height) / 3.5f).toInt()
-            count <= 12 -> (min(width, height) / 4.4f).toInt()
-            else -> (min(width, height) / 5.4f).toInt()
-        }
+        val childMax = SeatGeometry.childMax(count, width, height)
         val childConstraints = Constraints(maxWidth = childMax, maxHeight = childMax * 2)
         val placeables = measurables.map { it.measure(childConstraints) }
 
-        val radiusX = width / 2f - childMax / 2f - 8.dp.toPx()
-        val radiusY = height / 2f - childMax / 2f - 8.dp.toPx()
+        val inset = childMax / 2f + 8.dp.toPx()
+        val radiusX = width / 2f - inset
+        val radiusY = height / 2f - inset
+        val angles = SeatGeometry.equalArcAngles(count, radiusX, radiusY)
 
         layout(width, height) {
             placeables.forEachIndexed { index, placeable ->
-                val angle = -Math.PI / 2 + 2 * Math.PI * index / count
+                val angle = angles[index]
                 val cx = width / 2f + radiusX * cos(angle).toFloat()
                 val cy = height / 2f + radiusY * sin(angle).toFloat()
                 placeable.place(
@@ -287,6 +293,47 @@ fun CircleLayout(
                 )
             }
         }
+    }
+}
+
+/**
+ * Shared seat-ring geometry: the layout and the decorative background use
+ * the SAME ellipse, and seats are spread by equal ARC LENGTH so they don't
+ * bunch at the flat top and bottom of a tall screen.
+ */
+object SeatGeometry {
+
+    fun childMax(count: Int, width: Int, height: Int): Int = when {
+        count <= 8 -> (min(width, height) / 3.5f).toInt()
+        count <= 12 -> (min(width, height) / 4.4f).toInt()
+        else -> (min(width, height) / 5.4f).toInt()
+    }
+
+    /**
+     * [count] angles starting at 12 o'clock, clockwise, spaced so the
+     * distance travelled ALONG the ellipse between neighbours is equal.
+     */
+    fun equalArcAngles(count: Int, radiusX: Float, radiusY: Float): List<Double> {
+        if (count <= 0) return emptyList()
+        val samples = 1440
+        val step = 2 * Math.PI / samples
+        // Cumulative arc length from the top of the ellipse.
+        val cumulative = DoubleArray(samples + 1)
+        for (i in 1..samples) {
+            val t = -Math.PI / 2 + step * (i - 0.5)
+            val dx = -radiusX * kotlin.math.sin(t)
+            val dy = radiusY * kotlin.math.cos(t)
+            cumulative[i] = cumulative[i - 1] + kotlin.math.sqrt(dx * dx + dy * dy) * step
+        }
+        val total = cumulative[samples]
+        val angles = ArrayList<Double>(count)
+        var cursor = 0
+        for (k in 0 until count) {
+            val target = total * k / count
+            while (cursor < samples && cumulative[cursor + 1] < target) cursor++
+            angles.add(-Math.PI / 2 + step * cursor)
+        }
+        return angles
     }
 }
 
@@ -392,11 +439,18 @@ private fun SeatView(
                 }
             }
             if (impaired) {
-                Text(
-                    "🧪",
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                )
+                // Drawn badge, not an emoji: a small poison-green dot.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF4C7A3D))
+                        .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("!", style = MaterialTheme.typography.labelSmall, color = Color.White)
+                }
             }
             if (wakeNumber != null && player.alive) {
                 Box(

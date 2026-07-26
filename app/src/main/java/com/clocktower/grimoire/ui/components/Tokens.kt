@@ -92,11 +92,12 @@ fun CharacterToken(
                     modifier = Modifier.size(size * 0.8f),
                 )
             } else {
+                // No art available: a serif monogram, never an emoji.
                 Text(
-                    text = character?.let { characterGlyphs[it.id] ?: tokenMonogram(it.name) } ?: "?",
+                    text = character?.let { tokenMonogram(it.name) } ?: "?",
                     fontFamily = FontFamily.Serif,
                     fontWeight = FontWeight.Bold,
-                    fontSize = (size.value / 2.4f).sp,
+                    fontSize = (size.value / 2.8f).sp,
                     color = Color(0xFF241A38).copy(alpha = if (dimmed) 0.4f else 1f),
                 )
             }

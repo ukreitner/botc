@@ -42,8 +42,45 @@ for (const file of fs.readdirSync(iconDir)) {
   found.add(id); copied++;
 }
 const missing = [...ids].filter(id => !found.has(id));
-console.log(`Installed ${copied} icons to ${dest}`);
+console.log(`Installed ${copied} icons from the bundle`);
+fs.writeFileSync(path.join(dest, '.missing'), missing.join('\n'));
+EOF
+
+# Second pass: newer characters absent from the bundle come straight from
+# the official wiki's stable file redirect.
+MISSING_FILE="$DEST/.missing"
+if [ -s "$MISSING_FILE" ]; then
+  echo "Fetching remaining icons from the wiki..."
+  while IFS= read -r id; do
+    [ -z "$id" ] && continue
+    for candidate in "Icon_${id}.png" "Icon_${id}.webp"; do
+      url="https://wiki.bloodontheclocktower.com/Special:FilePath/${candidate}"
+      out="$WORK/wiki-$id"
+      if curl -sSL --max-time 30 -o "$out" "$url" 2>/dev/null; then
+        # Accept only real image payloads (PNG or WEBP magic bytes).
+        magic=$(head -c 4 "$out" | od -An -tx1 | tr -d ' \n')
+        if [ "${magic:0:8}" = "89504e47" ] || [ "${magic:0:8}" = "52494646" ]; then
+          ext=".png"
+          [ "${magic:0:8}" = "52494646" ] && ext=".webp"
+          cp "$out" "$DEST/${id}${ext}"
+          echo "  wiki: $id"
+          break
+        fi
+      fi
+    done
+  done < "$MISSING_FILE"
+fi
+rm -f "$MISSING_FILE"
+
+TOTAL=$(ls "$DEST" | wc -l)
+node - "$DEST" "$ROOT/engine/src/main/resources/botc/data/characters.json" <<'EOF'
+const fs = require('fs');
+const [dest, charactersPath] = process.argv.slice(2);
+const ids = JSON.parse(fs.readFileSync(charactersPath, 'utf8')).map(c => c.id);
+const have = new Set(fs.readdirSync(dest).map(f => f.replace(/\.(png|webp)$/, '')));
+const missing = ids.filter(id => !have.has(id));
+console.log(`Total icons installed: ${have.size} of ${ids.length}`);
 if (missing.length) {
-  console.log(`No icon for ${missing.length} ids (emoji fallback will be used): ${missing.join(', ')}`);
+  console.log(`Still missing (monogram fallback): ${missing.join(', ')}`);
 }
 EOF
