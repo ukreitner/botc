@@ -22,6 +22,8 @@ import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.screens.GameShell
 import com.clocktower.grimoire.ui.screens.HomeScreen
 import com.clocktower.grimoire.ui.screens.LibraryScreen
+import com.clocktower.grimoire.ui.screens.NotesScreen
+import com.clocktower.grimoire.ui.screens.NotesSetupScreen
 import com.clocktower.grimoire.ui.screens.SetupScreen
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.GrimoireTheme
@@ -45,12 +47,15 @@ private object Routes {
     const val SETUP = "setup"
     const val GAME = "game"
     const val LIBRARY = "library"
+    const val NOTES_SETUP = "notes_setup"
+    const val NOTES = "notes"
 }
 
 @Composable
 private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
     val nav = rememberNavController()
     val game by viewModel.game.collectAsState()
+    val notes by viewModel.notes.collectAsState()
     val ready by viewModel.ready.collectAsState()
 
     // Hold rendering until the saved game has been read, so a process-death
@@ -66,10 +71,14 @@ private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
         composable(Routes.HOME) {
             HomeScreen(
                 game = game,
+                notes = notes,
                 onResume = { nav.navigate(Routes.GAME) },
                 onNewGame = { nav.navigate(Routes.SETUP) },
+                onResumeNotes = { nav.navigate(Routes.NOTES) },
+                onNewNotes = { nav.navigate(Routes.NOTES_SETUP) },
                 onLibrary = { nav.navigate(Routes.LIBRARY) },
                 onEndGame = { viewModel.endGame() },
+                onEndNotes = { viewModel.endNotes() },
             )
         }
         composable(Routes.SETUP) {
@@ -107,6 +116,32 @@ private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
                 viewModel = viewModel,
                 onBack = { nav.popBackStack() },
             )
+        }
+        composable(Routes.NOTES_SETUP) {
+            NotesSetupScreen(
+                viewModel = viewModel,
+                onStarted = {
+                    nav.navigate(Routes.NOTES) {
+                        popUpTo(Routes.HOME)
+                    }
+                },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.NOTES) {
+            val state = notes
+            if (state == null) {
+                // Session ended elsewhere; fall back home.
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No notes session", color = AgedGold)
+                }
+            } else {
+                NotesScreen(
+                    viewModel = viewModel,
+                    state = state,
+                    onExit = { nav.popBackStack(Routes.HOME, inclusive = false) },
+                )
+            }
         }
     }
 }

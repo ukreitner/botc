@@ -9,6 +9,8 @@ import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Nomination
+import com.clocktower.engine.NotesActions
+import com.clocktower.engine.NotesState
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Script
 import com.clocktower.engine.ScriptLink
@@ -49,13 +51,28 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready
 
+    // ---- Player-notes session (independent of the storyteller game) -----
+
+    private val _notes = MutableStateFlow<NotesState?>(null)
+    val notes: StateFlow<NotesState?> = _notes
+
+    private val notesUndoStack = ArrayDeque<NotesState>()
+    private val notesRedoStack = ArrayDeque<NotesState>()
+    private val _canUndoNotes = MutableStateFlow(false)
+    val canUndoNotes: StateFlow<Boolean> = _canUndoNotes
+    private val _canRedoNotes = MutableStateFlow(false)
+    val canRedoNotes: StateFlow<Boolean> = _canRedoNotes
+
     init {
         viewModelScope.launch {
             // Adopt the persisted game once at startup; afterwards this
             // ViewModel is the source of truth and only writes back.
-            val saved = app.dataStore.data.first().game
-            if (_game.value == null && saved != null) {
-                _game.value = saved
+            val saved = app.dataStore.data.first()
+            if (_game.value == null && saved.game != null) {
+                _game.value = saved.game
+            }
+            if (_notes.value == null && saved.notes != null) {
+                _notes.value = saved.notes
             }
             _ready.value = true
         }
@@ -113,6 +130,65 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             app.dataStore.updateData { it.copy(game = stamped) }
         }
+    }
+
+    // ---- Player-notes lifecycle ----------------------------------------
+
+    fun startNotes(script: Script, seatNames: List<String>) {
+        notesUndoStack.clear()
+        notesRedoStack.clear()
+        setNotes(NotesActions.newNotes(script, seatNames))
+    }
+
+    fun endNotes() {
+        notesUndoStack.clear()
+        notesRedoStack.clear()
+        _notes.value = null
+        _canUndoNotes.value = false
+        _canRedoNotes.value = false
+        viewModelScope.launch {
+            app.dataStore.updateData { it.copy(notes = null) }
+        }
+    }
+
+    fun updateNotes(transform: (NotesState) -> NotesState) {
+        val current = _notes.value ?: return
+        val next = transform(current)
+        if (next == current) return
+        notesUndoStack.addLast(current)
+        if (notesUndoStack.size > MAX_HISTORY) notesUndoStack.removeFirst()
+        notesRedoStack.clear()
+        setNotes(next)
+    }
+
+    fun undoNotes() {
+        val current = _notes.value ?: return
+        val previous = notesUndoStack.removeLastOrNull() ?: return
+        notesRedoStack.addLast(current)
+        setNotes(previous)
+    }
+
+    fun redoNotes() {
+        val current = _notes.value ?: return
+        val next = notesRedoStack.removeLastOrNull() ?: return
+        notesUndoStack.addLast(current)
+        setNotes(next)
+    }
+
+    private fun setNotes(state: NotesState) {
+        val stamped = state.copy(updatedAt = System.currentTimeMillis())
+        _notes.value = stamped
+        _canUndoNotes.value = notesUndoStack.isNotEmpty()
+        _canRedoNotes.value = notesRedoStack.isNotEmpty()
+        viewModelScope.launch {
+            app.dataStore.updateData { it.copy(notes = stamped) }
+        }
+    }
+
+    /** Character lookup for notes mode (game may not exist). */
+    fun notesCharacterById(id: String?): Character? = id?.let { charId ->
+        _notes.value?.script?.customCharacters?.find { it.id == charId }
+            ?: gameData.character(charId)
     }
 
     // ---- Convenience wrappers over GameActions --------------------------

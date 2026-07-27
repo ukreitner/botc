@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.GameState
+import com.clocktower.engine.NotesState
 import com.clocktower.engine.Phase
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.FadedInk
@@ -35,12 +36,17 @@ import com.clocktower.grimoire.ui.theme.FadedInk
 @Composable
 fun HomeScreen(
     game: GameState?,
+    notes: NotesState? = null,
     onResume: () -> Unit,
     onNewGame: () -> Unit,
+    onResumeNotes: () -> Unit = {},
+    onNewNotes: () -> Unit = {},
     onLibrary: () -> Unit,
     onEndGame: () -> Unit,
+    onEndNotes: () -> Unit = {},
 ) {
     var confirmEnd by rememberSaveable { mutableStateOf(false) }
+    var confirmEndNotes by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -101,16 +107,43 @@ fun HomeScreen(
         }
 
         ElevatedButton(onClick = onNewGame, modifier = Modifier.fillMaxWidth()) {
-            Text("New game", modifier = Modifier.padding(vertical = 6.dp))
+            Text("New game (storyteller)", modifier = Modifier.padding(vertical = 6.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+
+        if (notes != null) {
+            FilledTonalButton(onClick = onResumeNotes, modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                ) {
+                    Text("Resume player notes", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "${notes.script.name} · ${notes.seats.size} seats · day ${notes.day}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        } else {
+            ElevatedButton(onClick = onNewNotes, modifier = Modifier.fillMaxWidth()) {
+                Text("Take notes (player)", modifier = Modifier.padding(vertical = 6.dp))
+            }
         }
         Spacer(Modifier.height(12.dp))
         OutlinedButton(onClick = onLibrary, modifier = Modifier.fillMaxWidth()) {
             Text("Character library & night order", modifier = Modifier.padding(vertical = 6.dp))
         }
-        if (game != null) {
+        if (game != null || notes != null) {
             Spacer(Modifier.height(24.dp))
+        }
+        if (game != null) {
             TextButton(onClick = { confirmEnd = true }) {
                 Text("End current game", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        if (notes != null) {
+            TextButton(onClick = { confirmEndNotes = true }) {
+                Text("End notes session", color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -124,6 +157,17 @@ fun HomeScreen(
                 FilledTonalButton(onClick = { confirmEnd = false; onEndGame() }) { Text("End game") }
             },
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep playing") } },
+        )
+    }
+    if (confirmEndNotes) {
+        AlertDialog(
+            onDismissRequest = { confirmEndNotes = false },
+            title = { Text("End notes session?") },
+            text = { Text("This clears your player notes. There is no undo across sessions.") },
+            confirmButton = {
+                FilledTonalButton(onClick = { confirmEndNotes = false; onEndNotes() }) { Text("End notes") }
+            },
+            dismissButton = { TextButton(onClick = { confirmEndNotes = false }) { Text("Keep them") } },
         )
     }
 }
