@@ -41,7 +41,11 @@ for (const file of fs.readdirSync(iconDir)) {
   fs.copyFileSync(path.join(iconDir, file), path.join(dest, id + ext));
   found.add(id); copied++;
 }
-const missing = [...ids].filter(id => !found.has(id));
+// Anything still without a file on disk (the destination may already
+// hold wiki icons restored from the CI cache) goes to the wiki pass.
+const missing = [...ids].filter(id =>
+  !fs.existsSync(path.join(dest, id + '.png')) &&
+  !fs.existsSync(path.join(dest, id + '.webp')));
 console.log(`Installed ${copied} icons from the bundle`);
 fs.writeFileSync(path.join(dest, '.missing'), missing.join('\n'));
 EOF
@@ -51,12 +55,14 @@ EOF
 MISSING_FILE="$DEST/.missing"
 if [ -s "$MISSING_FILE" ]; then
   echo "Fetching remaining icons from the wiki..."
+  consecutive_misses=0
   while IFS= read -r id; do
     [ -z "$id" ] && continue
+    got=""
     for candidate in "Icon_${id}.png" "Icon_${id}.webp"; do
       url="https://wiki.bloodontheclocktower.com/Special:FilePath/${candidate}"
       out="$WORK/wiki-$id"
-      if curl -sSL --max-time 30 -o "$out" "$url" 2>/dev/null; then
+      if curl -sSLf --max-time 15 --retry 1 --retry-delay 2 -o "$out" "$url" 2>/dev/null; then
         # Accept only real image payloads (PNG or WEBP magic bytes).
         magic=$(head -c 4 "$out" | od -An -tx1 | tr -d ' \n')
         if [ "${magic:0:8}" = "89504e47" ] || [ "${magic:0:8}" = "52494646" ]; then
@@ -64,10 +70,21 @@ if [ -s "$MISSING_FILE" ]; then
           [ "${magic:0:8}" = "52494646" ] && ext=".webp"
           cp "$out" "$DEST/${id}${ext}"
           echo "  wiki: $id"
+          got=1
           break
         fi
       fi
     done
+    if [ -n "$got" ]; then
+      consecutive_misses=0
+    else
+      consecutive_misses=$((consecutive_misses + 1))
+      if [ "$consecutive_misses" -ge 4 ]; then
+        echo "Wiki looks unreachable ($consecutive_misses straight misses) — stopping this pass." >&2
+        echo "Previously cached art (restored by CI) still applies; the rest use monograms." >&2
+        break
+      fi
+    fi
   done < "$MISSING_FILE"
 fi
 rm -f "$MISSING_FILE"

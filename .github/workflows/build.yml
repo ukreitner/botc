@@ -43,8 +43,24 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
+      # The wiki fallback for newer characters is flaky; keep every icon we
+      # have ever fetched in the actions cache so a bad wiki day can never
+      # regress the APK's art. Unique key per run + prefix restore = the
+      # newest cache wins and the set only ever grows.
+      - name: Restore cached character art
+        uses: actions/cache/restore@v4
+        with:
+          path: app/src/main/assets/icons
+          key: icons-v1-${{ github.run_id }}
+          restore-keys: icons-v1-
       - name: Fetch official character art
         run: bash tools/fetch-icons.sh
+      - name: Save character art cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: app/src/main/assets/icons
+          key: icons-v1-${{ github.run_id }}
       # ubuntu-latest runners ship with the Android SDK preinstalled and
       # licenses accepted; AGP fetches the exact platform it needs.
       - run: ./gradlew :app:assembleDebug
