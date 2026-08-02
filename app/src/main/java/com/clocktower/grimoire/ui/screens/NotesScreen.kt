@@ -111,6 +111,7 @@ fun NotesScreen(
     var showMatrix by rememberSaveable { mutableStateOf(false) }
     var showTimeline by rememberSaveable { mutableStateOf(false) }
     var showMe by rememberSaveable { mutableStateOf(false) }
+    var showScript by rememberSaveable { mutableStateOf(false) }
     val canUndo by viewModel.canUndoNotes.collectAsState()
     val canRedo by viewModel.canRedoNotes.collectAsState()
 
@@ -311,6 +312,7 @@ fun NotesScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    AssistChip(onClick = { showScript = true }, label = { Text("Script") })
                     AssistChip(onClick = { showMatrix = true }, label = { Text("Claim matrix") })
                     AssistChip(onClick = { showTimeline = true }, label = { Text("Timeline") })
                     AssistChip(onClick = { showMe = true }, label = { Text("Me") })
@@ -341,6 +343,106 @@ fun NotesScreen(
     }
     if (showMe) {
         MeSheet(viewModel, state, onDismiss = { showMe = false })
+    }
+    if (showScript) {
+        ScriptRefSheet(viewModel, state, onDismiss = { showScript = false })
+    }
+}
+
+/**
+ * The script, always handy: every character with its full ability text,
+ * grouped by team, searchable — the paper sheet you'd normally keep in
+ * your lap, with your claim/suspect markers layered on.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScriptRefSheet(
+    viewModel: GameViewModel,
+    state: NotesState,
+    onDismiss: () -> Unit,
+) {
+    var search by rememberSaveable { mutableStateOf("") }
+    val claimants = NotesActions.claimants(state)
+    val suspectedBy = state.seats
+        .flatMap { seat -> seat.suspectIds.map { it to seat.name } }
+        .groupBy({ it.first }, { it.second })
+    val characters = remember(state.script, search) {
+        val needle = search.trim()
+        viewModel.gameData.resolve(state.script)
+            .filter { needle.isEmpty() || it.name.contains(needle, ignoreCase = true) || it.ability.contains(needle, ignoreCase = true) }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item {
+                Text(state.script.name, style = MaterialTheme.typography.headlineSmall, color = AgedGold)
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    placeholder = { Text("Search name or ability…") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                )
+            }
+            for (team in listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON, Team.TRAVELLER, Team.FABLED)) {
+                val teamCharacters = characters.filter { it.team == team }
+                if (teamCharacters.isEmpty()) continue
+                item(key = "team-${team.name}") {
+                    Text(
+                        team.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = team.color,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                for (character in teamCharacters) {
+                    item(key = character.id) {
+                        Row(
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            CharacterToken(character = character, size = 40.dp)
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        character.name,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    claimants[character.id]?.let { who ->
+                                        Text(
+                                            "  claimed: ${who.joinToString { it.name }}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (who.size > 1) EmberRed else AgedGold,
+                                        )
+                                    }
+                                }
+                                Text(
+                                    character.ability,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                suspectedBy[character.id]?.let { who ->
+                                    Text(
+                                        "my suspects: ${who.joinToString()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = EmberRed.copy(alpha = 0.85f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -461,6 +563,13 @@ private fun NoteSeatSheet(
                     }
                     TextButton(onClick = { viewModel.updateNotes { NotesActions.moveSeat(it, seat.id, -1) } }) { Text("◀") }
                     TextButton(onClick = { viewModel.updateNotes { NotesActions.moveSeat(it, seat.id, +1) } }) { Text("▶") }
+                }
+                viewModel.notesCharacterById(seat.currentClaimId)?.let { claim ->
+                    Text(
+                        claim.ability,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             item {

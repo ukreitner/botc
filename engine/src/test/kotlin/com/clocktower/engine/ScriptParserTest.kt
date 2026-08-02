@@ -102,6 +102,42 @@ class SnakeCharmerTest {
     }
 }
 
+class EphemeralReminderTest {
+    @kotlin.test.Test
+    fun `night-scoped tokens clear at dawn and day-scoped tokens at dusk`() {
+        val data = GameData.loadDefault()
+        val tb = data.builtInScripts().first { it.id == "tb" }
+        var state = GameActions.newGame(tb, listOf("A", "B", "C", "D", "E"))
+        state = GameActions.advancePhase(state) // night 1
+        state = GameActions.addReminder(state, 0, PlacedReminder("monk", "Safe"))
+        state = GameActions.addReminder(state, 0, PlacedReminder("poisoner", "Poisoned"))
+        state = GameActions.addReminder(state, 0, PlacedReminder("washerwoman", "Townsfolk"))
+
+        state = GameActions.advancePhase(state) // dawn -> day 1
+        val labelsAtDay = state.player(0)!!.reminders.map { it.label }
+        kotlin.test.assertTrue("Safe" !in labelsAtDay, "Monk Safe swept at dawn")
+        kotlin.test.assertTrue("Poisoned" in labelsAtDay, "Poison lasts through the day")
+        kotlin.test.assertTrue("Townsfolk" in labelsAtDay, "info tokens untouched")
+
+        state = GameActions.advancePhase(state) // dusk -> night 2
+        val labelsAtNight = state.player(0)!!.reminders.map { it.label }
+        kotlin.test.assertTrue("Poisoned" !in labelsAtNight, "Poisoner token swept at dusk")
+        kotlin.test.assertTrue("Townsfolk" in labelsAtNight)
+    }
+
+    @kotlin.test.Test
+    fun `permanent poison sources are not swept`() {
+        val data = GameData.loadDefault()
+        val sv = data.builtInScripts().first { it.id == "sv" }
+        var state = GameActions.newGame(sv, listOf("A", "B", "C", "D", "E"))
+        state = GameActions.advancePhase(state)
+        state = GameActions.addReminder(state, 0, PlacedReminder("snakecharmer", "Poisoned"))
+        state = GameActions.advancePhase(state)
+        state = GameActions.advancePhase(state)
+        kotlin.test.assertTrue(state.player(0)!!.reminders.any { it.label == "Poisoned" })
+    }
+}
+
 class StarPassTest {
     @kotlin.test.Test
     fun `imp star pass kills the imp and crowns the heir`() {

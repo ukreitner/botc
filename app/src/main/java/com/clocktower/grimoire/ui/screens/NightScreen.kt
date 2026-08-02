@@ -41,9 +41,11 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
+import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
 import com.clocktower.engine.InfoCalc
+import com.clocktower.engine.StatusEffects
 import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
@@ -364,19 +366,8 @@ private fun QuickResolutions(
                 confirmLabel = { "Swap with ${it.name} & poison" },
             ) { s, target -> GameActions.snakeCharmerSwap(s, holder.id, target.id) }
         }
-        "imp" -> if (holder.alive) {
-            ResolutionPicker(
-                key = "imp-${state.cycle}",
-                title = "Star pass — the Imp chose themself. Pick who becomes the new Imp " +
-                    "(usually a Minion; a Scarlet Woman must catch it).",
-                candidates = state.players
-                    .filter { it.alive && it.id != holder.id }
-                    .sortedByDescending { teamOf(it) == Team.MINION },
-                viewModel = viewModel,
-                confirmLabel = { "${holder.name} dies → ${it.name} is the Imp" },
-            ) { s, target -> GameActions.starPass(s, holder.id, target.id, viewModel::characterById) }
-        }
         "fanggu" -> if (holder.alive) {
+            DemonKillPanel(viewModel, state, step.id, holder)
             ResolutionPicker(
                 key = "fanggu-${state.cycle}",
                 title = "Fang Gu jump (once per game) — chose an Outsider? The Fang Gu dies and " +
@@ -408,6 +399,125 @@ private fun QuickResolutions(
                     val revived = GameActions.resurrect(s, target.id)
                     GameActions.placeExclusiveReminder(revived, holder.id, PlacedReminder("professor", "No ability"))
                 }
+            }
+        }
+        else -> {
+            val character = viewModel.characterById(step.id)
+            if (character?.team == Team.DEMON && holder.alive) {
+                DemonKillPanel(viewModel, state, step.id, holder)
+            }
+        }
+    }
+}
+
+/**
+ * The nightly demon kill, resolved in place: pick the chosen player, see
+ * every protection/trigger that applies, then confirm the death (or not).
+ * The Imp choosing themself flows straight into the star pass.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DemonKillPanel(
+    viewModel: GameViewModel,
+    state: GameState,
+    demonId: String,
+    holder: Player,
+) {
+    var targetId by rememberSaveable("$demonId-${state.cycle}") { mutableStateOf<Long?>(null) }
+    fun teamOf(p: Player): Team? = viewModel.characterById(p.characterId)?.team
+
+    Text(
+        text = "⚔ Demon kill — who did ${holder.name} choose?",
+        style = MaterialTheme.typography.labelLarge,
+        color = AgedGold,
+    )
+    if (StatusEffects.isImpaired(state, viewModel::characterById, holder)) {
+        Text(
+            "⚠ The Demon is drunk/poisoned — the attack fails (choose 'No kill').",
+            style = MaterialTheme.typography.bodySmall,
+            color = EmberRed,
+        )
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        val candidates = state.players.sortedWith(
+            compareByDescending<Player> { it.alive }.thenBy { it.id == holder.id },
+        )
+        for (p in candidates) {
+            FilterChip(
+                selected = targetId == p.id,
+                onClick = { targetId = if (targetId == p.id) null else p.id },
+                leadingIcon = {
+                    CharacterToken(
+                        character = viewModel.characterById(p.characterId),
+                        size = 26.dp,
+                        dimmed = !p.alive,
+                    )
+                },
+                label = {
+                    Text(
+                        when {
+                            p.id == holder.id -> "${p.name} (self)"
+                            !p.alive -> "${p.name} †"
+                            else -> p.name
+                        },
+                    )
+                },
+            )
+        }
+    }
+
+    val target = targetId?.let { state.player(it) }
+    if (target != null) {
+        for (note in StatusEffects.deathNotes(state, viewModel::characterById, target.id)) {
+            Text("⚠ $note", style = MaterialTheme.typography.bodySmall, color = EmberRed)
+        }
+        if (target.id == holder.id && demonId == "imp") {
+            Text(
+                "Star pass — the Imp dies. Tap who becomes the new Imp " +
+                    "(a Minion; the Scarlet Woman catches it first if able):",
+                style = MaterialTheme.typography.labelLarge,
+                color = AgedGold,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                val heirs = state.players
+                    .filter { it.alive && it.id != holder.id }
+                    .sortedWith(
+                        compareByDescending<Player> { it.characterId == "scarletwoman" }
+                            .thenByDescending { teamOf(it) == Team.MINION },
+                    )
+                for (heir in heirs) {
+                    AssistChip(
+                        onClick = {
+                            viewModel.update { s ->
+                                GameActions.starPass(s, holder.id, heir.id, viewModel::characterById)
+                            }
+                            targetId = null
+                        },
+                        leadingIcon = {
+                            CharacterToken(character = viewModel.characterById(heir.characterId), size = 26.dp)
+                        },
+                        label = { Text("${heir.name} becomes the Imp") },
+                    )
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(
+                    enabled = target.alive,
+                    onClick = {
+                        viewModel.update { s ->
+                            GameActions.kill(s, target.id, DeathCause.DEMON, viewModel::characterById)
+                        }
+                        targetId = null
+                    },
+                ) { Text("☠ ${target.name} dies") }
+                TextButton(onClick = { targetId = null }) { Text("No kill") }
             }
         }
     }
