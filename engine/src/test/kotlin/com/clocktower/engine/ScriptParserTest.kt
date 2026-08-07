@@ -102,6 +102,34 @@ class SnakeCharmerTest {
     }
 }
 
+class NightGuideTest {
+    @kotlin.test.Test
+    fun `guide covers every night actor with valid shows`() {
+        val data = GameData.loadDefault()
+        kotlin.test.assertTrue(NightGuide.entries.size >= 110, "loaded ${NightGuide.entries.size} entries")
+        for ((id, entry) in NightGuide.entries) {
+            kotlin.test.assertTrue(data.character(id) != null, "unknown character $id")
+            for (night in listOfNotNull(entry.first, entry.other)) {
+                kotlin.test.assertTrue(night.instructions.isNotBlank(), "$id: blank instructions")
+                for (show in night.shows) {
+                    kotlin.test.assertTrue(show.kind in NightGuide.VALID_KINDS, "$id: kind ${show.kind}")
+                    kotlin.test.assertTrue(show.token in NightGuide.VALID_TOKENS, "$id: token ${show.token}")
+                }
+            }
+        }
+        // The canonical example: the Pixie's madness card is a pickable token.
+        val pixie = NightGuide.forStep("pixie", isFirstNight = true)
+        kotlin.test.assertTrue(pixie != null && pixie.shows.any { it.kind == "token" && it.token == "pick" })
+        // Every character on the canonical wake orders has a guide entry.
+        val orders = data.firstNightOrder + data.otherNightOrder
+        val missing = orders
+            .filter { it !in NightMarkers.all }
+            .mapNotNull { data.character(it)?.id }
+            .filter { it !in NightGuide.entries }
+        kotlin.test.assertTrue(missing.isEmpty(), "no guide for: $missing")
+    }
+}
+
 class EphemeralReminderTest {
     @kotlin.test.Test
     fun `night-scoped tokens clear at dawn and day-scoped tokens at dusk`() {

@@ -427,6 +427,12 @@ private fun BagStage(
                     for (issue in issues) {
                         Text(issue, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
+                    Text(
+                        "Running a Fabled or house rule that changes the counts? " +
+                            "You can still deal this bag with the override button below.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }
@@ -479,6 +485,13 @@ private fun BagStage(
                     enabled = selected.size == playerCount && issues.isEmpty(),
                     onClick = { onStart(true, selected.map { it.id }) },
                 ) { Text("Deal randomly & start") }
+                if (selected.size == playerCount && issues.isNotEmpty()) {
+                    // Fabled (Sentinel...) and house rules legitimately bend the
+                    // distribution — never let the checker block a real game.
+                    OutlinedButton(onClick = { onStart(true, selected.map { it.id }) }) {
+                        Text("Deal anyway (I know what I'm doing)")
+                    }
+                }
                 OutlinedButton(onClick = { onStart(false, emptyList()) }) {
                     Text("Start empty (assign in grimoire)")
                 }

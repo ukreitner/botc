@@ -24,6 +24,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +47,8 @@ import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
 import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.StatusEffects
+import com.clocktower.engine.GuideShow
+import com.clocktower.engine.NightGuide
 import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
@@ -337,6 +340,90 @@ private fun NightToolTray(
             }
         }
     }
+}
+
+/**
+ * Prepares a guide show card: the text is freely editable and, for
+ * "pick" token cards, any script character can be chosen — so Pixie
+ * madness, Cerenovus commands etc. are two taps, never typing from scratch.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GuideShowDialog(
+    viewModel: GameViewModel,
+    state: GameState,
+    stepCharacterId: String,
+    show: GuideShow,
+    onShow: (ShowCard) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by rememberSaveable(show.label) { mutableStateOf(show.text) }
+    var tokenId by rememberSaveable(show.label) {
+        mutableStateOf(if (show.token == "self") stepCharacterId else null)
+    }
+    var search by rememberSaveable(show.label) { mutableStateOf("") }
+    val needsToken = show.kind == "token"
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(show.label) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Text shown full-screen — edit freely") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (needsToken && show.token == "pick") {
+                    Text(
+                        "Token to show under the text:",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        placeholder = { Text("Find a character…") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val candidates = viewModel.gameData.resolve(state.script)
+                        .filter { it.team != Team.FABLED }
+                        .filter { search.isBlank() || it.name.contains(search, ignoreCase = true) }
+                        .sortedBy { it.name }
+                        .take(24)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        for (c in candidates) {
+                            FilterChip(
+                                selected = tokenId == c.id,
+                                onClick = { tokenId = if (tokenId == c.id) null else c.id },
+                                leadingIcon = { CharacterToken(character = c, size = 24.dp) },
+                                label = { Text(c.name) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                enabled = text.isNotBlank() && (!needsToken || tokenId != null),
+                onClick = {
+                    onShow(
+                        if (needsToken) {
+                            ShowCard.CharacterCard(text, tokenId!!)
+                        } else {
+                            ShowCard.Message(text)
+                        },
+                    )
+                },
+            ) { Text("Show full-screen") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 /**
@@ -671,6 +758,50 @@ private fun StepDetailPanel(
                 onClick = { onShow(ShowCard.BluffsCard(state.demonBluffIds)) },
                 label = { Text("Show bluffs full-screen") },
             )
+        }
+
+        // The full how-to-run book for this character tonight, with
+        // prepared (and editable) full-screen cards.
+        val guide = NightGuide.forStep(step.id, state.cycle == 1)
+        if (guide != null) {
+            if (guide.instructions.isNotBlank() && guide.instructions != step.detail) {
+                Text(
+                    text = guide.instructions,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontStyle = FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (guide.shows.isNotEmpty()) {
+                var activeShow by remember { mutableStateOf<GuideShow?>(null) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (show in guide.shows) {
+                        AssistChip(
+                            onClick = {
+                                when (show.kind) {
+                                    "good" -> onShow(ShowCard.AlignmentCard(evil = false))
+                                    "evil" -> onShow(ShowCard.AlignmentCard(evil = true))
+                                    else -> activeShow = show
+                                }
+                            },
+                            label = { Text("📣 ${show.label}") },
+                        )
+                    }
+                }
+                activeShow?.let { show ->
+                    GuideShowDialog(
+                        viewModel = viewModel,
+                        state = state,
+                        stepCharacterId = step.id,
+                        show = show,
+                        onShow = {
+                            activeShow = null
+                            onShow(it)
+                        },
+                        onDismiss = { activeShow = null },
+                    )
+                }
+            }
         }
 
         QuickResolutions(viewModel, state, step)

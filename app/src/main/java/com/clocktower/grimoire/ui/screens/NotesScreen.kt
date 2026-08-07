@@ -43,6 +43,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -190,24 +193,44 @@ fun NotesScreen(
                         val start = from + Offset(unit.x * gap, unit.y * gap)
                         val end = to - Offset(unit.x * gap, unit.y * gap)
                         val color = LinkColors[link.kind] ?: AgedGold
-                        drawLine(
-                            color = color.copy(alpha = 0.8f),
-                            start = start,
-                            end = end,
-                            strokeWidth = 2.5.dp.toPx(),
+                        // Curve every line gently toward the table centre so
+                        // parallel accusations don't overlap into mush.
+                        val mid = Offset((start.x + end.x) / 2f, (start.y + end.y) / 2f)
+                        val ctrl = Offset(
+                            mid.x + (center.x - mid.x) * 0.30f,
+                            mid.y + (center.y - mid.y) * 0.30f,
+                        )
+                        val path = Path().apply {
+                            moveTo(start.x, start.y)
+                            quadraticBezierTo(ctrl.x, ctrl.y, end.x, end.y)
+                        }
+                        // Soft halo underneath, crisp line on top.
+                        drawPath(
+                            path,
+                            color = color.copy(alpha = 0.20f),
+                            style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round),
+                        )
+                        drawPath(
+                            path,
+                            color = color.copy(alpha = 0.90f),
+                            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
                         )
                         if (link.kind.directed) {
-                            val angle = atan2(unit.y, unit.x)
-                            val head = 9.dp.toPx()
-                            for (side in listOf(1f, -1f)) {
-                                val a = angle + side * 2.7f
-                                drawLine(
-                                    color = color,
-                                    start = end,
-                                    end = end + Offset(cos(a) * head, sin(a) * head),
-                                    strokeWidth = 2.5.dp.toPx(),
-                                )
+                            // Filled arrowhead aligned with the curve's end tangent.
+                            val tangent = Offset(end.x - ctrl.x, end.y - ctrl.y)
+                            val tLength = kotlin.math.hypot(tangent.x, tangent.y).coerceAtLeast(0.001f)
+                            val u = Offset(tangent.x / tLength, tangent.y / tLength)
+                            val n = Offset(-u.y, u.x)
+                            val headLength = 11.dp.toPx()
+                            val headWidth = 6.dp.toPx()
+                            val base = Offset(end.x - u.x * headLength, end.y - u.y * headLength)
+                            val arrow = Path().apply {
+                                moveTo(end.x, end.y)
+                                lineTo(base.x + n.x * headWidth, base.y + n.y * headWidth)
+                                lineTo(base.x - n.x * headWidth, base.y - n.y * headWidth)
+                                close()
                             }
+                            drawPath(arrow, color = color)
                         }
                     }
                 },
@@ -362,6 +385,7 @@ private fun ScriptRefSheet(
     onDismiss: () -> Unit,
 ) {
     var search by rememberSaveable { mutableStateOf("") }
+    var mode by rememberSaveable { mutableStateOf("abilities") }
     val claimants = NotesActions.claimants(state)
     val suspectedBy = state.seats
         .flatMap { seat -> seat.suspectIds.map { it to seat.name } }
@@ -382,6 +406,19 @@ private fun ScriptRefSheet(
         ) {
             item {
                 Text(state.script.name, style = MaterialTheme.typography.headlineSmall, color = AgedGold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for ((key, label) in listOf(
+                        "abilities" to "Abilities",
+                        "first" to "First night",
+                        "other" to "Other nights",
+                    )) {
+                        FilterChip(
+                            selected = mode == key,
+                            onClick = { mode = key },
+                            label = { Text(label) },
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = search,
                     onValueChange = { search = it },
@@ -391,6 +428,54 @@ private fun ScriptRefSheet(
                         .fillMaxWidth()
                         .padding(top = 6.dp),
                 )
+            }
+            if (mode != "abilities") {
+                val ordered = characters
+                    .filter { (if (mode == "first") it.firstNight else it.otherNight) > 0 }
+                    .sortedBy { if (mode == "first") it.firstNight else it.otherNight }
+                item {
+                    Text(
+                        "Who wakes when — deaths and info order are big clues.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                for ((index, character) in ordered.withIndex()) {
+                    item(key = "night-${character.id}") {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                "${index + 1}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = AgedGold,
+                                modifier = Modifier.width(26.dp),
+                            )
+                            CharacterToken(character = character, size = 36.dp)
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(character.name, style = MaterialTheme.typography.titleSmall, color = character.team.color)
+                                    claimants[character.id]?.let { who ->
+                                        Text(
+                                            "  ${who.joinToString { it.name }}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = AgedGold,
+                                        )
+                                    }
+                                }
+                                Text(
+                                    character.ability,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+                return@LazyColumn
             }
             for (team in listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON, Team.TRAVELLER, Team.FABLED)) {
                 val teamCharacters = characters.filter { it.team == team }

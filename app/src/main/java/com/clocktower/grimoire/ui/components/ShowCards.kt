@@ -304,7 +304,7 @@ fun ShowToolSheet(
             item {
                 Text("Character tokens", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Characters in play are first. Pick a phrase, then tap a symbol.",
+                    "Characters in play are first. Pick or type the phrase, then tap a token.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -312,7 +312,12 @@ fun ShowToolSheet(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    for (prefix in listOf("THIS PLAYER IS", "YOU ARE", "THIS CHARACTER SELECTED YOU")) {
+                    for (prefix in listOf(
+                        "THIS PLAYER IS",
+                        "YOU ARE",
+                        "THIS CHARACTER SELECTED YOU",
+                        "YOU ARE MAD THAT YOU ARE",
+                    )) {
                         FilterChip(
                             selected = characterPrefix == prefix,
                             onClick = { characterPrefix = prefix },
@@ -320,6 +325,15 @@ fun ShowToolSheet(
                         )
                     }
                 }
+                OutlinedTextField(
+                    value = characterPrefix,
+                    onValueChange = { characterPrefix = it },
+                    label = { Text("Text above the token — edit freely") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp),
+                )
                 OutlinedTextField(
                     value = characterSearch,
                     onValueChange = { characterSearch = it },

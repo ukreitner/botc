@@ -1,0 +1,1701 @@
+{
+ "chef": {
+  "first": {
+   "instructions": "Wake the Chef. Count the number of pairs of neighbouring evil players (an evil player sitting next to another evil player; three evil in a row is 2 pairs) and show that number with a finger signal (0, 1, 2, ...). Put the Chef back to sleep. If the Chef is drunk or poisoned, show a false number instead.",
+   "shows": []
+  }
+ },
+ "empath": {
+  "first": {
+   "instructions": "Wake the Empath. Show a finger signal (0, 1, or 2) for how many of their two alive neighbours are evil, skipping over dead players to find the nearest alive neighbour on each side. Put the Empath back to sleep. If the Empath is drunk or poisoned, show a false number instead.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Wake the Empath. Show a finger signal (0, 1, or 2) for how many of their two alive neighbours are evil, skipping over dead players to find the nearest alive neighbour on each side. Put the Empath back to sleep. If the Empath is drunk or poisoned, show a false number instead.",
+   "shows": []
+  }
+ },
+ "fortuneteller": {
+  "first": {
+   "instructions": "Before the game, secretly choose a good player as the Red Herring and mark them with the Red Herring reminder; they register as the Demon to the Fortune Teller all game. Wake the Fortune Teller; they point at any two players. Nod yes if either chosen player is the Demon or the Red Herring, otherwise shake your head no, then put them back to sleep. If the Fortune Teller is drunk or poisoned, you may answer falsely.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Wake the Fortune Teller; they point at any two players (dead players and themselves are allowed). Nod yes if either chosen player is the Demon or the Red Herring, otherwise shake your head no, then put them back to sleep. If the Fortune Teller is drunk or poisoned, you may answer falsely.",
+   "shows": []
+  }
+ },
+ "investigator": {
+  "first": {
+   "instructions": "Wake the Investigator. Show them the character token of a Minion that is in play, then point at two players: one who is that Minion and one decoy (mark them with the Minion and Wrong reminders). Put the Investigator back to sleep. If the Investigator is drunk or poisoned, you may show a Minion not in play or point at two wrong players.",
+   "shows": [
+    {
+     "label": "Show Minion token",
+     "kind": "token",
+     "token": "pick",
+     "text": "One of the 2 players I point to is this character"
+    }
+   ]
+  }
+ },
+ "librarian": {
+  "first": {
+   "instructions": "Wake the Librarian. Show them the character token of an Outsider that is in play, then point at two players: one who is that Outsider and one decoy (mark them with the Outsider and Wrong reminders). If no Outsiders are in play, show a 0 finger signal instead. Put the Librarian back to sleep. If the Librarian is drunk or poisoned, you may show false information.",
+   "shows": [
+    {
+     "label": "Show Outsider token",
+     "kind": "token",
+     "token": "pick",
+     "text": "One of the 2 players I point to is this character"
+    }
+   ]
+  }
+ },
+ "monk": {
+  "other": {
+   "instructions": "Remove the Safe reminder from the previously protected player. Wake the Monk; they point at any player other than themselves. Mark that player with the Safe reminder and put the Monk back to sleep; if the Demon attacks that player tonight, nothing happens. If the Monk is drunk or poisoned, the chosen player is not actually protected.",
+   "shows": []
+  }
+ },
+ "ravenkeeper": {
+  "other": {
+   "instructions": "Only act if the Ravenkeeper died tonight. Wake the Ravenkeeper; they point at any player. Show that player's character token, then put the Ravenkeeper back to sleep. If the Ravenkeeper is drunk or poisoned, show a false character token instead; note the Spy or Recluse may register falsely.",
+   "shows": [
+    {
+     "label": "Show their character",
+     "kind": "token",
+     "token": "pick",
+     "text": "The player you chose is this character"
+    }
+   ]
+  }
+ },
+ "undertaker": {
+  "other": {
+   "instructions": "Only act if a player was executed today (marked Died today), even if they did not die from it. Wake the Undertaker and show the executed player's character token, then put them back to sleep. If nobody was executed today, do not wake the Undertaker. If the Undertaker is drunk or poisoned, show a false character token instead.",
+   "shows": [
+    {
+     "label": "Show executed character",
+     "kind": "token",
+     "token": "pick",
+     "text": "This character was executed today"
+    }
+   ]
+  }
+ },
+ "washerwoman": {
+  "first": {
+   "instructions": "Wake the Washerwoman. Show them the character token of a Townsfolk that is in play, then point at two players: one who is that Townsfolk and one decoy (mark them with the Townsfolk and Wrong reminders). Put the Washerwoman back to sleep. If the Washerwoman is drunk or poisoned, you may show false information.",
+   "shows": [
+    {
+     "label": "Show Townsfolk token",
+     "kind": "token",
+     "token": "pick",
+     "text": "One of the 2 players I point to is this character"
+    }
+   ]
+  }
+ },
+ "butler": {
+  "first": {
+   "instructions": "Wake the Butler; they point at any player other than themselves. Mark that player with the Master reminder, then put the Butler back to sleep. Tomorrow, the Butler may only vote if their Master is voting too. This still applies even if the Butler is drunk or poisoned.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Remove the Master reminder from the previous master. Wake the Butler; they point at any player other than themselves. Mark that player with the Master reminder, then put the Butler back to sleep. Tomorrow, the Butler may only vote if their Master is voting too.",
+   "shows": []
+  }
+ },
+ "poisoner": {
+  "first": {
+   "instructions": "Wake the Poisoner; they point at any player. Mark that player with the Poisoned reminder, then put the Poisoner back to sleep. The chosen player is poisoned tonight and tomorrow day: their ability malfunctions and any information they get from you should be false.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Remove the Poisoned reminder from the previously poisoned player. Wake the Poisoner; they point at any player. Mark that player with the Poisoned reminder, then put the Poisoner back to sleep. The chosen player is poisoned tonight and tomorrow day: their ability malfunctions and any information they get from you should be false.",
+   "shows": []
+  }
+ },
+ "scarletwoman": {
+  "other": {
+   "instructions": "Only act if the Demon died today (by execution or otherwise) while 5 or more players were alive, not counting Travellers; the Scarlet Woman then becomes the Demon. Wake the Scarlet Woman, show them the YOU ARE card with the Demon's character token, update the Grimoire so they are now that Demon, then put them back to sleep. From now on they act as the Demon each night.",
+   "shows": [
+    {
+     "label": "You are the Demon",
+     "kind": "token",
+     "token": "pick",
+     "text": "YOU ARE"
+    }
+   ]
+  }
+ },
+ "spy": {
+  "first": {
+   "instructions": "Wake the Spy and show them the entire Grimoire for as long as they need: all character tokens and all reminder tokens. Put the Spy back to sleep. Remember that the Spy might register as good and as a Townsfolk or Outsider to other players' abilities, even while dead; you choose how they register each time.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Wake the Spy and show them the entire Grimoire for as long as they need, then put them back to sleep. Remember that the Spy might register as good and as a Townsfolk or Outsider to other players' abilities, even while dead; you choose how they register each time.",
+   "shows": []
+  }
+ },
+ "imp": {
+  "other": {
+   "instructions": "Wake the Imp; they point at any player. That player dies tonight unless protected (for example by the Monk) - mark them with the Dead reminder and put the Imp back to sleep; announce the death in the morning. If the Imp chose themselves, the Imp dies: wake an alive Minion of your choice (the Scarlet Woman if able), show them the YOU ARE card and the Imp token, and swap their character to the Imp in the Grimoire. If the Imp is poisoned, nobody dies.",
+   "shows": [
+    {
+     "label": "You are the Imp (star pass)",
+     "kind": "token",
+     "token": "pick",
+     "text": "YOU ARE"
+    }
+   ]
+  }
+ },
+ "bureaucrat": {
+  "first": {
+   "instructions": "Wake the Bureaucrat; they point at any player other than themselves. Place the Bureaucrat's 3 votes reminder by the chosen player's character token, then put the Bureaucrat back to sleep. Tomorrow, that player's vote counts as 3 votes.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Remove the 3 votes reminder from the previously chosen player. Wake the Bureaucrat; they point at any player other than themselves. Place the 3 votes reminder by the chosen player's character token, then put the Bureaucrat back to sleep. Tomorrow, that player's vote counts as 3 votes.",
+   "shows": []
+  }
+ },
+ "thief": {
+  "first": {
+   "instructions": "Wake the Thief; they point at any player other than themselves. Place the Thief's Negative vote reminder by the chosen player's character token, then put the Thief back to sleep. Tomorrow, that player's vote counts negatively (subtract it from the tally).",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Remove the Negative vote reminder from the previously chosen player. Wake the Thief; they point at any player other than themselves. Place the Negative vote reminder by the chosen player's character token, then put the Thief back to sleep. Tomorrow, that player's vote counts negatively (subtract it from the tally).",
+   "shows": []
+  }
+ },
+ "duchess": {
+  "other": {
+   "instructions": "Only act if players visited the Duchess today. Wake each player marked Visitor or False Info one at a time: show them the Duchess token, then a finger signal for the number of evil players among the marked visitors - except for the player marked False Info, who must be shown any number other than the true one. Put each player back to sleep before waking the next, then clear the Visitor and False Info reminders.",
+   "shows": [
+    {
+     "label": "Show Duchess token",
+     "kind": "token",
+     "token": "self",
+     "text": "This many of the Duchess's visitors are evil (see my fingers)"
+    }
+   ]
+  }
+ },
+ "stormcatcher": {
+  "first": {
+   "instructions": "Mark the named good player with the Safe reminder; while they have their ability they can only die by execution, so Demon attacks and other killing abilities against them fail. Wake each evil player one at a time, show them the Storm Catcher token, and point at the marked player so they know who is protected, then put them back to sleep. If the named character is not in play, evil players still wake and learn a player of your choice (usually bluff-supporting).",
+   "shows": [
+    {
+     "label": "Show Storm Catcher token",
+     "kind": "token",
+     "token": "self",
+     "text": "The player I point to is the Storm Catcher's chosen character"
+    }
+   ]
+  }
+ },
+ "toymaker": {
+  "other": {
+   "instructions": "The Demon may choose to make no attack tonight, and must do so at least once per game; if they signal no attack (for example a thumbs-down or crossed arms), nobody dies. If it is a night when a Demon attack could win the game and the Demon is marked Final Night: No Attack, do not wake the Demon at all - they do not act tonight. Track with the Final Night: No Attack reminder that the Demon has used their obligatory no-attack night.",
+   "shows": []
+  }
+ },
+ "chambermaid": {
+  "first": {
+   "instructions": "Wake the Chambermaid. They point to 2 alive players other than themselves. Show a hand signal (0, 1, 2...) for how many of those players woke tonight due to their own ability. If the Chambermaid is drunk or poisoned, you may show any number. Put the Chambermaid to sleep.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Wake the Chambermaid. They point to 2 alive players other than themselves. Show a hand signal (0, 1, 2...) for how many of those players woke tonight due to their own ability; players woken only to be shown information they didn't cause (or not woken at all) don't count. If the Chambermaid is drunk or poisoned, you may show any number. Put the Chambermaid to sleep.",
+   "shows": []
+  }
+ },
+ "courtier": {
+  "first": {
+   "instructions": "Wake the Courtier. They either shake their head no or point to a character icon on the character sheet. If they use their ability and that character is in play, that player becomes drunk: place the Drunk 3 reminder token by the chosen player and mark the Courtier with No Ability. If the chosen character is not in play, nothing happens but the ability is still spent. If the Courtier is drunk or poisoned, the chosen player is not actually made drunk, but the ability is still used up. Put the Courtier to sleep.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "If a player is marked drunk by the Courtier, reduce the counter (Drunk 3 to Drunk 2 to Drunk 1); after the third night and day the drunkenness ends and the reminder is removed. If the Courtier has not yet used their ability, wake them: they either shake their head no or point to a character on the sheet; if that character is in play, that player is drunk for 3 nights and 3 days (place Drunk 3, mark the Courtier with No Ability). If the Courtier is drunk or poisoned when choosing, the target is not actually made drunk but the ability is spent. Put the Courtier to sleep.",
+   "shows": []
+  }
+ },
+ "exorcist": {
+  "other": {
+   "instructions": "Wake the Exorcist. They point to a player (must be different from their previous night's choice); place the Chosen reminder token by that player and put the Exorcist to sleep. If the chosen player is the Demon, wake the Demon, show them the Exorcist character token, point to the Exorcist player, then put the Demon back to sleep: the Demon does not act tonight and does not wake for their ability. If the Exorcist is drunk or poisoned, the Demon wakes and acts as normal and learns nothing.",
+   "shows": [
+    {
+     "label": "Show the Demon",
+     "kind": "token",
+     "text": "THIS PLAYER STOPPED YOU TONIGHT",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "gambler": {
+  "other": {
+   "instructions": "Wake the Gambler. They point to a player and then to a character icon on the character sheet, guessing that player's character. If the guess is wrong, the Gambler dies immediately: place the Dead reminder token and mark them dead at dawn. If the guess is correct, nothing happens. If the Gambler is drunk or poisoned, they do not die even if they guess wrong. Put the Gambler to sleep.",
+   "shows": []
+  }
+ },
+ "gossip": {
+  "other": {
+   "instructions": "The Gossip does not wake. If the Gossip's public statement today was true, choose any player who is not protected from dying tonight: that player dies (place the Dead reminder token, announce the death at dawn). You choose who dies, and it can be any player, including the Gossip. If the statement was false, or the Gossip is drunk or poisoned, no one dies from this ability.",
+   "shows": []
+  }
+ },
+ "grandmother": {
+  "first": {
+   "instructions": "Choose a good player to be the grandchild and place the Grandchild reminder token by them. Wake the Grandmother, show them the grandchild's character token, then point to the grandchild player. Put the Grandmother to sleep. If the Grandmother is drunk or poisoned, you may show a wrong character or player.",
+   "shows": [
+    {
+     "label": "Show the Grandmother",
+     "kind": "token",
+     "text": "THIS IS YOUR GRANDCHILD",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "The Grandmother does not wake. If the Demon killed the grandchild tonight, the Grandmother dies too: place the Dead reminder token by the Grandmother and announce both deaths at dawn. This does not trigger if the grandchild died by other means, or if the Grandmother is drunk or poisoned when the grandchild is killed.",
+   "shows": []
+  }
+ },
+ "innkeeper": {
+  "other": {
+   "instructions": "Remove the Protected and Drunk reminder tokens from the previous night. Wake the Innkeeper. They point to 2 players; place the Protected reminder tokens by both, and place the Drunk reminder token by one of them (your choice) - that player is drunk until dusk. Neither chosen player can die tonight. If the Innkeeper is drunk or poisoned, the chosen players are not actually protected (and are not made drunk). Put the Innkeeper to sleep.",
+   "shows": []
+  }
+ },
+ "professor": {
+  "other": {
+   "instructions": "If the Professor has already used their ability, skip them. Otherwise wake the Professor: they either shake their head no or point to a dead player. If they point to a dead Townsfolk, that player is resurrected - place the Alive reminder token, mark the Professor with No Ability, and at dawn announce that the player is now alive. If the chosen player is not a Townsfolk, nothing happens but the ability is still spent. If the Professor is drunk or poisoned, the resurrection does not happen but the ability is spent. Put the Professor to sleep.",
+   "shows": []
+  }
+ },
+ "sailor": {
+  "first": {
+   "instructions": "Wake the Sailor. They point to an alive player. Choose whether the Sailor or the chosen player is drunk until dusk, and place the Drunk reminder token by that player. While sober, the Sailor cannot die. If the Sailor is already drunk or poisoned when acting, neither player becomes drunk from this choice. Put the Sailor to sleep.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Remove the Sailor's Drunk reminder token from the previous night. Wake the Sailor. They point to an alive player. Choose whether the Sailor or the chosen player is drunk until dusk, and place the Drunk reminder token accordingly. Remember the sober Sailor cannot die; if the Sailor is drunk, they can die. Put the Sailor to sleep.",
+   "shows": []
+  }
+ },
+ "lunatic": {
+  "first": {
+   "instructions": "The Lunatic believes they are a Demon. If there are 7 or more players, wake the Lunatic and give them the same info a Demon would get: point to arbitrary players as their 'Minions' (as many as there are Minions in play), and show 3 good characters as their 'not in play' bluffs. If the Demon they think they are would act on the first night (e.g. Pukka), let the Lunatic make that choice and place Attack reminder tokens on their targets, but nothing actually happens. Then wake the real Demon, show them the Demon's own character token, point to the Lunatic player, and if the Lunatic marked any players, point to each marked player; then remove the Attack markers. If the Lunatic is drunk or poisoned, the real Demon still learns who the Lunatic is but you may withhold or alter the choices shown.",
+   "shows": [
+    {
+     "label": "Show the Lunatic",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    },
+    {
+     "label": "Show the real Demon",
+     "kind": "token",
+     "text": "THIS PLAYER IS THE LUNATIC",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Lunatic and let them act as the Demon they believe they are: they make that Demon's night choices, and you place Attack reminder tokens on the players they pick, but no one actually dies from this. Put the Lunatic to sleep. Then, if the Lunatic chose players, wake the real Demon, point to each marked player so the Demon knows the Lunatic's choices, then put the Demon to sleep (the Demon still acts at their normal point in the night). Remove the Attack markers afterward.",
+   "shows": []
+  }
+ },
+ "moonchild": {
+  "other": {
+   "instructions": "The Moonchild does not wake. If the Moonchild died today and publicly chose an alive player, check that player's alignment: if they are good, they die tonight - place the Dead reminder token and announce the death at dawn. If the chosen player is evil, nothing happens. If the Moonchild was drunk or poisoned when they made the choice, no one dies.",
+   "shows": []
+  }
+ },
+ "tinker": {
+  "other": {
+   "instructions": "The Tinker does not wake. At any time, including tonight, you may decide the Tinker dies: place the Dead reminder token and announce the death at dawn. This is entirely your choice - use it to keep the game balanced or interesting. If the Tinker is drunk or poisoned, they cannot die from their own ability.",
+   "shows": []
+  }
+ },
+ "assassin": {
+  "other": {
+   "instructions": "If the Assassin has already used their ability, skip them. Otherwise wake the Assassin: they either shake their head no or point to a player. If they point to a player, that player dies, even if protected, resurrected-blocked, or otherwise unable to die (this kills through the Innkeeper, Sailor, Monk-style protection, and even kills the Zombuul properly on its first death registering); place the Dead reminder token and mark the Assassin with No Ability. Poisoning (e.g. by the Pukka) does stop the Assassin's kill, but the ability is still spent. Put the Assassin to sleep.",
+   "shows": []
+  }
+ },
+ "devilsadvocate": {
+  "first": {
+   "instructions": "Wake the Devil's Advocate. They point to a living player; place the Survives Execution reminder token by that player. If that player is executed tomorrow, they remain alive (the execution still counts as the day's execution). Put the Devil's Advocate to sleep.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Remove the previous Survives Execution reminder token. Wake the Devil's Advocate. They point to a living player, different from their previous night's choice; place the Survives Execution reminder token by that player. If that player is executed tomorrow, they do not die. Put the Devil's Advocate to sleep.",
+   "shows": []
+  }
+ },
+ "godfather": {
+  "first": {
+   "instructions": "Wake the Godfather. Show them each Outsider character token in play, one at a time (if none are in play, show none or give a zero signal). Put the Godfather to sleep. Remember the Godfather changed setup by plus or minus one Outsider.",
+   "shows": [
+    {
+     "label": "Show the Godfather",
+     "kind": "token",
+     "text": "THIS OUTSIDER IS IN PLAY",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Only act if an Outsider died today (execution or any other daytime death) - the Died Today reminder token should mark this. If so, wake the Godfather: they point to a player, and that player dies tonight (place the Dead reminder token, announce at dawn). If the Godfather is drunk or poisoned, the chosen player does not die. Put the Godfather to sleep and remove the Died Today token.",
+   "shows": []
+  }
+ },
+ "po": {
+  "other": {
+   "instructions": "Wake the Po. If the Po chose no-one the previous night (the 3 Attacks reminder is set), they must point to three players tonight, and all three die. Otherwise, they either shake their head no or point to one player: if they point, that player dies; if they choose no-one, place the 3 Attacks reminder token for tomorrow night. Place Dead reminder tokens on victims and announce deaths at dawn; protection (Innkeeper, sober Sailor, etc.) and poisoning of the Po stop the kills as usual. Put the Po to sleep.",
+   "shows": []
+  }
+ },
+ "pukka": {
+  "first": {
+   "instructions": "Wake the Pukka. They point to a player; place the Poisoned reminder token by that player - they are poisoned starting now. No one dies on the first night. Put the Pukka to sleep.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Wake the Pukka. They point to a player; place the Poisoned reminder token by that player. Then the previously poisoned player dies (place the Dead reminder token, announce at dawn) and becomes healthy upon death. Note the Pukka's victims are poisoned all night before dying, so their abilities malfunction; if the Pukka itself is poisoned (e.g. another Pukka scenario) or the target is protected, adjust accordingly - protection prevents the death but not the poisoning. Put the Pukka to sleep.",
+   "shows": []
+  }
+ },
+ "shabaloth": {
+  "other": {
+   "instructions": "You may first resurrect one dead player that the Shabaloth chose the previous night: place the Alive reminder token, and at dawn announce that they are alive again (they learn no new information and their once-per-game abilities remain as they were). Then wake the Shabaloth: they point to two players, and both die - place Dead reminder tokens and announce the deaths at dawn. Protection (Innkeeper, sober Sailor, Devil's Advocate does not apply at night) prevents those deaths. Put the Shabaloth to sleep.",
+   "shows": []
+  }
+ },
+ "zombuul": {
+  "other": {
+   "instructions": "Only wake the Zombuul if no-one died today; if anyone died during the day, the Zombuul does not act. If they wake, they point to a player, and that player dies - place the Dead reminder token and announce at dawn. Remember: the first time the Zombuul dies, they secretly remain alive but register as dead in every way - mark this in the grimoire, keep waking them at night while they still 'live', and the game only ends when the Zombuul actually dies a second time.",
+   "shows": []
+  }
+ },
+ "apprentice": {
+  "first": {
+   "instructions": "Wake the Apprentice. Show them the 'You are' card, then a character token of your choice: a Townsfolk token if the Apprentice is good, or a Minion token if evil. The Apprentice now has that ability for the rest of the game. In the grimoire, replace the Apprentice token with the chosen character token and place the Is The Apprentice reminder token beside it, then run them as that character from now on (including tonight if that character acts). Put the Apprentice to sleep.",
+   "shows": [
+    {
+     "label": "Show the Apprentice",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "clockmaker": {
+  "first": {
+   "instructions": "Wake the Clockmaker. Show the hand signal for the number of steps (1, 2, 3, etc.) from the Demon to its nearest Minion, counting seats in the shorter direction. Put them back to sleep. If the Clockmaker is drunk or poisoned, or the Vortox is in play, give a false number instead.",
+   "shows": [
+    {
+     "label": "Steps to nearest Minion",
+     "kind": "message",
+     "text": "…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "dreamer": {
+  "first": {
+   "instructions": "Wake the Dreamer. They point to any player other than themselves or a Traveller. Show them one good character token and one evil character token; exactly one of the two is the chosen player's real character. Put them back to sleep. If the Dreamer is drunk or poisoned, or the Vortox is in play, neither token needs to be correct.",
+   "shows": [
+    {
+     "label": "Good candidate",
+     "kind": "token",
+     "text": "This player might be…",
+     "token": "pick"
+    },
+    {
+     "label": "Evil candidate",
+     "kind": "token",
+     "text": "This player might be…",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Dreamer. They point to any player other than themselves or a Traveller. Show them one good character token and one evil character token; exactly one of the two is the chosen player's real character. Put them back to sleep. If the Dreamer is drunk or poisoned, or the Vortox is in play, neither token needs to be correct.",
+   "shows": [
+    {
+     "label": "Good candidate",
+     "kind": "token",
+     "text": "This player might be…",
+     "token": "pick"
+    },
+    {
+     "label": "Evil candidate",
+     "kind": "token",
+     "text": "This player might be…",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "flowergirl": {
+  "other": {
+   "instructions": "Wake the Flowergirl. Nod yes or shake your head no for whether the Demon voted on any nomination today, then put them back to sleep. During the day, place the 'Demon voted' reminder as soon as the Demon raises their hand to vote, and clear it each dawn. If the Flowergirl is drunk or poisoned, or the Vortox is in play, give the opposite (false) answer.",
+   "shows": []
+  }
+ },
+ "juggler": {
+  "other": {
+   "instructions": "Only on the night after the Juggler's first day, and only if they publicly juggled: wake the Juggler and show the hand signal for the number of their guesses that were correct (count the 'Correct' reminder tokens you placed during the day), then remove those reminders and put them back to sleep. If the Juggler is drunk or poisoned, or the Vortox is in play, give a false number. On all later nights the Juggler does not wake.",
+   "shows": [
+    {
+     "label": "Correct guesses",
+     "kind": "message",
+     "text": "…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "mathematician": {
+  "first": {
+   "instructions": "Wake the Mathematician. Show the hand signal for the number of players (0, 1, 2, etc.) whose abilities worked abnormally since dawn because of another character's ability, such as drunk or poisoned players getting false information. Put them back to sleep. If the Mathematician is drunk or poisoned, or the Vortox is in play, give a false number.",
+   "shows": [
+    {
+     "label": "Abnormal abilities",
+     "kind": "message",
+     "text": "…",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Mathematician. Show the hand signal for the number of players (0, 1, 2, etc.) whose abilities worked abnormally since dawn because of another character's ability. Put them back to sleep. If the Mathematician is drunk or poisoned, or the Vortox is in play, give a false number.",
+   "shows": [
+    {
+     "label": "Abnormal abilities",
+     "kind": "message",
+     "text": "…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "oracle": {
+  "other": {
+   "instructions": "Wake the Oracle. Show the hand signal for the number of dead players (0, 1, 2, etc.) that are evil, then put them back to sleep. If the Oracle is drunk or poisoned, or the Vortox is in play, give a false number.",
+   "shows": [
+    {
+     "label": "Dead evil players",
+     "kind": "message",
+     "text": "…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "philosopher": {
+  "first": {
+   "instructions": "Wake the Philosopher. They either shake their head no or point to a good character on their sheet. If they choose a character, they gain that ability from now on: swap in that character's token, keep the 'Is the Philosopher' reminder by it, and if the chosen character is already in play, that player becomes drunk for as long as the Philosopher is sober and healthy - place the Drunk reminder by them. If the new ability acts tonight, wake the Philosopher again at that character's point in the night order.",
+   "shows": [
+    {
+     "label": "Chosen ability",
+     "kind": "token",
+     "text": "You now have this ability…",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Only if the Philosopher has not yet used their ability: wake them. They either shake their head no or point to a good character on their sheet. If they choose a character, they gain that ability from now on: swap in that character's token, keep the 'Is the Philosopher' reminder by it, and if the chosen character is already in play, that player becomes drunk - place the Drunk reminder by them. If the new ability acts tonight, wake the Philosopher again at that character's point in the night order.",
+   "shows": [
+    {
+     "label": "Chosen ability",
+     "kind": "token",
+     "text": "You now have this ability…",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "sage": {
+  "other": {
+   "instructions": "Only if the Demon killed the Sage tonight: wake the Sage and point to two players, one of whom is that Demon, then put them back to sleep. If the Sage was drunk or poisoned when they died, or the Vortox is in play, the pair does not need to contain the Demon. The Sage does not wake if they died any other way.",
+   "shows": []
+  }
+ },
+ "seamstress": {
+  "first": {
+   "instructions": "Wake the Seamstress. They either shake their head no or point to two players other than themselves. If they choose players, nod yes or shake your head no for whether those two players are the same alignment, then place the 'No ability' reminder - this was their once per game use. If the Seamstress is drunk or poisoned, or the Vortox is in play, give a false answer (the ability is still spent).",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Only if the Seamstress has not yet used their ability: wake them. They either shake their head no or point to two players other than themselves. If they choose players, nod yes or shake your head no for whether those two players are the same alignment, then place the 'No ability' reminder - this was their once per game use. If the Seamstress is drunk or poisoned, or the Vortox is in play, give a false answer (the ability is still spent).",
+   "shows": []
+  }
+ },
+ "snakecharmer": {
+  "first": {
+   "instructions": "Wake the Snake Charmer. They point to any alive player. If that player is the Demon, they swap characters and alignments: wake each of the two players separately to show them their new character token and new alignment, swap the tokens in the Grimoire, and place the Poisoned reminder on the new Snake Charmer, who is poisoned from now on. If the chosen player is not the Demon, or the Snake Charmer is drunk or poisoned, nothing happens.",
+   "shows": [
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "You are…",
+     "token": "pick"
+    },
+    {
+     "label": "You are good",
+     "kind": "good",
+     "text": "You are GOOD",
+     "token": ""
+    },
+    {
+     "label": "You are evil",
+     "kind": "evil",
+     "text": "You are EVIL",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Snake Charmer. They point to any alive player. If that player is the Demon, they swap characters and alignments: wake each of the two players separately to show them their new character token and new alignment, swap the tokens in the Grimoire, and place the Poisoned reminder on the new Snake Charmer, who is poisoned from now on. If the chosen player is not the Demon, or the Snake Charmer is drunk or poisoned, nothing happens.",
+   "shows": [
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "You are…",
+     "token": "pick"
+    },
+    {
+     "label": "You are good",
+     "kind": "good",
+     "text": "You are GOOD",
+     "token": ""
+    },
+    {
+     "label": "You are evil",
+     "kind": "evil",
+     "text": "You are EVIL",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "towncrier": {
+  "other": {
+   "instructions": "Wake the Town Crier. Nod yes or shake your head no for whether a Minion made a nomination today, then put them back to sleep. Place the 'Minion nominated' reminder during the day when a Minion nominates so you remember at night. If the Town Crier is drunk or poisoned, or the Vortox is in play, give the opposite (false) answer.",
+   "shows": []
+  }
+ },
+ "barber": {
+  "other": {
+   "instructions": "Only if the Barber died today or tonight: wake the Demon, show the 'This character selected you' card and the Barber token. The Demon either shakes their head no or points to two players (neither may be a Demon). If they choose players, swap those two players' character tokens in the Grimoire, then wake each swapped player and show them the 'You are' card and their new character token; alignments do not change. Remove the 'Haircuts tonight' reminder afterwards.",
+   "shows": [
+    {
+     "label": "Barber",
+     "kind": "token",
+     "text": "This character selected you",
+     "token": "self"
+    },
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "You are…",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "sweetheart": {
+  "other": {
+   "instructions": "Only if the Sweetheart died today or tonight: choose one player to be drunk from now on and place the Sweetheart's Drunk reminder by them. Do not wake anyone; the drunk player is not told. That player stays drunk for the rest of the game, so any information they receive from now on may be false.",
+   "shows": []
+  }
+ },
+ "cerenovus": {
+  "first": {
+   "instructions": "Wake the Cerenovus. They point to a player, then to any good character on their sheet. Put the Cerenovus to sleep, then wake the chosen player: show them the 'This character selected you' card, the Cerenovus token, and the chosen good character token. That player must be mad that they are that character tomorrow - if they do not make a convincing effort, you may execute them. Place the Mad reminder by the chosen player.",
+   "shows": [
+    {
+     "label": "Cerenovus",
+     "kind": "token",
+     "text": "This character selected you",
+     "token": "self"
+    },
+    {
+     "label": "Mad as…",
+     "kind": "token",
+     "text": "You are mad that you are this character",
+     "token": "pick"
+    },
+    {
+     "label": "Madness demand",
+     "kind": "message",
+     "text": "YOU ARE MAD THAT YOU ARE… CAMPAIGN OR BE EXECUTED",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Cerenovus. They point to a player, then to any good character on their sheet. Put the Cerenovus to sleep, then wake the chosen player: show them the 'This character selected you' card, the Cerenovus token, and the chosen good character token. That player must be mad that they are that character tomorrow - if they do not make a convincing effort, you may execute them. Move the Mad reminder to the newly chosen player.",
+   "shows": [
+    {
+     "label": "Cerenovus",
+     "kind": "token",
+     "text": "This character selected you",
+     "token": "self"
+    },
+    {
+     "label": "Mad as…",
+     "kind": "token",
+     "text": "You are mad that you are this character",
+     "token": "pick"
+    },
+    {
+     "label": "Madness demand",
+     "kind": "message",
+     "text": "YOU ARE MAD THAT YOU ARE… CAMPAIGN OR BE EXECUTED",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "eviltwin": {
+  "first": {
+   "instructions": "Wake the Evil Twin and their good twin together and confirm they have seen each other. Point to the Evil Twin and show the Evil Twin token to the good twin; point to the good twin and show the good twin's character token to the Evil Twin. Both players therefore know who the other is, but the good twin does not learn which of them is evil beyond this. Keep the Twin reminder on the good twin; remember good cannot win while both twins live, and evil wins if the good twin is executed.",
+   "shows": [
+    {
+     "label": "Evil Twin",
+     "kind": "token",
+     "text": "This player is the Evil Twin",
+     "token": "self"
+    },
+    {
+     "label": "Good twin's character",
+     "kind": "token",
+     "text": "Your twin is this character",
+     "token": "pick"
+    },
+    {
+     "label": "Evil",
+     "kind": "evil",
+     "text": "This player is EVIL",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "pithag": {
+  "other": {
+   "instructions": "Wake the Pit-Hag. They point to a player, then to any character on the sheet. If that character is not in play, the chosen player becomes it: wake them, show the 'You are' card and the new character token, and update the Grimoire (their alignment does not change unless the character's ability says so). If the character is already in play, nothing happens and no one is woken. If a new Demon is created, deaths tonight are arbitrary - you choose who dies, overriding the normal kills. If the Pit-Hag is drunk or poisoned, no change occurs.",
+   "shows": [
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "You are…",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "witch": {
+  "first": {
+   "instructions": "Wake the Witch. They point to any player. Place the Cursed reminder by that player and put the Witch back to sleep. If the cursed player makes a nomination tomorrow, they die immediately (the nomination still proceeds). If the Witch is drunk or poisoned, the curse has no effect.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Only if 4 or more players are alive: wake the Witch. They point to any player. Move the Cursed reminder to that player and put the Witch back to sleep. If the cursed player makes a nomination tomorrow, they die immediately (the nomination still proceeds). If only 3 players live, the Witch loses their ability and does not wake; if the Witch is drunk or poisoned, the curse has no effect.",
+   "shows": []
+  }
+ },
+ "fanggu": {
+  "other": {
+   "instructions": "Wake the Fang Gu. They point to any player. That player dies, unless they are an Outsider and no Outsider has jumped yet this game: in that case the Fang Gu dies instead, and the chosen Outsider becomes an evil Fang Gu - wake them, show the 'You are' card and the Fang Gu token, then the 'You are' card and the evil thumbs-down signal, swap their token in the Grimoire and place the 'Once' reminder to mark that the jump has happened. If the Fang Gu is drunk or poisoned, no one dies and no jump occurs.",
+   "shows": [
+    {
+     "label": "Fang Gu",
+     "kind": "token",
+     "text": "You are the Fang Gu",
+     "token": "self"
+    },
+    {
+     "label": "You are evil",
+     "kind": "evil",
+     "text": "You are EVIL",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "nodashii": {
+  "other": {
+   "instructions": "Wake the No Dashii. They point to any player; that player dies. Put the No Dashii back to sleep and mark the chosen player with the Dead reminder. Remember that the two Townsfolk nearest the No Dashii, one clockwise and one counter-clockwise (skipping Outsiders, Minions and Travellers), are poisoned at all times - keep Poisoned reminders on them and update if seating deaths change nothing but characters change. If the No Dashii is drunk or poisoned, no one dies.",
+   "shows": []
+  }
+ },
+ "vigormortis": {
+  "other": {
+   "instructions": "Wake the Vigormortis. They point to any player; that player dies. If the dead player is a Minion, they keep their ability even though dead - place the 'Has ability' reminder by them, wake them at their usual point each night from now on, and choose one of their Townsfolk neighbours to be poisoned, marking them with the Poisoned reminder. If the Vigormortis is drunk or poisoned, no one dies.",
+   "shows": []
+  }
+ },
+ "vortox": {
+  "other": {
+   "instructions": "Wake the Vortox. They point to any player; that player dies. Put the Vortox back to sleep and mark the dead player. Remember that while the Vortox lives, all Townsfolk abilities yield false information - every piece of Townsfolk info you give this game must be wrong. Also remember that if a day ends with no execution, evil wins immediately. If the Vortox is drunk or poisoned, no one dies, but information is still false.",
+   "shows": []
+  }
+ },
+ "barista": {
+  "first": {
+   "instructions": "Choose a player. Wake them and tell them (or show them a message saying) which Barista effect applies until dusk: either they are sober, healthy and get true information, or their ability works twice. Then run the night treating them accordingly - ignore drunkenness and poisoning and give true info, or wake them twice or double their ability's effect. Mark them with the matching 'Sober & Healthy' or 'Ability twice' reminder.",
+   "shows": [
+    {
+     "label": "Barista",
+     "kind": "token",
+     "text": "This character selected you",
+     "token": "self"
+    },
+    {
+     "label": "Effect 1",
+     "kind": "message",
+     "text": "Until dusk you are sober, healthy and get true info",
+     "token": ""
+    },
+    {
+     "label": "Effect 2",
+     "kind": "message",
+     "text": "Until dusk your ability works twice",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Choose a player. Wake them and tell them (or show them a message saying) which Barista effect applies until dusk: either they are sober, healthy and get true information, or their ability works twice. Then run the night treating them accordingly - ignore drunkenness and poisoning and give true info, or wake them twice or double their ability's effect. Move the matching 'Sober & Healthy' or 'Ability twice' reminder to them.",
+   "shows": [
+    {
+     "label": "Barista",
+     "kind": "token",
+     "text": "This character selected you",
+     "token": "self"
+    },
+    {
+     "label": "Effect 1",
+     "kind": "message",
+     "text": "Until dusk you are sober, healthy and get true info",
+     "token": ""
+    },
+    {
+     "label": "Effect 2",
+     "kind": "message",
+     "text": "Until dusk your ability works twice",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "bonecollector": {
+  "other": {
+   "instructions": "Only if the Bone Collector has not yet used their ability: wake them. They either shake their head no or point to any dead player. If they choose a dead player, place the 'Has ability' reminder by that player's token - that player regains their ability until dusk and may need to be woken later tonight to use it (even if they are drunk or poisoned they have the ability; run it normally). Then place the 'No ability' reminder on the Bone Collector, as this was their once per game use.",
+   "shows": []
+  }
+ },
+ "harlot": {
+  "other": {
+   "instructions": "Wake the Harlot. They point to any living player, then go back to sleep. Wake the chosen player, show them the 'This character selected you' card and the Harlot token; they nod yes or shake their head no. If they agreed, wake the Harlot and show them the chosen player's character token; afterwards you may choose that both the Harlot and the chosen player die tonight. If they refused, nothing happens.",
+   "shows": [
+    {
+     "label": "Harlot",
+     "kind": "token",
+     "text": "This character selected you - do you agree to reveal your character?",
+     "token": "self"
+    },
+    {
+     "label": "Their character",
+     "kind": "token",
+     "text": "This player is…",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "acrobat": {
+  "other": {
+   "instructions": "Wake the Acrobat and have them point to any player, then put them back to sleep. Place the Chosen reminder by that player. At the end of the night, if the chosen player is drunk or poisoned, or became drunk or poisoned at any point tonight, the Acrobat dies: mark them with the Dead reminder and announce the death at dawn. If the Acrobat themself is drunk or poisoned, they do not die from their own ability.",
+   "shows": []
+  }
+ },
+ "alchemist": {
+  "first": {
+   "instructions": "Wake the Alchemist, show the 'You are' info token, then show the character token of the Minion whose ability they have (a not-in-play Minion you chose during setup), then put them back to sleep. Keep the 'Is The Alchemist' reminder by them so you remember which ability they hold. On any night their Minion ability would act, wake them at that Minion's place in the night order; you may prompt them to choose differently if their choice would badly harm the good team. If they are drunk or poisoned, their Minion ability malfunctions as normal.",
+   "shows": [
+    {
+     "label": "Minion ability",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "amnesiac": {
+  "first": {
+   "instructions": "You secretly decided the Amnesiac's ability during setup; the Amnesiac does not know what it is. If that ability would act tonight, wake the Amnesiac (or the relevant players) and do whatever is needed to run it, using the '?' reminders to track it in the Grimoire. Give no explanation of what is happening. During each day, they may privately guess their ability and you tell them how accurate the guess is (for example cold, warm, hot). If they are drunk or poisoned, the ability malfunctions like any other.",
+   "shows": [
+    {
+     "label": "Info",
+     "kind": "message",
+     "text": "You learn…",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "If the Amnesiac's secret ability would act tonight, wake the Amnesiac (or the relevant players) and do whatever is needed to satisfy it, tracking it with the '?' reminders. Give no explanation. Remember to answer their daytime guesses with how accurate they are (hot/cold). If they are drunk or poisoned, the ability malfunctions.",
+   "shows": [
+    {
+     "label": "Info",
+     "kind": "message",
+     "text": "You learn…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "balloonist": {
+  "first": {
+   "instructions": "Wake the Balloonist and point to any player, then put them back to sleep. Place the Know reminder and note the character type (Townsfolk, Outsider, Minion or Demon) of the player you showed, since tomorrow's player must be a different type. If the Balloonist is drunk or poisoned, you may point to any player regardless of type. Remember the Balloonist may have added +1 Outsider during setup.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Wake the Balloonist and point to a player whose character type is different from the type of the player shown the previous night, then put them back to sleep. Move the Know reminder and note tonight's type. If the Balloonist is drunk or poisoned, you may point to a player of any type, including the same type as last night.",
+   "shows": []
+  }
+ },
+ "banshee": {
+  "other": {
+   "instructions": "If the Demon attacked and killed the Banshee tonight, mark the Banshee with the Has Ability reminder. At dawn, publicly announce to all players that the Banshee has died. From now on the Banshee may nominate twice per day and vote twice per nomination, even though dead. If the Banshee was drunk or poisoned when the Demon killed them, make no announcement and they do not gain the extra nominations and votes.",
+   "shows": []
+  }
+ },
+ "bountyhunter": {
+  "first": {
+   "instructions": "Wake the Bounty Hunter and point to the evil player marked with the Know reminder, then put them back to sleep. Remember that with a Bounty Hunter in play, 1 Townsfolk is evil; the known player may be that evil Townsfolk. If the Bounty Hunter is drunk or poisoned, you may point to any player, even a good one.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Only act if the player marked Know died today or tonight. If so, wake the Bounty Hunter and point to another evil player, moving the Know reminder to them, then put the Bounty Hunter back to sleep. If the Bounty Hunter is drunk or poisoned, you may point to any player.",
+   "shows": []
+  }
+ },
+ "choirboy": {
+  "other": {
+   "instructions": "Only act if the Demon killed the King tonight. If so, wake the Choirboy and point to the player who is the Demon, then put them back to sleep. If the Choirboy is drunk or poisoned, point to a wrong player or do not wake them. Remember the Choirboy adds the King to the game during setup.",
+   "shows": []
+  }
+ },
+ "cultleader": {
+  "first": {
+   "instructions": "Decide whether the Cult Leader changes alignment: each night they become the alignment of one of their alive neighbors of your choice. If their alignment changes, wake them, show the 'You are' info token and give a thumbs up for good or a thumbs down for evil, then put them back to sleep. If it does not change, do not wake them. If they are drunk or poisoned, their alignment does not change.",
+   "shows": [
+    {
+     "label": "Now good",
+     "kind": "good",
+     "text": "YOU ARE GOOD",
+     "token": ""
+    },
+    {
+     "label": "Now evil",
+     "kind": "evil",
+     "text": "YOU ARE EVIL",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Decide whether the Cult Leader becomes the alignment of an alive neighbor. If their alignment changes, wake them, show the 'You are' info token and give a thumbs up for good or a thumbs down for evil, then put them back to sleep; otherwise do not wake them. Remember that if every good player has publicly joined the cult, the Cult Leader's team wins. If they are drunk or poisoned, their alignment does not change.",
+   "shows": [
+    {
+     "label": "Now good",
+     "kind": "good",
+     "text": "YOU ARE GOOD",
+     "token": ""
+    },
+    {
+     "label": "Now evil",
+     "kind": "evil",
+     "text": "YOU ARE EVIL",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "engineer": {
+  "first": {
+   "instructions": "If the Engineer still has their ability, wake them; they may choose which Minion characters or which Demon character is in play (they may also decline and keep it for later). If they choose, put the Engineer to sleep, swap the relevant character tokens in the Grimoire, then wake each changed player one at a time, show the 'You are' info token and their new character token, and put them back to sleep. Mark the Engineer with the No Ability reminder once used. If the Engineer is drunk or poisoned, nothing changes, but their once-per-game use is still spent.",
+   "shows": [
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "If the Engineer has not yet used their ability, wake them; they may choose which Minions or which Demon is in play, or decline. If they choose, put them to sleep, swap the character tokens, then wake each changed player one at a time and show the 'You are' info token with their new character token. Mark the Engineer with the No Ability reminder once used. If drunk or poisoned, nothing changes but the use is spent.",
+   "shows": [
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "farmer": {
+  "other": {
+   "instructions": "Only act if the Farmer died tonight. If so, choose an alive good player, wake them, show the 'You are' info token and the Farmer character token, then put them back to sleep. Swap their character token for a Farmer in the Grimoire; they are now the Farmer with the full ability. If the Farmer was drunk or poisoned when they died, no one becomes a Farmer.",
+   "shows": [
+    {
+     "label": "New Farmer",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "general": {
+  "first": {
+   "instructions": "Wake the General and give a thumb signal for which alignment you believe is currently winning: thumbs up for good, thumbs down for evil, or a horizontal thumb for neither. Then put them back to sleep. Base your answer on your honest read of the game state. If the General is drunk or poisoned, you may give any signal.",
+   "shows": [
+    {
+     "label": "Good winning",
+     "kind": "good",
+     "text": "GOOD IS WINNING",
+     "token": ""
+    },
+    {
+     "label": "Evil winning",
+     "kind": "evil",
+     "text": "EVIL IS WINNING",
+     "token": ""
+    },
+    {
+     "label": "Neither",
+     "kind": "message",
+     "text": "NEITHER TEAM IS WINNING",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the General and give a thumb signal for which alignment you believe is winning: thumbs up for good, thumbs down for evil, or a horizontal thumb for neither. Then put them back to sleep. If the General is drunk or poisoned, you may give any signal.",
+   "shows": [
+    {
+     "label": "Good winning",
+     "kind": "good",
+     "text": "GOOD IS WINNING",
+     "token": ""
+    },
+    {
+     "label": "Evil winning",
+     "kind": "evil",
+     "text": "EVIL IS WINNING",
+     "token": ""
+    },
+    {
+     "label": "Neither",
+     "kind": "message",
+     "text": "NEITHER TEAM IS WINNING",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "highpriestess": {
+  "first": {
+   "instructions": "Wake the High Priestess and point to the player you believe they should talk to most, then put them back to sleep. Choose sincerely based on who would help them most. If the High Priestess is drunk or poisoned, you may point to any player.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Wake the High Priestess and point to the player you believe they should talk to most, then put them back to sleep. Your answer may change from night to night. If the High Priestess is drunk or poisoned, you may point to any player.",
+   "shows": []
+  }
+ },
+ "huntsman": {
+  "first": {
+   "instructions": "If the Huntsman still has their ability, wake them; they may point to a living player as their once-per-game guess, or decline. If they guess, mark the Huntsman with the No Ability reminder. If they chose the Damsel, put the Huntsman to sleep, wake the Damsel, show the 'You are' info token and a not-in-play Townsfolk character token of your choice, and swap the Damsel's token in the Grimoire. If the Huntsman is drunk or poisoned, the Damsel does not change character, but the use is still spent.",
+   "shows": [
+    {
+     "label": "Damsel becomes",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "If the Huntsman has not yet used their ability, wake them; they may point to a living player, or decline. If they guess, mark them with the No Ability reminder. If they chose the Damsel, put the Huntsman to sleep, wake the Damsel, show the 'You are' info token and a not-in-play Townsfolk character token, and swap the Damsel's token in the Grimoire. If the Huntsman is drunk or poisoned, the Damsel does not change, but the use is spent.",
+   "shows": [
+    {
+     "label": "Damsel becomes",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "king": {
+  "first": {
+   "instructions": "Wake the Demon, show the 'This player is' info token and the King character token, then point to the King, and put the Demon back to sleep. The King is not woken on the first night. Skip this step if a Poppy Grower is in play and alive.",
+   "shows": [
+    {
+     "label": "Show Demon",
+     "kind": "token",
+     "text": "THIS PLAYER IS",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Only act if the dead players equal or outnumber the living. If so, wake the King and show the character token of one living player of your choice, then put them back to sleep. If the King is drunk or poisoned, you may show any character token, even one not in play.",
+   "shows": [
+    {
+     "label": "Alive character",
+     "kind": "token",
+     "text": "THIS CHARACTER IS ALIVE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "knight": {
+  "first": {
+   "instructions": "Wake the Knight and point to the 2 players marked with Know reminders, then put them back to sleep. Neither of these players is the Demon; they may be any other characters, good or evil. If the Knight is drunk or poisoned, you may point to any 2 players, including the Demon.",
+   "shows": []
+  }
+ },
+ "lycanthrope": {
+  "other": {
+   "instructions": "Wake the Lycanthrope and have them point to an alive player, then put them back to sleep. If the chosen player is good, they die (mark the Dead reminder) and the Demon does not kill tonight: still wake the Demon and let them choose as normal, but their attack fails. If the chosen player is evil, nothing happens and the Demon kills as normal. Remember one good player registers as evil (the Faux Paw reminder) to info abilities while the Lycanthrope lives; if the Lycanthrope is drunk or poisoned, no one dies from their choice and the Demon kills as normal.",
+   "shows": []
+  }
+ },
+ "magician": {
+  "first": {
+   "instructions": "The Magician is not woken. During Minion Info, point to both the Magician and the real Demon when showing the Minions who the Demon is, so the Minions see two possible Demons. During Demon Info, point to the Magician along with the real Minions, so the Demon thinks the Magician is a Minion. The Demon does not learn which of its shown Minions are real.",
+   "shows": []
+  }
+ },
+ "nightwatchman": {
+  "first": {
+   "instructions": "If the Nightwatchman still has their ability, wake them; they may point to a player as their once-per-game choice, or decline. If they choose, mark the Nightwatchman with the No Ability reminder, put them to sleep, wake the chosen player, show the 'This player is' info token and the Nightwatchman character token, then point to the Nightwatchman. If the Nightwatchman is drunk or poisoned, do not wake the target; the target learns nothing, but the use is still spent.",
+   "shows": [
+    {
+     "label": "Show target",
+     "kind": "token",
+     "text": "THIS PLAYER IS",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "If the Nightwatchman has not yet used their ability, wake them; they may point to a player, or decline. If they choose, mark them with the No Ability reminder, put them to sleep, wake the chosen player, show the 'This player is' info token and the Nightwatchman character token, then point to the Nightwatchman. If the Nightwatchman is drunk or poisoned, do not wake the target; the use is still spent.",
+   "shows": [
+    {
+     "label": "Show target",
+     "kind": "token",
+     "text": "THIS PLAYER IS",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "noble": {
+  "first": {
+   "instructions": "Wake the Noble and point to the 3 players marked with Know reminders, then put them back to sleep. Exactly 1 of these players is evil and the other 2 are good. If the Noble is drunk or poisoned, you may point to any 3 players.",
+   "shows": []
+  }
+ },
+ "pixie": {
+  "first": {
+   "instructions": "Wake the Pixie and show them 1 in-play Townsfolk character token, then put them back to sleep. Place the Mad reminder to record which character you showed: the Pixie must be mad that they are this character, and if they were, they gain that character's ability when that player dies (then place the Has Ability reminder). If the Pixie is drunk or poisoned, you may show a not-in-play Townsfolk token.",
+   "shows": [
+    {
+     "label": "Mad as",
+     "kind": "token",
+     "text": "YOU ARE MAD THAT YOU ARE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "poppygrower": {
+  "first": {
+   "instructions": "Skip Minion Info and Demon Info entirely: the Minions and Demon do not learn each other. Instead, wake the Demon alone, show the 'These characters are not in play' info token and 3 not-in-play good character tokens as bluffs, then put them back to sleep. The Minions learn nothing tonight. If the Poppy Grower is drunk or poisoned on the first night, run Minion Info and Demon Info as normal.",
+   "shows": [
+    {
+     "label": "Demon bluffs",
+     "kind": "message",
+     "text": "THESE CHARACTERS ARE NOT IN PLAY",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Only act if the Poppy Grower died today or tonight. If so, wake all Minions together, show the 'This is the Demon' info token and point to the Demon, then put them to sleep. Then wake the Demon, show the 'These are your Minions' info token and point to all Minions, then put them to sleep. Place the Evil Wakes reminder to note this has been done; it happens only once, even if the Poppy Grower dies while drunk or poisoned it is your judgement whether evil learns each other.",
+   "shows": [
+    {
+     "label": "To Minions",
+     "kind": "message",
+     "text": "THIS IS THE DEMON",
+     "token": ""
+    },
+    {
+     "label": "To Demon",
+     "kind": "message",
+     "text": "THESE ARE YOUR MINIONS",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "preacher": {
+  "first": {
+   "instructions": "Wake the Preacher and have them point to a player, then put the Preacher back to sleep. If they chose a Minion, wake that Minion, show the 'This character selected you' info token and the Preacher character token, then put them back to sleep; mark that Minion with a No Ability reminder, and they have no ability for as long as the Preacher has chosen them. If the Preacher is drunk or poisoned, the chosen Minion keeps their ability and is not woken.",
+   "shows": [
+    {
+     "label": "To Minion",
+     "kind": "token",
+     "text": "THIS CHARACTER SELECTED YOU",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Preacher and have them point to a player, then put the Preacher back to sleep. If they chose a Minion not already preached to, wake that Minion, show the 'This character selected you' info token and the Preacher character token, then put them back to sleep and mark them with a No Ability reminder. All Minions ever chosen by a sober, healthy Preacher have no ability. If the Preacher is drunk or poisoned tonight, the chosen Minion keeps their ability and is not woken.",
+   "shows": [
+    {
+     "label": "To Minion",
+     "kind": "token",
+     "text": "THIS CHARACTER SELECTED YOU",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "princess": {
+  "other": {
+   "instructions": "Only relevant on the night after the Princess's first day. If on that day the Princess nominated a player who was then executed, place the Doesn't Kill reminder: tonight, wake the Demon and let them choose as normal, but no one dies from the Demon's ability. If the Princess was drunk or poisoned during that day, the Demon kills as normal.",
+   "shows": []
+  }
+ },
+ "shugenja": {
+  "first": {
+   "instructions": "Wake the Shugenja and point your finger horizontally clockwise or anticlockwise, indicating the direction of their nearest evil player around the circle, then put them back to sleep. If the two nearest evil players are equidistant, choose either direction. If the Shugenja is drunk or poisoned, you may point in either direction regardless of where evil sits.",
+   "shows": []
+  }
+ },
+ "steward": {
+  "first": {
+   "instructions": "Wake the Steward and point to the good player marked with the Know reminder, then put them back to sleep. If the Steward is drunk or poisoned, you may point to any player, even an evil one.",
+   "shows": []
+  }
+ },
+ "villageidiot": {
+  "first": {
+   "instructions": "If there are multiple Village Idiots, one of the extras is drunk; make sure the Drunk reminder is placed. Wake each Village Idiot one at a time: they point to any player, and you give a thumbs up if that player is good or a thumbs down if evil, then put them back to sleep. The drunk Village Idiot (or any poisoned one) may be given false information.",
+   "shows": [
+    {
+     "label": "Good",
+     "kind": "good",
+     "text": "THIS PLAYER IS GOOD",
+     "token": ""
+    },
+    {
+     "label": "Evil",
+     "kind": "evil",
+     "text": "THIS PLAYER IS EVIL",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake each Village Idiot one at a time: they point to any player, and you give a thumbs up if that player is good or a thumbs down if evil, then put them back to sleep. The drunk Village Idiot (marked Drunk) or any poisoned Village Idiot may be given false information.",
+   "shows": [
+    {
+     "label": "Good",
+     "kind": "good",
+     "text": "THIS PLAYER IS GOOD",
+     "token": ""
+    },
+    {
+     "label": "Evil",
+     "kind": "evil",
+     "text": "THIS PLAYER IS EVIL",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "damsel": {
+  "first": {
+   "instructions": "During Minion Info, show each Minion the Damsel character token so they learn a Damsel is in play; they do not learn who it is. If Minion Info was skipped (for example by a Poppy Grower), show them at your first opportunity. Remember each Minion may make one public guess of who the Damsel is during the game; if a Minion guesses correctly, evil wins (track with the Guess Used reminder). The Damsel themself is not woken.",
+   "shows": [
+    {
+     "label": "To Minions",
+     "kind": "token",
+     "text": "THIS CHARACTER IS IN PLAY",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Only act if the Huntsman chose the Damsel tonight. If so, wake the Damsel, show the 'You are' info token and a not-in-play Townsfolk character token of your choice, then put them back to sleep and swap their token in the Grimoire. If the Damsel was drunk or poisoned, or the Huntsman was, follow the Huntsman's step: the change may not occur.",
+   "shows": [
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "hatter": {
+  "other": {
+   "instructions": "Only act if the Hatter died today or tonight (the Tea Party Tonight reminder). Wake the Minions and the Demon together; each may choose a new character of their own type (Minions choose Minion characters, the Demon chooses a Demon character), with no duplicates of in-play characters. For each player who changes, show the 'You are' info token and their new character token, swap their token in the Grimoire, then put everyone back to sleep. If the Hatter was drunk or poisoned when they died, no one may change character.",
+   "shows": [
+    {
+     "label": "New character",
+     "kind": "token",
+     "text": "YOU ARE",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "ogre": {
+  "first": {
+   "instructions": "Wake the Ogre and have them point to a player other than themself, then put them back to sleep. Place the Friend reminder on the chosen player: the Ogre becomes that player's alignment but does not learn which alignment it is, so give no signal. This works even if the Ogre is drunk or poisoned.",
+   "shows": []
+  }
+ },
+ "plaguedoctor": {
+  "other": {
+   "instructions": "Only act if the Plague Doctor has died and you have not yet gained a Minion ability. Choose a Minion character (usually not in play) and gain its ability yourself as Storyteller, placing the Storyteller Ability reminder to track it; if the ability affects setup or ongoing play, apply it as sensibly as possible. Do not tell the players which ability you gained. If the Plague Doctor was drunk or poisoned when they died, you gain no ability.",
+   "shows": []
+  }
+ },
+ "snitch": {
+  "first": {
+   "instructions": "Before the Demon receives its bluffs, wake each Minion one at a time, show the 'These characters are not in play' info token and 3 not-in-play character tokens as bluffs, then put them back to sleep. Each Minion may be shown different bluffs. If the Snitch is drunk or poisoned, the Minions do not receive bluffs.",
+   "shows": [
+    {
+     "label": "Minion bluffs",
+     "kind": "message",
+     "text": "THESE CHARACTERS ARE NOT IN PLAY",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "boffin": {
+  "first": {
+   "instructions": "Wake the Boffin and the Demon together. Show both the 'This character selected you' info and the Boffin token, then show the not-in-play good character token whose ability the Demon has. Both players now know which good ability the Demon carries; the Demon has this ability even while drunk or poisoned. Put both to sleep and run the granted ability at its usual place in the night order for the rest of the game.",
+   "shows": [
+    {
+     "label": "To Boffin & Demon",
+     "kind": "token",
+     "text": "THIS CHARACTER SELECTED YOU",
+     "token": "self"
+    },
+    {
+     "label": "Granted ability",
+     "kind": "token",
+     "text": "THE DEMON HAS THIS ABILITY",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "fearmonger": {
+  "first": {
+   "instructions": "Wake the Fearmonger. They point to a player; place the Fear reminder on that player and put the Fearmonger to sleep. At dawn, publicly announce that the Fearmonger has chosen a player (do not say who). If the Fearmonger later nominates and executes the marked player, that player's team loses immediately.",
+   "shows": [
+    {
+     "label": "Choose",
+     "kind": "message",
+     "text": "CHOOSE A PLAYER TO THREATEN…",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Fearmonger. They point to a player; move the Fear reminder there and put them to sleep. If the choice is different from last night, announce at dawn that the Fearmonger has chosen a player; if it is the same player, make no announcement. If the Fearmonger nominates and executes the marked player, that player's team loses.",
+   "shows": [
+    {
+     "label": "Choose",
+     "kind": "message",
+     "text": "CHOOSE A PLAYER TO THREATEN…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "harpy": {
+  "first": {
+   "instructions": "Wake the Harpy. They point to two players in order; mark the 1st with the Mad reminder and the 2nd with the 2nd reminder, then put the Harpy to sleep. Wake the 1st target, show the 'This character selected you' info and the Harpy token, then point clearly at the 2nd target, and put them back to sleep. Tomorrow the 1st player must act mad that the 2nd player is evil, or you may kill one or both of them.",
+   "shows": [
+    {
+     "label": "To 1st target",
+     "kind": "token",
+     "text": "THIS CHARACTER SELECTED YOU",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Harpy. They point to two players in order; move the Mad reminder to the 1st and the 2nd reminder to the 2nd, then put the Harpy to sleep. Wake the 1st target, show the 'This character selected you' info and the Harpy token, then point at the 2nd target, and put them to sleep. If yesterday's madness was broken, one or both of yesterday's targets might die tonight.",
+   "shows": [
+    {
+     "label": "To 1st target",
+     "kind": "token",
+     "text": "THIS CHARACTER SELECTED YOU",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "marionette": {
+  "first": {
+   "instructions": "Do not wake the Marionette - they think they are the good character they drew and get that character's fake info at the appropriate times. Wake the Demon, show the 'This player is' info and the Marionette token, then point at the Marionette player. Keep the 'Is The Marionette' reminder on that player. Remember the Marionette must neighbor the Demon and is actually evil, drunk-like: their ability does not work.",
+   "shows": [
+    {
+     "label": "To Demon",
+     "kind": "token",
+     "text": "THIS PLAYER IS THE MARIONETTE",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "mezepheles": {
+  "first": {
+   "instructions": "Wake the Mezepheles and silently show them their secret word (write it beforehand and show it as text - do not speak). Put them to sleep. Remember the word: the first good player to say it publicly becomes evil that night.",
+   "shows": [
+    {
+     "label": "Secret word",
+     "kind": "message",
+     "text": "YOUR WORD IS…",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "If a good player said the secret word today, wake that player, show the 'You are' info token and give a thumbs-down: they are now evil (same character, evil alignment). Mark them with the Turns Evil reminder resolved and mark the Mezepheles with No Ability - only the first good player ever turns. Consider waking them alongside or before the Demon so the evil team can learn its new member; put everyone back to sleep afterwards.",
+   "shows": [
+    {
+     "label": "To turned player",
+     "kind": "evil",
+     "text": "YOU ARE NOW EVIL",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "organgrinder": {
+  "first": {
+   "instructions": "Wake the Organ Grinder. They nod yes to be drunk until dusk, or shake their head no to stay sober; mark them with the Drunk reminder if they nod. Put them to sleep. Remember that all day: votes happen with eyes closed and you announce only whether the nomination has enough votes, never the tally.",
+   "shows": [
+    {
+     "label": "Ask",
+     "kind": "message",
+     "text": "DRUNK TODAY? NOD YES / SHAKE NO",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Organ Grinder. They nod yes to be drunk until dusk, or shake their head no to be sober; add or remove the Drunk reminder accordingly. Put them to sleep. During the day, run all votes with eyes closed and keep the tally secret, announcing only whether the vote succeeded.",
+   "shows": [
+    {
+     "label": "Ask",
+     "kind": "message",
+     "text": "DRUNK TODAY? NOD YES / SHAKE NO",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "summoner": {
+  "first": {
+   "instructions": "There is no Demon in play yet - do not do a normal demon setup. Wake the Summoner, show the 'These characters are not in play' info token, then show 3 not-in-play good character tokens as bluffs. Put them to sleep and place the Night 1 reminder on the Summoner. Nobody dies at night until the Summoner acts on night 3.",
+   "shows": [
+    {
+     "label": "Bluffs",
+     "kind": "message",
+     "text": "THESE 3 CHARACTERS ARE NOT IN PLAY…",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Advance the Summoner's night reminder (Night 2, then Night 3). On night 3, wake the Summoner: they point to a player and choose a Demon character (let them pick from the script's demons). Put the Summoner to sleep, wake the target, show the 'You are' info and the chosen Demon token and give a thumbs-down - that player is now that evil Demon and acts tonight if their ability allows. If the Summoner is dead or drunk/poisoned on night 3, no Demon is created (or you choose, per your ruling) - by default evil loses without a Demon.",
+   "shows": [
+    {
+     "label": "Night 3: to target",
+     "kind": "token",
+     "text": "YOU ARE… THIS DEMON, AND EVIL",
+     "token": "pick"
+    }
+   ]
+  }
+ },
+ "vizier": {
+  "first": {
+   "instructions": "The Vizier does not wake. At dawn (or at the start of the game), publicly announce which player is the Vizier. Remember during the day: the Vizier cannot die by execution or other day deaths, and if a good player voted on any nomination, the Vizier may reveal themselves to have that nominee executed immediately.",
+   "shows": [
+    {
+     "label": "Public announce",
+     "kind": "message",
+     "text": "THE VIZIER IS…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "widow": {
+  "first": {
+   "instructions": "Wake the Widow and show them the Grimoire for as long as they need (cover any reminders you must hide, e.g. a fellow Widow's Know token). They then choose a player: mark that player with the Poisoned reminder - they stay poisoned as long as the Widow lives. Put the Widow to sleep. Choose a good player, mark them with the Know reminder, wake them and show the Widow token so they learn a Widow is in play.",
+   "shows": [
+    {
+     "label": "To good player",
+     "kind": "token",
+     "text": "THIS CHARACTER IS IN PLAY",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "wizard": {
+  "first": {
+   "instructions": "The Wizard only acts if they are making their once-per-game wish; establish a signal (e.g. they may leave you a note or you wake them to ask). If they wish tonight, hear the wish and decide whether to grant it, what price it carries, and what clue about the wish you will give the good team. Do whatever setup the granted wish requires and use the '?' reminders to track its ongoing effects.",
+   "shows": [
+    {
+     "label": "Ask",
+     "kind": "message",
+     "text": "DO YOU WISH TONIGHT?",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "If the Wizard has not yet wished, check whether they wish tonight and, if so, decide whether to grant it, its price, and the clue you will leave for the good team. If a granted wish has ongoing effects, resolve them at whatever point in the night order fits, tracking them with the '?' reminders. Once the wish has been made, the Wizard never acts again.",
+   "shows": [
+    {
+     "label": "Ask",
+     "kind": "message",
+     "text": "DO YOU WISH TONIGHT?",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "xaan": {
+  "first": {
+   "instructions": "The Xaan does not wake. You secretly chose X during setup (X equals the number of Outsiders in play). If X is 1, mark the Xaan with the X reminder: all Townsfolk are poisoned tonight until dusk - give them false info accordingly. Otherwise place the Night 1 reminder to start counting.",
+   "shows": []
+  },
+  "other": {
+   "instructions": "Advance the Xaan's night reminder each night. When the night number equals X, replace it with the X reminder: every Townsfolk is poisoned from that night until dusk, so their abilities malfunction and their info may be false. The poison ends at dusk the following day; after night X the Xaan has no further effect.",
+   "shows": []
+  }
+ },
+ "alhadikhia": {
+  "other": {
+   "instructions": "Wake the Al-Hadikhia. They may choose 3 players, in order; mark them with the 1, 2 and 3 reminders and put the demon to sleep (the Al-Hadikhia may choose itself). One at a time and in order, wake each chosen player, announce aloud for all to hear something like 'You are the first/second/third chosen - live or die?'; they silently nod to live or shake their head to die, and you announce their choice aloud ('The first chooses to live') before putting them to sleep and waking the next. Kill each player who chose to die; if all three chose to live, all three die instead. At dawn everyone therefore knows who the 3 choices were - resolve deaths before other dawn announcements.",
+   "shows": [
+    {
+     "label": "Ask each chosen",
+     "kind": "message",
+     "text": "DO YOU CHOOSE TO LIVE OR TO DIE?",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "kazali": {
+  "first": {
+   "instructions": "There are no pre-set Minions - the Kazali creates them now. Wake the Kazali: they point to each player they want as a Minion and pick which Minion character each becomes (one at a time). Put the Kazali to sleep, then wake each chosen player, show the 'You are' info and their new Minion token and give a thumbs-down; they are now that evil Minion. Swap the grimoire tokens accordingly and run any setup those Minions cause (e.g. a Kazali-created Widow or Boffin) as best fits; Outsider counts may have been changed at setup.",
+   "shows": [
+    {
+     "label": "To each chosen",
+     "kind": "token",
+     "text": "YOU ARE… THIS MINION, AND EVIL",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Kazali. They point to a player; that player dies - mark them with the Dead reminder. Put the Kazali to sleep and announce the death at dawn.",
+   "shows": []
+  }
+ },
+ "legion": {
+  "other": {
+   "instructions": "Legion does not wake - you decide the kill. Choose whether a player dies tonight and who (you may kill a Legion player or a good player; killing no one is allowed). Mark the victim with the Dead reminder and announce at dawn. During the day, remember executions fail (nobody dies) if only evil players voted, and Legion registers as a Minion as well as a Demon.",
+   "shows": []
+  }
+ },
+ "leviathan": {
+  "first": {
+   "instructions": "The Leviathan does not wake and never kills. At dawn, publicly announce that the Leviathan is in play, and place the Day 1 reminder. Track executions of good players with the Good Player Executed reminder: if a second good player is ever executed, evil wins immediately.",
+   "shows": [
+    {
+     "label": "Public announce",
+     "kind": "message",
+     "text": "THE LEVIATHAN IS IN PLAY. IT IS DAY 1.",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Advance the Leviathan's day reminder to the coming day; you may publicly re-announce that the Leviathan is in play and which day it is. Nobody dies at night. If more than one good player has been executed, or day 5 ends with the Leviathan alive, evil wins.",
+   "shows": [
+    {
+     "label": "Public announce",
+     "kind": "message",
+     "text": "THE LEVIATHAN IS IN PLAY. IT IS DAY…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "lilmonsta": {
+  "first": {
+   "instructions": "Lil' Monsta is a token, not a player. Wake all Minions together; they silently agree (pointing, gesturing) on one of them to babysit Lil' Monsta tonight. Put the Minions to sleep, wake the chosen babysitter, show the 'You are' info and the Lil' Monsta token, and place the 'Is The Demon' reminder on them - they register as the Demon while babysitting. Nobody dies on the first night.",
+   "shows": [
+    {
+     "label": "To babysitter",
+     "kind": "token",
+     "text": "YOU HOLD LIL' MONSTA - YOU ARE THE DEMON",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake all Minions together; they silently agree who babysits Lil' Monsta tonight (it may be the same player). Put them to sleep, wake the new babysitter, show the 'You are' info and the Lil' Monsta token, and move the 'Is The Demon' reminder to them. Then a player might die - you choose who (typically as a demon kill); mark them Dead and announce at dawn. If the Minions cannot agree, the token stays where it is or you decide.",
+   "shows": [
+    {
+     "label": "To babysitter",
+     "kind": "token",
+     "text": "YOU HOLD LIL' MONSTA - YOU ARE THE DEMON",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "lleech": {
+  "first": {
+   "instructions": "Wake the Lleech. They point to a player; mark that player with the Poisoned reminder - this is the Lleech's host, poisoned for as long as the Lleech lives. Put the Lleech to sleep. Remember the Lleech cannot die by any means while the host lives, and dies immediately when the host dies.",
+   "shows": [
+    {
+     "label": "Choose host",
+     "kind": "message",
+     "text": "CHOOSE YOUR HOST…",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Lleech. They point to a player; that player dies - mark them Dead and announce at dawn (they may kill their own host, which then kills the Lleech too). Put the Lleech to sleep. If anything would kill the Lleech while its host lives, the Lleech does not die; when the host dies by any means, the Lleech dies immediately.",
+   "shows": []
+  }
+ },
+ "lordoftyphon": {
+  "first": {
+   "instructions": "The evil team sits in a line with the Lord of Typhon in the middle; its neighbors were made Minions at setup. Wake each of the Lord of Typhon's two neighbors one at a time: show the 'You are' info and their Minion token and give a thumbs-down - they now know they are that evil Minion (they do not automatically learn who the demon is; run minion/demon info per your script). Put each to sleep before waking the next. Do not wake the Lord of Typhon itself.",
+   "shows": [
+    {
+     "label": "To each neighbor",
+     "kind": "token",
+     "text": "YOU ARE… THIS MINION, AND EVIL",
+     "token": "pick"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Wake the Lord of Typhon. They point to a player; that player dies - mark them with the Dead reminder. Put the demon to sleep and announce the death at dawn.",
+   "shows": []
+  }
+ },
+ "ojo": {
+  "other": {
+   "instructions": "Wake the Ojo. They choose a character (not a player) - point to tokens on a script sheet or let them name it. If that character is in play, that player dies; if it is not in play (or only registers as such), you choose any player to die instead - mark the victim with the Dead reminder. Put the Ojo to sleep and announce the death at dawn.",
+   "shows": [
+    {
+     "label": "Ask",
+     "kind": "message",
+     "text": "CHOOSE A CHARACTER TO KILL…",
+     "token": ""
+    }
+   ]
+  }
+ },
+ "riot": {
+  "other": {
+   "instructions": "Riot does not kill at night. Advance the Riot day reminder to the coming day. On night 3, you may wake all Minion players one at a time and show the 'You are' info and the Riot token - all Minions are also Riot and tomorrow nominees must nominate again. During the day, each nominee dies immediately and may (on day 3, must) nominate another player straight away; if day 3 ends with good not having won, evil wins.",
+   "shows": [
+    {
+     "label": "Night 3: to Minions",
+     "kind": "token",
+     "text": "YOU ARE ALSO THIS CHARACTER",
+     "token": "self"
+    }
+   ]
+  }
+ },
+ "yaggababble": {
+  "first": {
+   "instructions": "Wake the Yaggababble and silently show them their secret phrase (write it beforehand and show it as text - do not speak). Put them to sleep. During each day, keep a private count of every time the Yaggababble says the phrase publicly.",
+   "shows": [
+    {
+     "label": "Secret phrase",
+     "kind": "message",
+     "text": "YOUR PHRASE IS…",
+     "token": ""
+    }
+   ]
+  },
+  "other": {
+   "instructions": "The Yaggababble does not wake. For each time they said their secret phrase publicly today, a player might die - you choose how many of those potential kills happen and who dies (use the Dead reminders). Resolve the deaths at the Yaggababble's place in the night order and announce them at dawn.",
+   "shows": []
+  }
+ },
+ "gnome": {
+  "first": {
+   "instructions": "At dawn (or when the Gnome enters play), publicly announce a player who is the same alignment as the Gnome and mark them with the Amigo reminder - everyone starts knowing this. The Gnome does not wake at night. During the day, if anyone nominates the Amigo, the Gnome may choose to kill that nominator immediately.",
+   "shows": [
+    {
+     "label": "Public announce",
+     "kind": "message",
+     "text": "THIS PLAYER SHARES THE GNOME'S ALIGNMENT…",
+     "token": ""
+    }
+   ]
+  }
+ }
+}
