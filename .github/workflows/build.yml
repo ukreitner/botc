@@ -33,6 +33,57 @@ jobs:
           cache: gradle
       - run: gradle -p tools/uicheck compileKotlin
 
+  web:
+    name: Build & deploy web app (PWA)
+    # Pages hosts one site; deploy only from the active development branch.
+    if: github.ref_name == 'claude/clocktower-grimoire-android-0bz090'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Restore cached character art
+        uses: actions/cache/restore@v4
+        with:
+          path: app/src/main/assets/icons
+          key: icons-v1-${{ github.run_id }}-web
+          restore-keys: icons-v1-
+      - name: Fetch official character art
+        run: bash tools/fetch-icons.sh
+      - name: Build WebAssembly distribution
+        run: gradle -p web wasmJsBrowserDistribution
+      - name: Assemble PWA site
+        run: |
+          mkdir -p site/data site/icons
+          cp -r web/build/dist/wasmJs/productionExecutable/* site/
+          cp engine/src/main/resources/botc/data/*.json site/data/
+          cp app/src/main/assets/icons/* site/icons/
+          sed -i "s/__BUILD__/${GITHUB_SHA}/" site/sw.js
+          convert -size 512x512 xc:'#0E0A14' \
+            \( -size 480x480 xc:none -fill none -stroke '#D9B45B' -strokewidth 14 \
+               -draw 'circle 240,240 240,30' \) -gravity center -composite \
+            -fill '#D9B45B' -font DejaVu-Serif -pointsize 260 -gravity center \
+            -annotate +0+10 'G' site/appicon.png \
+            || cp site/icons/imp.png site/appicon.png
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
   apk:
     name: Assemble & publish debug APK
     runs-on: ubuntu-latest

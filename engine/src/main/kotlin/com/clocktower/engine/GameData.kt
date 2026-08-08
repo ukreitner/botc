@@ -72,8 +72,8 @@ class GameData(
 
         /** Loads the dataset bundled on the classpath. */
         fun loadDefault(): GameData {
-            val characters = json.decodeFromString<List<Character>>(readResource("/botc/data/characters.json"))
-            val extras = json.decodeFromString<NightAndJinxes>(readResource("/botc/data/night_and_jinxes.json"))
+            val characters = json.decodeFromString<List<Character>>(BotcResources.read("/botc/data/characters.json"))
+            val extras = json.decodeFromString<NightAndJinxes>(BotcResources.read("/botc/data/night_and_jinxes.json"))
             return GameData(
                 characters = characters,
                 jinxes = extras.jinxes,
@@ -86,10 +86,6 @@ class GameData(
             )
         }
 
-        private fun readResource(path: String): String =
-            GameData::class.java.getResourceAsStream(path)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                ?: throw IllegalStateException("Missing bundled resource: $path")
     }
 }
 

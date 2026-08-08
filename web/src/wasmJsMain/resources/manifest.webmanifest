@@ -1,0 +1,15 @@
+{
+  "name": "Clocktower Grimoire",
+  "short_name": "Grimoire",
+  "description": "Storyteller grimoire and player notes for Blood on the Clocktower",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E0A14",
+  "theme_color": "#0E0A14",
+  "icons": [
+    { "src": "appicon.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "appicon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -79,6 +79,23 @@ class ScriptLinkTest {
     }
 
     @kotlin.test.Test
+    fun `pure kotlin inflate round trips real gzip output`() {
+        val random = kotlin.random.Random(42)
+        for (size in listOf(0, 1, 100, 5_000, 60_000)) {
+            // Compressible-ish data: runs + random, to hit all block types.
+            val original = ByteArray(size) { i ->
+                if (i % 7 < 4) 'a'.code.toByte() else random.nextInt(256).toByte()
+            }
+            val gzipped = java.io.ByteArrayOutputStream().use { bos ->
+                java.util.zip.GZIPOutputStream(bos).use { it.write(original) }
+                bos.toByteArray()
+            }
+            val inflated = Inflate.gunzip(gzipped)
+            kotlin.test.assertTrue(original.contentEquals(inflated), "mismatch at size $size")
+        }
+    }
+
+    @kotlin.test.Test
     fun `raw json is not treated as a link`() {
         kotlin.test.assertTrue(!ScriptLink.isLink("""["imp","poisoner"]"""))
         kotlin.test.assertEquals(null, ScriptLink.decode("""["imp","poisoner"]"""))

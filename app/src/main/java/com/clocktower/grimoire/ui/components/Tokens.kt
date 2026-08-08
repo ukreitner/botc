@@ -76,11 +76,10 @@ fun CharacterToken(
                 .fillMaxSize()
                 .padding(horizontal = size / 10),
         ) {
-            val icon = if (character != null) {
-                remember(character.id) { IconStore.icon(character.id) }
-            } else {
-                null
-            }
+            // Deliberately not remember()ed: the web build loads art
+            // asynchronously behind a state-backed store, and a snapshot
+            // read here lets tokens fill in as their art arrives.
+            val icon = character?.let { IconStore.icon(it.id) }
             // The token face is art only — names render outside the token
             // (see TokenWithName) so they are never squeezed or truncated.
             if (icon != null && character != null) {

@@ -6,23 +6,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.core.Serializer
 import androidx.datastore.dataStoreFile
-import com.clocktower.engine.GameState
-import com.clocktower.engine.NotesState
-import com.clocktower.engine.Script
 import java.io.InputStream
 import java.io.OutputStream
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-
-/** Everything the app persists between launches. */
-@Serializable
-data class SavedData(
-    val game: GameState? = null,
-    val importedScripts: List<Script> = emptyList(),
-    /** Player-notes session — independent of the storyteller game. */
-    val notes: NotesState? = null,
-)
 
 object SavedDataSerializer : Serializer<SavedData> {
     private val json = Json {

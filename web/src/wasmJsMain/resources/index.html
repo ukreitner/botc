@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Clocktower Grimoire</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Grimoire">
+<meta name="theme-color" content="#0E0A14">
+<link rel="apple-touch-icon" href="appicon.png">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0E0A14; overflow: hidden; }
+  #compose { width: 100vw; height: 100vh; outline: none; }
+  #boot {
+    position: fixed; inset: 0; display: flex; flex-direction: column; gap: 10px;
+    align-items: center; justify-content: center;
+    color: #D9B45B; font-family: Georgia, serif; font-size: 22px;
+  }
+  #boot small { color: #B9AECB; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="boot">☾ Opening the grimoire…<small>first load fetches the whole app; later loads are instant</small></div>
+<canvas id="compose"></canvas>
+<script>
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+</script>
+<script src="grimoire.js"></script>
+</body>
+</html>

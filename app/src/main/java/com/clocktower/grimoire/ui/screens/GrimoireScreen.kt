@@ -316,11 +316,11 @@ object SeatGeometry {
     fun equalArcAngles(count: Int, radiusX: Float, radiusY: Float): List<Double> {
         if (count <= 0) return emptyList()
         val samples = 1440
-        val step = 2 * Math.PI / samples
+        val step = 2 * kotlin.math.PI / samples
         // Cumulative arc length from the top of the ellipse.
         val cumulative = DoubleArray(samples + 1)
         for (i in 1..samples) {
-            val t = -Math.PI / 2 + step * (i - 0.5)
+            val t = -kotlin.math.PI / 2 + step * (i - 0.5)
             val dx = -radiusX * kotlin.math.sin(t)
             val dy = radiusY * kotlin.math.cos(t)
             cumulative[i] = cumulative[i - 1] + kotlin.math.sqrt(dx * dx + dy * dy) * step
@@ -331,7 +331,7 @@ object SeatGeometry {
         for (k in 0 until count) {
             val target = total * k / count
             while (cursor < samples && cumulative[cursor + 1] < target) cursor++
-            angles.add(-Math.PI / 2 + step * cursor)
+            angles.add(-kotlin.math.PI / 2 + step * cursor)
         }
         return angles
     }

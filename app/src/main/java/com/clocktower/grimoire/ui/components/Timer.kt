@@ -28,11 +28,11 @@ import kotlinx.coroutines.delay
 fun DiscussionTimer(modifier: Modifier = Modifier) {
     // 0 = idle; otherwise the epoch-millis deadline.
     var endAt by rememberSaveable { mutableLongStateOf(0L) }
-    var now by rememberSaveable { mutableLongStateOf(System.currentTimeMillis()) }
+    var now by rememberSaveable { mutableLongStateOf(com.clocktower.engine.Time.epochMillis()) }
 
     LaunchedEffect(endAt) {
         while (endAt != 0L) {
-            now = System.currentTimeMillis()
+            now = com.clocktower.engine.Time.epochMillis()
             delay(250)
         }
     }
@@ -53,7 +53,11 @@ fun DiscussionTimer(modifier: Modifier = Modifier) {
                 val expired = now >= endAt
                 FilledTonalButton(onClick = { endAt = 0L }) {
                     Text(
-                        text = if (expired) "Time!  ✕" else "%d:%02d  ✕".format(remaining / 60, remaining % 60),
+                        text = if (expired) {
+                            "Time!  ✕"
+                        } else {
+                            "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}  ✕"
+                        },
                         color = if (expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -61,7 +65,7 @@ fun DiscussionTimer(modifier: Modifier = Modifier) {
                 Text("Timer", style = MaterialTheme.typography.labelLarge)
                 for ((label, secs) in listOf("1m" to 60, "2m" to 120, "5m" to 300)) {
                     AssistChip(
-                        onClick = { endAt = System.currentTimeMillis() + secs * 1000L },
+                        onClick = { endAt = com.clocktower.engine.Time.epochMillis() + secs * 1000L },
                         label = { Text(label) },
                     )
                 }

@@ -1,0 +1,59 @@
+import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension
+import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin
+import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin
+import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension
+
+plugins {
+    kotlin("multiplatform") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
+    id("org.jetbrains.compose") version "1.7.3"
+}
+
+// Use the system Node and Yarn (present locally and on CI runners) so the
+// build never depends on nodejs.org being reachable.
+plugins.withType<NodeJsRootPlugin> {
+    the<NodeJsRootExtension>().download = false
+}
+plugins.withType<YarnPlugin> {
+    the<YarnRootExtension>().download = false
+}
+
+kotlin {
+    wasmJs {
+        browser {
+            commonWebpackConfig {
+                outputFileName = "grimoire.js"
+            }
+        }
+        binaries.executable()
+    }
+
+    sourceSets {
+        val wasmJsMain by getting {
+            // Real app sources — the browser substitutes live in
+            // src/wasmJsMain/kotlin under different file names.
+            kotlin.srcDir("../engine/src/main/kotlin")
+            kotlin.srcDir("../app/src/main/java")
+            kotlin.exclude(
+                "com/clocktower/engine/Platform.kt", // JVM resources/clock
+                "com/clocktower/grimoire/IconLoader.kt", // Android bitmaps
+                "com/clocktower/grimoire/GrimoireApp.kt", // Android Application
+                "com/clocktower/grimoire/MainActivity.kt", // Android activity + nav
+                "com/clocktower/grimoire/data/Persistence.kt", // DataStore
+                "com/clocktower/grimoire/ui/GameViewModel.kt", // AndroidViewModel
+                "com/clocktower/grimoire/ui/platform/Platform.kt", // Android seam
+                "com/clocktower/grimoire/ui/components/IconStore.kt", // JVM sync
+            )
+            dependencies {
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.material3)
+                implementation(compose.materialIconsExtended)
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+                implementation("org.jetbrains.kotlinx:kotlinx-browser:0.3")
+            }
+        }
+    }
+}

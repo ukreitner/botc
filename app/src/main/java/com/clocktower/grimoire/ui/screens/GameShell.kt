@@ -58,9 +58,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalView
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.Character
 import com.clocktower.engine.GameActions
@@ -109,11 +107,7 @@ fun GameShell(
     var marionettePromptDone by rememberSaveable { mutableStateOf(false) }
 
     // The table's phone must not sleep mid-game.
-    val view = LocalView.current
-    DisposableEffect(Unit) {
-        view.keepScreenOn = true
-        onDispose { view.keepScreenOn = false }
-    }
+    com.clocktower.grimoire.ui.platform.KeepScreenOn()
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val stateHolder = rememberSaveableStateHolder()
@@ -131,7 +125,7 @@ fun GameShell(
     }
     val requestPhaseAdvance: () -> Unit = advance@{
         // Debounce: an accidental double tap must not skip a whole phase.
-        val nowMs = System.currentTimeMillis()
+        val nowMs = com.clocktower.engine.Time.epochMillis()
         if (nowMs - lastAdvanceAt < 800) return@advance
         lastAdvanceAt = nowMs
         // Setup guard: empty/manual games must meet the same adjusted team

@@ -48,11 +48,9 @@ object NightGuide {
 
     /** Character id -> guide, loaded from the bundled resource. */
     val entries: Map<String, NightGuideEntry> by lazy {
-        val stream = NightGuide::class.java.getResourceAsStream("/botc/data/night_guide.json")
+        val text = BotcResources.readOrNull("/botc/data/night_guide.json")
             ?: return@lazy emptyMap()
-        json.decodeFromString<Map<String, NightGuideEntry>>(
-            stream.bufferedReader(Charsets.UTF_8).use { it.readText() },
-        )
+        json.decodeFromString<Map<String, NightGuideEntry>>(text)
     }
 
     fun forStep(characterId: String, isFirstNight: Boolean): GuideNight? {

@@ -443,7 +443,7 @@ object GameActions {
             var explained = false
             for (team in checkedTeams) {
                 val actual = counts[team] ?: 0
-                val expected = allowedDistributions.map { it.count(team) }.toSortedSet()
+                val expected = allowedDistributions.map { it.count(team) }.distinct().sorted()
                 if (actual !in expected) {
                     val expectedText = expected.joinToString(" or ")
                     issues += "${team.displayName}: $actual in bag, expected $expectedText"

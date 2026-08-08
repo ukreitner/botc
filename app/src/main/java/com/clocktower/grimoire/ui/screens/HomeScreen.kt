@@ -57,7 +57,6 @@ fun HomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("☾", style = MaterialTheme.typography.displayMedium, color = FadedInk)
         Text(
             "Clocktower",
             style = MaterialTheme.typography.displayLarge,
@@ -76,12 +75,6 @@ fun HomeScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
-        )
-        Text(
-            "❦",
-            style = MaterialTheme.typography.titleLarge,
-            color = AgedGold.copy(alpha = 0.6f),
-            modifier = Modifier.padding(top = 10.dp),
         )
         Spacer(Modifier.height(40.dp))
 
