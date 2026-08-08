@@ -181,7 +181,7 @@ fun FabledSheet(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            c.name + if (active) "  ✓" else "",
+                            c.name + if (active) "  ●" else "",
                             style = MaterialTheme.typography.titleSmall,
                             color = if (active) AgedGold else MaterialTheme.colorScheme.onSurface,
                         )
@@ -218,7 +218,7 @@ fun ActiveJinxesDialog(
                     val j = jinxes[i]
                     Column {
                         Text(
-                            "${viewModel.gameData.character(j.id1)?.name} ✕ ${viewModel.gameData.character(j.id2)?.name}",
+                            "${viewModel.gameData.character(j.id1)?.name} × ${viewModel.gameData.character(j.id2)?.name}",
                             style = MaterialTheme.typography.titleSmall,
                             color = AgedGold,
                         )
@@ -246,7 +246,7 @@ fun WinAdvisoryDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(advisory.reason, style = MaterialTheme.typography.bodyLarge)
                 for (c in advisory.cautions) {
-                    Text("⚠ $c", color = EmberRed, style = MaterialTheme.typography.bodySmall)
+                    Text("! $c", color = EmberRed, style = MaterialTheme.typography.bodySmall)
                 }
             }
         },

@@ -115,7 +115,7 @@ fun NotesSetupScreen(
                         )
                     }
                     if (chosen == script.id) {
-                        Text("✓", color = AgedGold, style = MaterialTheme.typography.titleMedium)
+                        Text("●", color = AgedGold, style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }

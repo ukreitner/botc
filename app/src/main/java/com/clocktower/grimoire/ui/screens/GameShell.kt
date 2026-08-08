@@ -526,7 +526,7 @@ fun GameShell(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                "☠ MASTERMIND DAY — whoever is executed, their team loses",
+                "MASTERMIND DAY — whoever is executed, their team loses",
                 color = AgedGold,
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
@@ -567,6 +567,12 @@ fun GameShell(
                             )
                         }
                     }
+                    Text(
+                        "Running a Fabled or house rule the checker doesn't know? " +
+                            "You can start anyway — the guard only advises.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             },
             confirmButton = {
@@ -574,6 +580,12 @@ fun GameShell(
                     setupGuardIssues = emptyList()
                     tab = GameTab.GRIMOIRE
                 }) { Text("Fix setup") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    setupGuardIssues = emptyList()
+                    viewModel.advancePhase()
+                }) { Text("Start the night anyway") }
             },
         )
     }

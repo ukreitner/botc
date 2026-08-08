@@ -51,7 +51,7 @@ fun PrivacyCover(onUnlock: () -> Unit) {
                 )
             },
     ) {
-        Text("🌙", fontSize = 64.sp)
+        Text("", fontSize = 64.sp)
         Text(
             text = "The grimoire is closed",
             fontSize = 26.sp,

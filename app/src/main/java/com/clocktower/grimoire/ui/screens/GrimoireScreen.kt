@@ -193,7 +193,7 @@ fun GrimoireScreen(
         ) {
             if (state.demonBluffIds.isEmpty()) {
                 Text(
-                    "＋ bluffs",
+                    "+ bluffs",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -215,7 +215,7 @@ fun GrimoireScreen(
         ) {
             if (state.fabledIds.isEmpty()) {
                 Text(
-                    "fabled ＋",
+                    "fabled +",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

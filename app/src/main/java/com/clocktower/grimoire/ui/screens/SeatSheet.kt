@@ -243,7 +243,7 @@ private fun SeatActions(
             )
             for (note in deathNotes) {
                 Text(
-                    "⚠ $note",
+                    "! $note",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -291,7 +291,7 @@ private fun SeatActions(
                 title = { Text("${player.name} might be protected") },
                 text = {
                     Column {
-                        for (note in protectionNotes) Text("⚠ $note")
+                        for (note in protectionNotes) Text("! $note")
                     }
                 },
                 confirmButton = {

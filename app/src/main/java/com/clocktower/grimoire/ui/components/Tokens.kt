@@ -61,8 +61,8 @@ fun CharacterToken(
         if (character != null && (character.firstNightReminder.isNotBlank() || character.otherNightReminder.isNotBlank())) {
             Text(
                 text = buildString {
-                    if (character.firstNightReminder.isNotBlank()) append("☙")
-                    if (character.otherNightReminder.isNotBlank()) append("❧")
+                    if (character.firstNightReminder.isNotBlank()) append("")
+                    if (character.otherNightReminder.isNotBlank()) append("")
                 },
                 fontSize = (size.value / 6.5f).sp,
                 color = Color(0xFF3E5C2E).copy(alpha = if (dimmed) 0.35f else 0.85f),

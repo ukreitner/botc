@@ -104,17 +104,23 @@ fun FullScreenShow(
                     fontFamily = FontFamily.Serif,
                     color = AgedGold,
                 )
-                is ShowCard.AlignmentCard -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                is ShowCard.AlignmentCard -> Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     Text(
-                        text = if (card.evil) "👎" else "👍",
-                        fontSize = 140.sp,
-                    )
-                    Text(
-                        text = if (card.evil) "YOU ARE EVIL" else "YOU ARE GOOD",
-                        fontSize = 40.sp,
+                        text = if (card.evil) "EVIL" else "GOOD",
+                        fontSize = 110.sp,
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
                         color = if (card.evil) EmberRed else TownsfolkBlue,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = "YOU ARE " + (if (card.evil) "EVIL" else "GOOD"),
+                        fontSize = 34.sp,
+                        fontFamily = FontFamily.Serif,
+                        color = Parchment,
                         textAlign = TextAlign.Center,
                     )
                 }
@@ -377,8 +383,8 @@ fun ShowToolSheet(
                     for (n in 0..9) {
                         AssistChip(onClick = { onShow(ShowCard.NumberCard(n)) }, label = { Text("$n") })
                     }
-                    AssistChip(onClick = { onShow(ShowCard.AlignmentCard(evil = false)) }, label = { Text("👍 Good") })
-                    AssistChip(onClick = { onShow(ShowCard.AlignmentCard(evil = true)) }, label = { Text("👎 Evil") })
+                    AssistChip(onClick = { onShow(ShowCard.AlignmentCard(evil = false)) }, label = { Text("Good") })
+                    AssistChip(onClick = { onShow(ShowCard.AlignmentCard(evil = true)) }, label = { Text("Evil") })
                     if (state.demonBluffIds.isNotEmpty()) {
                         AssistChip(
                             onClick = { onShow(ShowCard.BluffsCard(state.demonBluffIds)) },

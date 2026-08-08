@@ -54,9 +54,9 @@ fun DiscussionTimer(modifier: Modifier = Modifier) {
                 FilledTonalButton(onClick = { endAt = 0L }) {
                     Text(
                         text = if (expired) {
-                            "Time!  ✕"
+                            "Time!  ×"
                         } else {
-                            "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}  ✕"
+                            "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}  ×"
                         },
                         color = if (expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     )

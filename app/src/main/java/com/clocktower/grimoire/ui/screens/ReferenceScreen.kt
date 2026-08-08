@@ -212,7 +212,7 @@ private fun JinxSheet(viewModel: GameViewModel, jinxes: List<com.clocktower.engi
             val c2 = viewModel.gameData.character(j.id2)
             Column {
                 Text(
-                    "${c1?.name ?: j.id1} ✕ ${c2?.name ?: j.id2}",
+                    "${c1?.name ?: j.id1} × ${c2?.name ?: j.id2}",
                     style = MaterialTheme.typography.titleSmall,
                     color = AgedGold,
                 )

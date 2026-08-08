@@ -514,13 +514,13 @@ private fun DemonKillPanel(
     fun teamOf(p: Player): Team? = viewModel.characterById(p.characterId)?.team
 
     Text(
-        text = "⚔ Demon kill — who did ${holder.name} choose?",
+        text = "Demon kill — who did ${holder.name} choose?",
         style = MaterialTheme.typography.labelLarge,
         color = AgedGold,
     )
     if (StatusEffects.isImpaired(state, viewModel::characterById, holder)) {
         Text(
-            "⚠ The Demon is drunk/poisoned — the attack fails (choose 'No kill').",
+            "! The Demon is drunk/poisoned — the attack fails (choose 'No kill').",
             style = MaterialTheme.typography.bodySmall,
             color = EmberRed,
         )
@@ -559,7 +559,7 @@ private fun DemonKillPanel(
     val target = targetId?.let { state.player(it) }
     if (target != null) {
         for (note in StatusEffects.deathNotes(state, viewModel::characterById, target.id)) {
-            Text("⚠ $note", style = MaterialTheme.typography.bodySmall, color = EmberRed)
+            Text("! $note", style = MaterialTheme.typography.bodySmall, color = EmberRed)
         }
         if (target.id == holder.id && demonId == "imp") {
             Text(
@@ -603,7 +603,7 @@ private fun DemonKillPanel(
                         }
                         targetId = null
                     },
-                ) { Text("☠ ${target.name} dies") }
+                ) { Text("${target.name} dies") }
                 TextButton(onClick = { targetId = null }) { Text("No kill") }
             }
         }
@@ -623,7 +623,7 @@ private fun ResolutionPicker(
 ) {
     var selectedId by rememberSaveable(key) { mutableStateOf<Long?>(null) }
     Text(
-        text = "⚡ $title",
+        text = "$title",
         style = MaterialTheme.typography.labelLarge,
         color = AgedGold,
     )
@@ -784,7 +784,7 @@ private fun StepDetailPanel(
                                     else -> activeShow = show
                                 }
                             },
-                            label = { Text("📣 ${show.label}") },
+                            label = { Text("» ${show.label}") },
                         )
                     }
                 }
@@ -836,7 +836,7 @@ private fun StepDetailPanel(
             val result = InfoCalc.compute(viewModel.gameData, state, step.id, holderId, targets)
             if (result != null) {
                 Text(
-                    text = "✦ ${result.headline}",
+                    text = "${result.headline}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = AgedGold,
@@ -850,7 +850,7 @@ private fun StepDetailPanel(
                 }
                 for (caveat in result.caveats) {
                     Text(
-                        "⚠ $caveat",
+                        "! $caveat",
                         style = MaterialTheme.typography.bodySmall,
                         color = EmberRed,
                     )

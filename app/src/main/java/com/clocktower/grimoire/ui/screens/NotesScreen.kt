@@ -18,8 +18,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -139,15 +144,19 @@ fun NotesScreen(
                     TextButton(
                         onClick = { viewModel.updateNotes { NotesActions.setDay(it, it.day - 1) } },
                         enabled = state.day > 1,
-                    ) { Text("−") }
+                    ) { Text("-") }
                     Text("Day ${state.day}", style = MaterialTheme.typography.labelLarge)
                     TextButton(
                         onClick = { viewModel.updateNotes { NotesActions.setDay(it, it.day + 1) } },
-                    ) { Text("＋") }
+                    ) { Text("+") }
                 }
             }
-            TextButton(onClick = { viewModel.undoNotes() }, enabled = canUndo) { Text("↶") }
-            TextButton(onClick = { viewModel.redoNotes() }, enabled = canRedo) { Text("↷") }
+            IconButton(onClick = { viewModel.undoNotes() }, enabled = canUndo) {
+                Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Undo")
+            }
+            IconButton(onClick = { viewModel.redoNotes() }, enabled = canRedo) {
+                Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
+            }
         }
 
         // ---- The circle -------------------------------------------------
@@ -341,7 +350,7 @@ fun NotesScreen(
                     AssistChip(onClick = { showMe = true }, label = { Text("Me") })
                     AssistChip(
                         onClick = { viewModel.updateNotes { NotesActions.addSeat(it, "") } },
-                        label = { Text("＋ Seat") },
+                        label = { Text("+ Seat") },
                     )
                 }
             }
@@ -554,7 +563,7 @@ private fun NoteSeatView(
             .padding(2.dp),
     ) {
         Text(
-            text = (if (isMe) "★ " else "") + seat.name + (if (!seat.alive) " †" else ""),
+            text = (if (isMe) "* " else "") + seat.name + (if (!seat.alive) " †" else ""),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = if (isMe) FontWeight.Bold else FontWeight.Medium,
             color = if (seat.alive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -646,8 +655,8 @@ private fun NoteSeatSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = { viewModel.updateNotes { NotesActions.moveSeat(it, seat.id, -1) } }) { Text("◀") }
-                    TextButton(onClick = { viewModel.updateNotes { NotesActions.moveSeat(it, seat.id, +1) } }) { Text("▶") }
+                    TextButton(onClick = { viewModel.updateNotes { NotesActions.moveSeat(it, seat.id, -1) } }) { Text("<") }
+                    TextButton(onClick = { viewModel.updateNotes { NotesActions.moveSeat(it, seat.id, +1) } }) { Text(">") }
                 }
                 viewModel.notesCharacterById(seat.currentClaimId)?.let { claim ->
                     Text(
@@ -950,7 +959,7 @@ private fun ClaimMatrixSheet(
                                     who.isEmpty() ->
                                         if (team == Team.TOWNSFOLK || team == Team.OUTSIDER) "unclaimed — bluff?" else "—"
                                     who.size == 1 -> who.first().name
-                                    else -> who.joinToString { it.name } + "  ⚔ DOUBLE CLAIM"
+                                    else -> who.joinToString { it.name } + "  DOUBLE CLAIM"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 fontStyle = if (who.isEmpty()) FontStyle.Italic else FontStyle.Normal,
@@ -1065,7 +1074,7 @@ private fun MeSheet(
             item {
                 Text("Me", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
                 Text(
-                    "Marked with ★ on the circle. Your real character stays hidden until you tap it.",
+                    "Marked with * on the circle. Your real character stays hidden until you tap it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1112,7 +1121,7 @@ private fun MeSheet(
                             }) { Text("Clear") }
                         } else {
                             Text(
-                                "🂠  Hidden — tap to reveal",
+                                "Hidden — tap to reveal",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

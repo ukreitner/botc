@@ -100,7 +100,7 @@ fun DayScreen(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     ) {
                         Text(
-                            "⚔ On the block: ${onBlock.name}",
+                            "On the block: ${onBlock.name}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = EmberRed,
@@ -153,7 +153,7 @@ fun DayScreen(
                         state, viewModel::characterById, nominatorId, nomineeId,
                     )
                     for (note in nominationNotes) {
-                        Text("⚠ $note", color = EmberRed, style = MaterialTheme.typography.bodySmall)
+                        Text("! $note", color = EmberRed, style = MaterialTheme.typography.bodySmall)
                     }
 
                     if (nomineeId != null) {

@@ -183,6 +183,26 @@ class EphemeralReminderTest {
     }
 }
 
+class SentinelTest {
+    @kotlin.test.Test
+    fun `sentinel fabled relaxes the outsider count by one either way`() {
+        val data = GameData.loadDefault()
+        val tb = data.builtInScripts().first { it.id == "tb" }
+        // 8 players, base 5/1/1/1 — build a 6/0/1/1 bag (one outsider short).
+        var state = GameActions.newGame(tb, (1..8).map { "P$it" })
+        val playerIds = state.players.map { it.id }
+        val townsfolk = listOf("washerwoman", "librarian", "investigator", "chef", "empath", "monk")
+        townsfolk.forEachIndexed { index, id -> state = GameActions.assignCharacter(state, playerIds[index], id) }
+        state = GameActions.assignCharacter(state, playerIds[6], "poisoner")
+        state = GameActions.assignCharacter(state, playerIds[7], "imp")
+        val without = GameActions.validateSetupState(state, data::character)
+        kotlin.test.assertTrue(without.any { "Outsider" in it }, "flagged without sentinel: $without")
+        state = GameActions.setFabled(state, listOf("sentinel"))
+        val with = GameActions.validateSetupState(state, data::character)
+        kotlin.test.assertTrue(with.none { "Outsider" in it || "Townsfolk" in it }, "sentinel should relax counts: $with")
+    }
+}
+
 class StarPassTest {
     @kotlin.test.Test
     fun `imp star pass kills the imp and crowns the heir`() {

@@ -412,8 +412,16 @@ object GameActions {
     /** Ids that may legally appear multiple times in a bag. */
     val DUPLICABLE = setOf("villageidiot", "legion", "riot")
 
-    /** Human-readable problems with a proposed bag, empty when legal. */
-    fun validateBag(bag: List<Character>, playerCount: Int): List<String> {
+    /**
+     * Human-readable problems with a proposed bag, empty when legal.
+     * Active Fabled ([fabledIds]) that legally bend the distribution are
+     * honoured — the Sentinel allows one extra or one fewer Outsider.
+     */
+    fun validateBag(
+        bag: List<Character>,
+        playerCount: Int,
+        fabledIds: Collection<String> = emptyList(),
+    ): List<String> {
         val issues = mutableListOf<String>()
         if (bag.size != playerCount) {
             issues += "Bag has ${bag.size} characters for $playerCount players"
@@ -430,7 +438,19 @@ object GameActions {
                 add(Team.TOWNSFOLK)
             }
         }
-        val allowedDistributions = Setup.allowedDistributions(playerCount, bag)
+        var allowedDistributions = Setup.allowedDistributions(playerCount, bag)
+        if ("sentinel" in fabledIds.map { Character.normalizeId(it) }) {
+            allowedDistributions = allowedDistributions
+                .flatMap { d ->
+                    listOf(
+                        d,
+                        d.copy(outsiders = d.outsiders + 1, townsfolk = d.townsfolk - 1),
+                        d.copy(outsiders = d.outsiders - 1, townsfolk = d.townsfolk + 1),
+                    )
+                }
+                .filter { it.outsiders >= 0 && it.townsfolk >= 0 }
+                .toSet()
+        }
         val counts = bag.groupingBy { it.team }.eachCount()
         val checkedTeams = listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)
             .filterNot { it in relaxedTeams }
@@ -486,7 +506,7 @@ object GameActions {
         val characters = residents.mapNotNull { player ->
             player.characterId?.let(lookup)
         }
-        val issues = validateBag(characters, residents.size).toMutableList()
+        val issues = validateBag(characters, residents.size, state.fabledIds).toMutableList()
         val inPlayIds = residents.mapNotNull { it.characterId }.toSet()
 
         for (player in residents) {
