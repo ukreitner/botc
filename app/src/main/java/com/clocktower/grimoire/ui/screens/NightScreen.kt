@@ -1,8 +1,10 @@
 package com.clocktower.grimoire.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -12,7 +14,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -185,6 +189,7 @@ fun NightScreen(
  * character. Pick a reminder token, then a seat; no sheet/menu round-trip.
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun NightToolTray(
     viewModel: GameViewModel,
     state: GameState,
@@ -207,6 +212,8 @@ private fun NightToolTray(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // Text gets the full width; actions wrap below — never a
+            // squeezed one-character-per-line column on narrow phones.
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -231,6 +238,11 @@ private fun NightToolTray(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 character?.let {
                     AssistChip(
                         onClick = {
@@ -265,7 +277,7 @@ private fun NightToolTray(
                         label = { Text("Mark spent") },
                     )
                 }
-                TextButton(onClick = onOpenShowTool) { Text("All tokens") }
+                AssistChip(onClick = onOpenShowTool, label = { Text("All tokens") })
             }
 
             if (character != null && reminders.isNotEmpty()) {
@@ -279,10 +291,12 @@ private fun NightToolTray(
                                 )
                             },
                             leadingIcon = {
-                                ReminderToken(
-                                    label = label,
-                                    color = character.team.color,
-                                    size = 28.dp,
+                                // A tiny full token is unreadable; a plain
+                                // team-colored dot marks these as tokens.
+                                Box(
+                                    Modifier
+                                        .size(12.dp)
+                                        .background(character.team.color, CircleShape),
                                 )
                             },
                             label = { Text(label) },
