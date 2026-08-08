@@ -69,19 +69,49 @@ jobs:
           cp engine/src/main/resources/botc/data/*.json site/data/
           cp app/src/main/assets/icons/* site/icons/
           sed -i "s/__BUILD__/${GITHUB_SHA}/" site/sw.js
-          convert -size 512x512 xc:'#0E0A14' \
-            \( -size 480x480 xc:none -fill none -stroke '#D9B45B' -strokewidth 14 \
-               -draw 'circle 240,240 240,30' \) -gravity center -composite \
-            -fill '#D9B45B' -font DejaVu-Serif -pointsize 260 -gravity center \
-            -annotate +0+10 'G' site/appicon.png \
-            || cp site/icons/imp.png site/appicon.png
-      - uses: actions/configure-pages@v5
+          # App icon: night-sky square with a gold crescent moon, written
+          # as a raw PNG (runners have no ImageMagick).
+          python3 - <<'PYEOF'
+          import struct, zlib
+          S = 512
+          bg = (14, 10, 20, 255)
+          gold = (217, 180, 91, 255)
+          def inside(cx, cy, r, x, y):
+              return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+          rows = []
+          for y in range(S):
+              row = bytearray([0])
+              for x in range(S):
+                  crescent = inside(256, 266, 172, x, y) and not inside(318, 226, 156, x, y)
+                  row += bytes(gold if crescent else bg)
+              rows.append(bytes(row))
+          raw = zlib.compress(b''.join(rows), 9)
+          def chunk(tag, data):
+              return (struct.pack('>I', len(data)) + tag + data +
+                      struct.pack('>I', zlib.crc32(tag + data) & 0xffffffff))
+          png = (b'\x89PNG\r\n\x1a\n' +
+                 chunk(b'IHDR', struct.pack('>IIBBBBB', S, S, 8, 6, 0, 0, 0)) +
+                 chunk(b'IDAT', raw) + chunk(b'IEND', b''))
+          open('site/appicon.png', 'wb').write(png)
+          PYEOF
+      # Pages must be enabled once by a human (Settings > Pages > Source:
+      # GitHub Actions) — the Actions token may not create the site itself.
+      # Until then this configures nothing and the deploy steps skip, so CI
+      # stays green; the moment Pages is enabled, deploys just start.
+      - id: pages
+        continue-on-error: true
+        uses: actions/configure-pages@v5
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - name: Pages not enabled yet?
+        if: steps.pages.outcome != 'success'
+        run: echo "::warning::GitHub Pages is not enabled for this repo. Enable it once at Settings > Pages > Build and deployment > Source = GitHub Actions, and the next push will deploy the web app."
+      - if: steps.pages.outcome == 'success'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
       - id: deployment
+        if: steps.pages.outcome == 'success'
         uses: actions/deploy-pages@v4
 
   apk:
