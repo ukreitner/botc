@@ -1,6 +1,7 @@
 package com.clocktower.grimoire.web
 
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -14,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.CanvasBasedWindow
 import com.clocktower.engine.BotcResources
 import com.clocktower.engine.GameData
@@ -40,6 +42,10 @@ import org.khronos.webgl.get
 import org.w3c.fetch.Response
 
 private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+// Safe-area insets measured by the shell (CSS px == dp for Compose).
+private fun jsSafeTop(): Double = js("(window.__safeTop || 0)")
+private fun jsSafeBottom(): Double = js("(window.__safeBottom || 0)")
 
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -100,37 +106,59 @@ private fun WebRoot() {
 
     GrimoireTheme {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            when (route) {
-                "setup" -> SetupScreen(
-                    viewModel = viewModel,
-                    onGameStarted = { route = "game" },
-                    onBack = { route = "home" },
-                )
-                "game" -> {
-                    val state = game
-                    if (state == null) {
-                        Home(viewModel, game, notes) { route = it }
-                    } else {
-                        GameShell(viewModel = viewModel, state = state, onExit = { route = "home" })
-                    }
-                }
-                "library" -> LibraryScreen(viewModel = viewModel, onBack = { route = "home" })
-                "notes_setup" -> NotesSetupScreen(
-                    viewModel = viewModel,
-                    onStarted = { route = "notes" },
-                    onBack = { route = "home" },
-                )
-                "notes" -> {
-                    val state = notes
-                    if (state == null) {
-                        Home(viewModel, game, notes) { route = it }
-                    } else {
-                        NotesScreen(viewModel = viewModel, state = state, onExit = { route = "home" })
-                    }
-                }
-                else -> Home(viewModel, game, notes) { route = it }
+            // The background paints edge-to-edge (under notch and home
+            // indicator); the content stays out of both.
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = jsSafeTop().dp,
+                        bottom = jsSafeBottom().dp,
+                    ),
+            ) {
+                WebRoutes(route, viewModel, game, notes) { route = it }
             }
         }
+    }
+}
+
+@Composable
+private fun WebRoutes(
+    route: String,
+    viewModel: GameViewModel,
+    game: com.clocktower.engine.GameState?,
+    notes: com.clocktower.engine.NotesState?,
+    onRoute: (String) -> Unit,
+) {
+    when (route) {
+        "setup" -> SetupScreen(
+            viewModel = viewModel,
+            onGameStarted = { onRoute("game") },
+            onBack = { onRoute("home") },
+        )
+        "game" -> {
+            val state = game
+            if (state == null) {
+                Home(viewModel, game, notes, onRoute)
+            } else {
+                GameShell(viewModel = viewModel, state = state, onExit = { onRoute("home") })
+            }
+        }
+        "library" -> LibraryScreen(viewModel = viewModel, onBack = { onRoute("home") })
+        "notes_setup" -> NotesSetupScreen(
+            viewModel = viewModel,
+            onStarted = { onRoute("notes") },
+            onBack = { onRoute("home") },
+        )
+        "notes" -> {
+            val state = notes
+            if (state == null) {
+                Home(viewModel, game, notes, onRoute)
+            } else {
+                NotesScreen(viewModel = viewModel, state = state, onExit = { onRoute("home") })
+            }
+        }
+        else -> Home(viewModel, game, notes, onRoute)
     }
 }
 

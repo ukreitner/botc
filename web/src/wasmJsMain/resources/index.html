@@ -13,16 +13,15 @@
 <link rel="apple-touch-icon" href="appicon.png">
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #0E0A14; overflow: hidden; }
-  /* Keep the canvas out of the iPhone status bar / home indicator:
-     standalone PWAs render edge-to-edge, so inset by the safe areas. */
+  /* Full-bleed canvas; the measured safe-area insets are passed INTO
+     Compose (window.__safeTop/__safeBottom) so the app paints its own
+     background under the notch and pads its content — no black bands,
+     no content under the status bar or home indicator. */
   #compose {
     position: fixed;
-    left: env(safe-area-inset-left, 0px);
-    right: env(safe-area-inset-right, 0px);
-    top: env(safe-area-inset-top, 0px);
-    bottom: env(safe-area-inset-bottom, 0px);
-    width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
-    height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
     outline: none;
     /* Let Compose own every gesture: no browser pinch/double-tap zoom,
        no grey tap flashes, no accidental text selection. */
@@ -40,10 +39,24 @@
 </style>
 </head>
 <body>
-<div id="boot">☾ Opening the grimoire…<small>first load fetches the whole app; later loads are instant</small></div>
+<div id="boot">Opening the grimoire…<small>first load fetches the whole app; later loads are instant</small><small>build __BUILD__</small></div>
 <canvas id="compose"></canvas>
 <script>
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+  // Measure the real safe-area insets (CSS px == dp for Compose) and hand
+  // them to the wasm app, which pads its content accordingly.
+  function computeSafeInsets() {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;width:0;pointer-events:none;visibility:hidden;' +
+      'top:env(safe-area-inset-top,0px);bottom:env(safe-area-inset-bottom,0px);';
+    document.body.appendChild(probe);
+    const rect = probe.getBoundingClientRect();
+    window.__safeTop = rect.top;
+    window.__safeBottom = Math.max(0, window.innerHeight - rect.bottom);
+    probe.remove();
+  }
+  computeSafeInsets();
+  window.addEventListener('resize', computeSafeInsets);
   // iOS Safari leaves a synthetic "mouse" parked on the last touch point,
   // so buttons keep their hover/pressed tint after a tap. When the last
   // finger lifts, walk the phantom cursor off-screen.

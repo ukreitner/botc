@@ -22,6 +22,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -226,22 +228,40 @@ fun GrimoireScreen(
             }
         }
 
-        if (scale != 1f || offsetX != 0f || offsetY != 0f) {
+        // Tap-based zoom works reliably on every platform (browser pinch
+        // gestures are flaky); pinch still works where the platform allows.
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(12.dp),
+        ) {
             FilledTonalIconButton(
-                onClick = {
-                    scale = 1f
-                    offsetX = 0f
-                    offsetY = 0f
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(12.dp)
-                    .size(48.dp),
+                onClick = { scale = (scale * 1.3f).coerceAtMost(2.5f) },
+                modifier = Modifier.size(44.dp),
             ) {
-                Icon(
-                    Icons.Filled.CenterFocusStrong,
-                    contentDescription = "Reset zoom and recenter grimoire",
-                )
+                Icon(Icons.Filled.ZoomIn, contentDescription = "Zoom in")
+            }
+            FilledTonalIconButton(
+                onClick = { scale = (scale / 1.3f).coerceAtLeast(0.6f) },
+                modifier = Modifier.size(44.dp),
+            ) {
+                Icon(Icons.Filled.ZoomOut, contentDescription = "Zoom out")
+            }
+            if (scale != 1f || offsetX != 0f || offsetY != 0f) {
+                FilledTonalIconButton(
+                    onClick = {
+                        scale = 1f
+                        offsetX = 0f
+                        offsetY = 0f
+                    },
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.CenterFocusStrong,
+                        contentDescription = "Reset zoom and recenter grimoire",
+                    )
+                }
             }
         }
 
