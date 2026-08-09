@@ -24,6 +24,12 @@
     width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
     height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     outline: none;
+    /* Let Compose own every gesture: no browser pinch/double-tap zoom,
+       no grey tap flashes, no accidental text selection. */
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
   }
   #boot {
     position: fixed; inset: 0; display: flex; flex-direction: column; gap: 10px;
@@ -38,6 +44,21 @@
 <canvas id="compose"></canvas>
 <script>
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+  // iOS Safari leaves a synthetic "mouse" parked on the last touch point,
+  // so buttons keep their hover/pressed tint after a tap. When the last
+  // finger lifts, walk the phantom cursor off-screen.
+  window.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) {
+      setTimeout(() => {
+        const canvas = document.getElementById('compose');
+        if (canvas) {
+          canvas.dispatchEvent(new PointerEvent('pointermove', {
+            clientX: -1000, clientY: -1000, bubbles: true, pointerType: 'mouse',
+          }));
+        }
+      }, 80);
+    }
+  }, { passive: true });
 </script>
 <script src="grimoire.js"></script>
 </body>

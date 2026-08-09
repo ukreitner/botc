@@ -40,7 +40,7 @@ fun LibraryScreen(
 
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            TextButton(onClick = onBack) { Text("← Home") }
+            TextButton(onClick = onBack) { Text("< Home") }
             Text("Library", style = MaterialTheme.typography.headlineMedium)
         }
         PrimaryTabRow(selectedTabIndex = safeIndex) {

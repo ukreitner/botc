@@ -1,8 +1,19 @@
-// Stale-while-revalidate service worker: everything the app touches is
-// cached (app shell, wasm, data, art), so the grimoire opens offline at
-// the table. __BUILD__ is stamped by CI, invalidating old caches.
+// App-shell files (small, name-stable, content changes every deploy) are
+// NETWORK-FIRST so a fresh version lands on the next launch while online.
+// Everything else (hashed wasm, art, data) is cache-first with background
+// refresh, keeping the grimoire instant and fully offline-capable.
+// __BUILD__ is stamped by CI, invalidating old caches on activate.
 const VERSION = '__BUILD__';
 const CACHE = 'grimoire-' + VERSION;
+
+const isShellRequest = (request) => {
+  if (request.mode === 'navigate') return true;
+  const path = new URL(request.url).pathname;
+  return path.endsWith('/') ||
+    path.endsWith('index.html') ||
+    path.endsWith('grimoire.js') ||
+    path.endsWith('manifest.webmanifest');
+};
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -18,8 +29,16 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   event.respondWith(
-    caches.open(CACHE).then((cache) =>
-      cache.match(request).then((hit) => {
+    caches.open(CACHE).then((cache) => {
+      if (isShellRequest(request)) {
+        return fetch(request)
+          .then((response) => {
+            if (response && response.ok) cache.put(request, response.clone());
+            return response;
+          })
+          .catch(() => cache.match(request));
+      }
+      return cache.match(request).then((hit) => {
         const network = fetch(request)
           .then((response) => {
             if (response && response.ok) cache.put(request, response.clone());
@@ -27,7 +46,7 @@ self.addEventListener('fetch', (event) => {
           })
           .catch(() => hit);
         return hit || network;
-      })
-    )
+      });
+    })
   );
 });

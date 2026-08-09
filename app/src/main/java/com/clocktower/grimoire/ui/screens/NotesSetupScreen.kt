@@ -76,7 +76,7 @@ fun NotesSetupScreen(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("← Back") }
+                TextButton(onClick = onBack) { Text("< Back") }
                 Spacer(Modifier.width(8.dp))
                 Text("Player notes", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
             }
@@ -115,7 +115,7 @@ fun NotesSetupScreen(
                         )
                     }
                     if (chosen == script.id) {
-                        Text("●", color = AgedGold, style = MaterialTheme.typography.titleMedium)
+                        Text("•", color = AgedGold, style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }

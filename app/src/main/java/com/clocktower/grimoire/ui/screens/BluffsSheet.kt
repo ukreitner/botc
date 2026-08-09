@@ -93,7 +93,7 @@ fun BluffsSheet(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            c.name + if (selected) "  ●" else "",
+                            c.name + if (selected) "  •" else "",
                             style = MaterialTheme.typography.titleSmall,
                             color = if (selected) AgedGold else MaterialTheme.colorScheme.onSurface,
                         )

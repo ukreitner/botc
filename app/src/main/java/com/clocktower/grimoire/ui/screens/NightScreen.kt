@@ -477,7 +477,7 @@ private fun QuickResolutions(
                     .filter { it.alive && it.id != holder.id }
                     .sortedByDescending { teamOf(it) == Team.OUTSIDER },
                 viewModel = viewModel,
-                confirmLabel = { "${holder.name} dies → ${it.name} is the Fang Gu" },
+                confirmLabel = { "${holder.name} dies » ${it.name} is the Fang Gu" },
             ) { s, target ->
                 val jumped = GameActions.starPass(s, holder.id, target.id, viewModel::characterById)
                 GameActions.placeExclusiveReminder(jumped, target.id, PlacedReminder("fanggu", "Once"))

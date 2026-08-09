@@ -98,9 +98,9 @@ private val LinkColors = mapOf(
 )
 
 private fun LinkKind.label(): String = when (this) {
-    LinkKind.ACCUSES -> "Accuses →"
-    LinkKind.DEFENDS -> "Defends →"
-    LinkKind.INFO -> "Info about →"
+    LinkKind.ACCUSES -> "Accuses »"
+    LinkKind.DEFENDS -> "Defends »"
+    LinkKind.INFO -> "Info about »"
     LinkKind.SAME_TEAM -> "Same team"
     LinkKind.OPPOSITE_TEAM -> "Opposite team"
 }
@@ -848,7 +848,7 @@ private fun NoteSeatSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 buildString {
-                                    append("d${link.day} · $from ${link.kind.label().removeSuffix(" →")} $to")
+                                    append("d${link.day} · $from ${link.kind.label().removeSuffix(" »")} $to")
                                     if (link.label.isNotBlank()) append(" — ${link.label}")
                                 },
                                 style = MaterialTheme.typography.bodySmall,

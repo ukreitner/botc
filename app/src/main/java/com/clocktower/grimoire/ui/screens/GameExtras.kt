@@ -181,7 +181,7 @@ fun FabledSheet(
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            c.name + if (active) "  ●" else "",
+                            c.name + if (active) "  •" else "",
                             style = MaterialTheme.typography.titleSmall,
                             color = if (active) AgedGold else MaterialTheme.colorScheme.onSurface,
                         )

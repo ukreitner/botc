@@ -77,7 +77,9 @@ fun DayScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        // Extra bottom room so the floating timer never covers the last
+        // nomination rows or the dusk reminder text.
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
@@ -331,7 +333,7 @@ private fun NominationRow(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    "${nominator?.name ?: "?"} → ${nominee?.name ?: "?"}" + if (nomination.isExile) " (exile)" else "",
+                    "${nominator?.name ?: "?"} » ${nominee?.name ?: "?"}" + if (nomination.isExile) " (exile)" else "",
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
