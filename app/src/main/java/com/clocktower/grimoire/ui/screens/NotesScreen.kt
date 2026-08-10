@@ -121,6 +121,7 @@ fun NotesScreen(
     var showTimeline by rememberSaveable { mutableStateOf(false) }
     var showMe by rememberSaveable { mutableStateOf(false) }
     var showScript by rememberSaveable { mutableStateOf(false) }
+    var showGeneralNotes by rememberSaveable { mutableStateOf(false) }
     val canUndo by viewModel.canUndoNotes.collectAsState()
     val canRedo by viewModel.canRedoNotes.collectAsState()
 
@@ -348,6 +349,10 @@ fun NotesScreen(
                     AssistChip(onClick = { showScript = true }, label = { Text("Script") })
                     AssistChip(onClick = { showMatrix = true }, label = { Text("Claim matrix") })
                     AssistChip(onClick = { showTimeline = true }, label = { Text("Timeline") })
+                    AssistChip(
+                        onClick = { showGeneralNotes = true },
+                        label = { Text(if (state.generalNotes.isBlank()) "Notes" else "Notes •") },
+                    )
                     AssistChip(onClick = { showMe = true }, label = { Text("Me") })
                     AssistChip(
                         onClick = { viewModel.updateNotes { NotesActions.addSeat(it, "") } },
@@ -379,6 +384,46 @@ fun NotesScreen(
     }
     if (showScript) {
         ScriptRefSheet(viewModel, state, onDismiss = { showScript = false })
+    }
+    if (showGeneralNotes) {
+        GeneralNotesSheet(viewModel, state, onDismiss = { showGeneralNotes = false })
+    }
+}
+
+/** The game-wide scratchpad: theories, vote counts, anything. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GeneralNotesSheet(
+    viewModel: GameViewModel,
+    state: NotesState,
+    onDismiss: () -> Unit,
+) {
+    var text by rememberSaveable { mutableStateOf(state.generalNotes) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Game notes", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
+            Text(
+                "Your overall scratchpad — theories, promises, vote tallies. Saved as you type.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = text,
+                onValueChange = {
+                    text = it
+                    viewModel.updateNotes { s -> NotesActions.setGeneralNotes(s, it) }
+                },
+                placeholder = { Text("\"Ben whispered with Cat before nominating…\"") },
+                minLines = 8,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -646,6 +691,7 @@ private fun NoteSeatView(
                 null -> "dead d${seat.deathDay ?: "?"}"
             }
             claim != null -> claim.name
+            seat.suspectIds.isNotEmpty() -> "${seat.suspectIds.size} possible"
             else -> "no claim"
         }
         Text(
@@ -660,9 +706,19 @@ private fun NoteSeatView(
             overflow = TextOverflow.Ellipsis,
         )
         if (seat.suspectIds.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                for (id in seat.suspectIds.take(3)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(1.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                for (id in seat.suspectIds.take(4)) {
                     CharacterToken(character = viewModel.notesCharacterById(id), size = 18.dp)
+                }
+                if (seat.suspectIds.size > 4) {
+                    Text(
+                        "+${seat.suspectIds.size - 4}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AgedGold,
+                    )
                 }
             }
         }
@@ -805,14 +861,14 @@ private fun NoteSeatSheet(
                     FilterChip(
                         selected = pickMode == "suspect",
                         onClick = { pickMode = "suspect" },
-                        label = { Text("Mark suspect") },
+                        label = { Text("Possible roles") },
                     )
                 }
                 Text(
                     if (pickMode == "claim") {
                         "Tap what ${seat.name} claims to be. Claims stack up as history."
                     } else {
-                        "Tap the characters YOU think ${seat.name} might really be."
+                        "Tap ALL the characters ${seat.name} might really be — as many as you like."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

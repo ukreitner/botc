@@ -121,8 +121,16 @@ class NotesTest {
     }
 
     @Test
+    fun `general notes persist`() {
+        var state = fresh()
+        state = NotesActions.setGeneralNotes(state, "demon is probably Ben or Cat")
+        assertEquals("demon is probably Ben or Cat", state.generalNotes)
+    }
+
+    @Test
     fun `notes state round trips through json`() {
         var state = fresh()
+        state = NotesActions.setGeneralNotes(state, "scratch")
         state = NotesActions.setClaim(state, state.seats[0].id, "empath")
         state = NotesActions.addLink(state, state.seats[0].id, state.seats[1].id, LinkKind.SAME_TEAM)
         state = NotesActions.setMyCharacter(state, "soldier")

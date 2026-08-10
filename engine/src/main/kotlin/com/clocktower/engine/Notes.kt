@@ -75,6 +75,8 @@ data class NotesState(
     /** My real character — shown only behind a hold-to-reveal. */
     val myCharacterId: String? = null,
     val infoLog: List<NoteInfo> = emptyList(),
+    /** Free-form scratchpad for the whole game (not tied to a seat). */
+    val generalNotes: String = "",
     val nextId: Long = 1,
     val updatedAt: Long = 0,
 ) {
@@ -201,6 +203,9 @@ object NotesActions {
 
     fun setMyCharacter(state: NotesState, characterId: String?): NotesState =
         state.copy(myCharacterId = characterId)
+
+    fun setGeneralNotes(state: NotesState, text: String): NotesState =
+        state.copy(generalNotes = text)
 
     fun addInfo(state: NotesState, text: String): NotesState =
         if (text.isBlank()) state else state.copy(infoLog = state.infoLog + NoteInfo(state.day, text))
