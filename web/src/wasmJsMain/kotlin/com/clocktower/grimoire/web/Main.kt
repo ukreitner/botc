@@ -58,6 +58,9 @@ fun main() {
             // The guide is an enhancement; the app runs without it.
         }
         WebApp.gameData = GameData.loadDefault()
+        IconStore.remoteLoader = { _, url, done ->
+            appScope.launch { done(fetchBitmap(url)) }
+        }
         startIconPrefetch()
         kotlinx.browser.document.getElementById("boot")?.remove()
         CanvasBasedWindow(canvasElementId = "compose", title = "Clocktower Grimoire") {
@@ -72,23 +75,32 @@ private suspend fun fetchText(url: String): String {
     return response.text().await<JsString>().toString()
 }
 
+/** Fetches [url] and decodes it into a Compose bitmap, or null. */
+private suspend fun fetchBitmap(url: String): androidx.compose.ui.graphics.ImageBitmap? = try {
+    val response = window.fetch(url).await<Response>()
+    if (!response.ok) {
+        null
+    } else {
+        val buffer = response.arrayBuffer().await<ArrayBuffer>()
+        val i8 = Int8Array(buffer)
+        val bytes = ByteArray(i8.length) { i8[it] }
+        Image.makeFromEncoded(bytes).toComposeImageBitmap()
+    }
+} catch (e: Exception) {
+    null
+}
+
 /** Fetches every character's art in the background; tokens fill in live. */
 private fun startIconPrefetch() {
     for (character in WebApp.gameData.characters) {
         appScope.launch {
             for (ext in listOf("png", "webp")) {
-                try {
-                    val response = window.fetch("icons/${character.id}.$ext").await<Response>()
-                    if (!response.ok) continue
-                    val buffer = response.arrayBuffer().await<ArrayBuffer>()
-                    val i8 = Int8Array(buffer)
-                    val bytes = ByteArray(i8.length) { i8[it] }
-                    IconStore.ready[character.id] =
-                        Image.makeFromEncoded(bytes).toComposeImageBitmap()
+                val bitmap = fetchBitmap("icons/${character.id}.$ext")
+                if (bitmap != null) {
+                    IconStore.ready[character.id] = bitmap
                     return@launch
-                } catch (e: Exception) {
-                    // Missing art falls back to the monogram token.
                 }
+                // Missing art falls back to the monogram token.
             }
         }
     }

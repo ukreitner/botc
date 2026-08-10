@@ -421,6 +421,8 @@ object GameActions {
         bag: List<Character>,
         playerCount: Int,
         fabledIds: Collection<String> = emptyList(),
+        /** House rule: any character may appear multiple times. */
+        allowAnyDuplicates: Boolean = false,
     ): List<String> {
         val issues = mutableListOf<String>()
         if (bag.size != playerCount) {
@@ -482,7 +484,7 @@ object GameActions {
             }
         }
 
-        val dupes = bag.groupingBy { it.id }.eachCount().filterValues { it > 1 }
+        val dupes = if (allowAnyDuplicates) emptyMap() else bag.groupingBy { it.id }.eachCount().filterValues { it > 1 }
         for ((id, n) in dupes) {
             if (id !in DUPLICABLE) {
                 issues += "$id appears $n times"

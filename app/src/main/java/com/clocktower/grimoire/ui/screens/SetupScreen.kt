@@ -351,8 +351,9 @@ private fun BagStage(
     val byId = remember(characters) { characters.associateBy { it.id } }
     var search by rememberSaveable { mutableStateOf("") }
     var randomizeError by rememberSaveable(script.id, playerCount) { mutableStateOf<String?>(null) }
+    var allowDuplicates by rememberSaveable(script.id) { mutableStateOf(false) }
     val selected = bagIds.mapNotNull { byId[it] }
-    val issues = GameActions.validateBag(selected, playerCount)
+    val issues = GameActions.validateBag(selected, playerCount, allowAnyDuplicates = allowDuplicates)
     val adjusted = Setup.adjustedDistribution(playerCount, selected)
     val modifiers = selected.mapNotNull { Setup.modifierFor(it) }
 
@@ -398,6 +399,18 @@ private fun BagStage(
                     randomizeError = null
                     onBagIds(emptyList())
                 }) { Text("Clear") }
+            }
+            // Village Idiot / Legion / Riot always allow copies; this house
+            // rule opens duplicates up for every character.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = allowDuplicates,
+                    onCheckedChange = { allowDuplicates = it },
+                )
+                Text(
+                    "House rule: allow duplicates of any character",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         randomizeError?.let { message ->
@@ -450,7 +463,7 @@ private fun BagStage(
                 BagRow(
                     character = c,
                     count = bagIds.count { it == c.id },
-                    duplicable = c.id in GameActions.DUPLICABLE,
+                    duplicable = allowDuplicates || c.id in GameActions.DUPLICABLE,
                     onAdd = {
                         randomizeError = null
                         onBagIds(bagIds + c.id)

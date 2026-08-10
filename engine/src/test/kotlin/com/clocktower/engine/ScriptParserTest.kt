@@ -49,6 +49,29 @@ class ScriptParserTest {
     }
 
     @Test
+    fun `custom characters keep their external image url`() {
+        val single = ScriptParser.parse(
+            """[{"id":"gob","name":"Gob","team":"minion","ability":"x","image":"https://example.com/gob.png"}]""",
+        )
+        assertEquals("https://example.com/gob.png", single.customCharacters.first().image)
+        val listForm = ScriptParser.parse(
+            """[{"id":"gob2","name":"Gob2","team":"townsfolk","ability":"x","image":["https://a.png","https://b.png"]}]""",
+        )
+        assertEquals("https://a.png", listForm.customCharacters.first().image)
+    }
+
+    @Test
+    fun `duplicates house rule silences the copy check`() {
+        val data = GameData.loadDefault()
+        val chef = data.character("chef")!!
+        val bag = listOf(chef, chef, chef, data.character("saint")!!, data.character("poisoner")!!)
+        val strict = GameActions.validateBag(bag, 5)
+        assertTrue(strict.any { "appears" in it }, "strict mode flags copies: $strict")
+        val relaxed = GameActions.validateBag(bag, 5, allowAnyDuplicates = true)
+        assertTrue(relaxed.none { "appears" in it }, "house rule allows copies: $relaxed")
+    }
+
+    @Test
     fun `resolves custom characters through game data`() {
         val data = GameData.loadDefault()
         val json = """["imp", {"id": "weirdo", "name": "Weirdo", "team": "outsider", "ability": "You are weird."}]"""

@@ -80,6 +80,13 @@ fun CharacterToken(
             // asynchronously behind a state-backed store, and a snapshot
             // read here lets tokens fill in as their art arrives.
             val icon = character?.let { IconStore.icon(it.id) }
+            if (icon == null && character != null && character.image.isNotBlank()) {
+                // Homebrew art lives at an external URL; kick off a
+                // one-time background load, monogram in the meantime.
+                androidx.compose.runtime.LaunchedEffect(character.id) {
+                    IconStore.request(character.id, character.image)
+                }
+            }
             // The token face is art only — names render outside the token
             // (see TokenWithName) so they are never squeezed or truncated.
             if (icon != null && character != null) {

@@ -51,6 +51,12 @@ data class Character(
      */
     val firstNight: Int = 0,
     val otherNight: Int = 0,
+    /**
+     * External art URL for homebrew characters (from the script tool's
+     * "image" field). Bundled characters use packaged art and leave this
+     * empty; loading is best-effort with the monogram as fallback.
+     */
+    val image: String = "",
 ) {
     /** All reminder-token labels this character can put into the grimoire. */
     val allReminders: List<String> get() = reminders + remindersGlobal

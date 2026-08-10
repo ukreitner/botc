@@ -114,6 +114,13 @@ object ScriptParser {
             remindersGlobal = strList("remindersGlobal"),
             firstNight = int("firstNight"),
             otherNight = int("otherNight"),
+            // The script tool allows "image" as a single URL or a list
+            // (good/evil/traveller variants) — take the first.
+            image = when (val img = obj["image"]) {
+                is JsonPrimitive -> img.content
+                is JsonArray -> (img.firstOrNull() as? JsonPrimitive)?.content ?: ""
+                else -> ""
+            },
         )
     }
 }

@@ -30,4 +30,19 @@ fun installIconLoader(context: Context) {
             null
         }
     }
+    // Homebrew art from external URLs (script tool "image" field):
+    // best-effort background download, monogram until (and unless) it lands.
+    val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    IconStore.remoteLoader = { _, url, done ->
+        Thread {
+            val bitmap = try {
+                java.net.URL(url).openStream().use { stream ->
+                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
+                }
+            } catch (e: Exception) {
+                null
+            }
+            mainHandler.post { done(bitmap) }
+        }.start()
+    }
 }
