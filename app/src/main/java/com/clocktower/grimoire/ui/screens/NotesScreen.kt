@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
 import com.clocktower.engine.LinkKind
+import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NoteSeat
 import com.clocktower.engine.NotesActions
 import com.clocktower.engine.NotesState
@@ -415,6 +416,15 @@ private fun ScriptRefSheet(
         ) {
             item {
                 Text(state.script.name, style = MaterialTheme.typography.headlineSmall, color = AgedGold)
+                val dist = Setup.distributionFor(state.seats.size)
+                Text(
+                    "${state.seats.size} seats · base setup ${dist.townsfolk} townsfolk · " +
+                        "${dist.outsiders} outsider${if (dist.outsiders == 1) "" else "s"} · " +
+                        "${dist.minions} minion${if (dist.minions == 1) "" else "s"} · " +
+                        "${dist.demons} demon — setup abilities like [+2 Outsiders] shift this.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for ((key, label) in listOf(
                         "abilities" to "Abilities",
@@ -439,9 +449,41 @@ private fun ScriptRefSheet(
                 )
             }
             if (mode != "abilities") {
-                val ordered = characters
-                    .filter { (if (mode == "first") it.firstNight else it.otherNight) > 0 }
-                    .sortedBy { if (mode == "first") it.firstNight else it.otherNight }
+                // Bundled characters keep firstNight/otherNight at 0 — the
+                // real order is the canonical global wake list, filtered to
+                // this script, with the special info steps players care
+                // about; homebrew slots in by its declared numbers.
+                val isFirst = mode == "first"
+                val order = if (isFirst) {
+                    viewModel.gameData.firstNightOrder
+                } else {
+                    viewModel.gameData.otherNightOrder
+                }
+                val byId = characters.associateBy { it.id }
+                val rows = mutableListOf<Triple<Character?, String, String>>()
+                for (id in order) {
+                    when (id) {
+                        NightMarkers.DUSK ->
+                            rows += Triple(null, "Dusk", "Everyone closes their eyes.")
+                        NightMarkers.MINION_INFO -> if (isFirst) {
+                            rows += Triple(null, "Minion info", "7+ players: the Minions learn each other and the Demon.")
+                        }
+                        NightMarkers.DEMON_INFO -> if (isFirst) {
+                            rows += Triple(null, "Demon info", "7+ players: the Demon learns the Minions and 3 bluffs.")
+                        }
+                        NightMarkers.DAWN ->
+                            rows += Triple(null, "Dawn", "Eyes open; the storyteller announces who died.")
+                        else -> byId[id]?.let { rows += Triple(it, it.name, it.ability) }
+                    }
+                }
+                val known = order.toSet()
+                val customs = characters
+                    .filter { it.id !in known && (if (isFirst) it.firstNight else it.otherNight) > 0 }
+                    .sortedBy { if (isFirst) it.firstNight else it.otherNight }
+                    .map { Triple(it as Character?, "${it.name} (homebrew)", it.ability) }
+                val dawnAt = rows.indexOfFirst { it.second == "Dawn" }
+                if (dawnAt >= 0) rows.addAll(dawnAt, customs) else rows.addAll(customs)
+
                 item {
                     Text(
                         "Who wakes when — deaths and info order are big clues.",
@@ -449,32 +491,44 @@ private fun ScriptRefSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                for ((index, character) in ordered.withIndex()) {
-                    item(key = "night-${character.id}") {
+                var wakeNumber = 0
+                for ((rowIndex, row) in rows.withIndex()) {
+                    val (character, title, subtitle) = row
+                    if (character != null) wakeNumber++
+                    val number = if (character != null) "$wakeNumber" else ""
+                    item(key = "night-$rowIndex-${character?.id ?: title}") {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             Text(
-                                "${index + 1}",
+                                number,
                                 style = MaterialTheme.typography.titleMedium,
                                 color = AgedGold,
                                 modifier = Modifier.width(26.dp),
                             )
-                            CharacterToken(character = character, size = 36.dp)
+                            if (character != null) {
+                                CharacterToken(character = character, size = 36.dp)
+                            }
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(character.name, style = MaterialTheme.typography.titleSmall, color = character.team.color)
-                                    claimants[character.id]?.let { who ->
-                                        Text(
-                                            "  ${who.joinToString { it.name }}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = AgedGold,
-                                        )
+                                    Text(
+                                        title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = character?.team?.color ?: AgedGold,
+                                    )
+                                    character?.let { c ->
+                                        claimants[c.id]?.let { who ->
+                                            Text(
+                                                "  ${who.joinToString { it.name }}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = AgedGold,
+                                            )
+                                        }
                                     }
                                 }
                                 Text(
-                                    character.ability,
+                                    subtitle,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 2,
