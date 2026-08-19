@@ -15,9 +15,34 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        // The commit this build came from; the in-app updater compares it
+        // against the rolling GitHub release to spot newer builds.
+        buildConfigField("String", "BUILD_SHA", "\"${findProperty("buildSha") ?: "dev"}\"")
+    }
+
+    // A persistent key (CI: decoded from the APK_KEYSTORE_B64 secret) so
+    // every published APK carries the SAME signature — Android only allows
+    // in-place updates when signatures match. Without the env vars set,
+    // builds fall back to the machine's throwaway debug key as usual.
+    val grimoireKeystore = System.getenv("GRIMOIRE_KEYSTORE")
+    val grimoireKeystorePass = System.getenv("GRIMOIRE_KEYSTORE_PASS")
+    if (grimoireKeystore != null && grimoireKeystorePass != null) {
+        signingConfigs {
+            create("grimoire") {
+                storeFile = file(grimoireKeystore)
+                storePassword = grimoireKeystorePass.trim()
+                keyAlias = "grimoire"
+                keyPassword = grimoireKeystorePass.trim()
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            if (grimoireKeystore != null && grimoireKeystorePass != null) {
+                signingConfig = signingConfigs.getByName("grimoire")
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -34,6 +59,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"

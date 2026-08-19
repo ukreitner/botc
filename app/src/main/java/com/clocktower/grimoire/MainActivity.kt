@@ -35,7 +35,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             GrimoireTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    GrimoireAppRoot()
+                    Box(Modifier.fillMaxSize()) {
+                        GrimoireAppRoot()
+                        UpdateBanner(Modifier.align(Alignment.BottomCenter))
+                    }
                 }
             }
         }

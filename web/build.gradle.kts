@@ -54,6 +54,7 @@ kotlin {
                 "com/clocktower/grimoire/IconLoader.kt", // Android bitmaps
                 "com/clocktower/grimoire/GrimoireApp.kt", // Android Application
                 "com/clocktower/grimoire/MainActivity.kt", // Android activity + nav
+                "com/clocktower/grimoire/UpdateBanner.kt", // APK self-updater
                 "com/clocktower/grimoire/data/Persistence.kt", // DataStore
                 "com/clocktower/grimoire/ui/GameViewModel.kt", // AndroidViewModel
                 "com/clocktower/grimoire/ui/platform/Platform.kt", // Android seam

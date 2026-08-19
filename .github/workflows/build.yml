@@ -145,9 +145,19 @@ jobs:
         with:
           path: app/src/main/assets/icons
           key: icons-v1-${{ github.run_id }}
+      # A persistent signing key: every published APK carries the same
+      # signature, so Android installs updates in place and the in-app
+      # updater can work. Without it Android demands uninstall/reinstall.
+      - name: Restore signing keystore
+        env:
+          APK_KEYSTORE_B64: ${{ secrets.APK_KEYSTORE_B64 }}
+        run: echo "$APK_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/grimoire.keystore"
       # ubuntu-latest runners ship with the Android SDK preinstalled and
       # licenses accepted; AGP fetches the exact platform it needs.
-      - run: ./gradlew :app:assembleDebug
+      - run: ./gradlew :app:assembleDebug -PbuildSha=${{ github.sha }}
+        env:
+          GRIMOIRE_KEYSTORE: ${{ runner.temp }}/grimoire.keystore
+          GRIMOIRE_KEYSTORE_PASS: ${{ secrets.APK_KEYSTORE_PASS }}
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:

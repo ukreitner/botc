@@ -24,6 +24,9 @@ sourceSets {
             // directory provides a JVM stand-in for GrimoireApp instead.
             exclude("**/IconLoader.kt")
             exclude("**/GrimoireApp.kt")
+            // Self-updater (HttpURLConnection + FileProvider + BuildConfig);
+            // the stubs directory provides a no-op banner instead.
+            exclude("**/UpdateBanner.kt")
         }
         resources {
             srcDir("../../engine/src/main/resources")

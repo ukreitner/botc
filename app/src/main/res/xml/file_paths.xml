@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The updater downloads the new APK into cacheDir/updates and shares it
+     with the system installer through this provider path. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>
