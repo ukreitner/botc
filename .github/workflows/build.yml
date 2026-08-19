@@ -61,7 +61,9 @@ jobs:
       - name: Fetch official character art
         run: bash tools/fetch-icons.sh
       - name: Build WebAssembly distribution
-        run: gradle -p web wasmJsBrowserDistribution
+        # The repo wrapper (Gradle 8.14) — the runner's system Gradle may
+        # drift ahead of what the Kotlin 2.3 plugin supports.
+        run: ./gradlew -p web wasmJsBrowserDistribution
       - name: Assemble PWA site
         run: |
           mkdir -p site/data site/icons

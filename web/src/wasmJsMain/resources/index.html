@@ -23,6 +23,7 @@
     width: 100vw;
     height: 100vh;
     outline: none;
+    overflow: hidden;
     /* Let Compose own every gesture: no browser pinch/double-tap zoom,
        no grey tap flashes, no accidental text selection. */
     touch-action: none;
@@ -40,7 +41,7 @@
 </head>
 <body>
 <div id="boot">Opening the grimoire…<small>first load fetches the whole app; later loads are instant</small><small>build __BUILD__</small></div>
-<canvas id="compose"></canvas>
+<div id="compose"></div>
 <script>
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
   // Measure the real safe-area insets (CSS px == dp for Compose) and hand
@@ -57,21 +58,6 @@
   }
   computeSafeInsets();
   window.addEventListener('resize', computeSafeInsets);
-  // iOS Safari leaves a synthetic "mouse" parked on the last touch point,
-  // so buttons keep their hover/pressed tint after a tap. When the last
-  // finger lifts, walk the phantom cursor off-screen.
-  window.addEventListener('touchend', (e) => {
-    if (e.touches.length === 0) {
-      setTimeout(() => {
-        const canvas = document.getElementById('compose');
-        if (canvas) {
-          canvas.dispatchEvent(new PointerEvent('pointermove', {
-            clientX: -1000, clientY: -1000, bubbles: true, pointerType: 'mouse',
-          }));
-        }
-      }, 80);
-    }
-  }, { passive: true });
 </script>
 <script src="grimoire.js"></script>
 </body>

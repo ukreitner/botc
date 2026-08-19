@@ -1,22 +1,36 @@
-import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootExtension
+import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsEnvSpec
 import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsRootPlugin
 import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnPlugin
-import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootExtension
+import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnRootEnvSpec
+import org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsEnvSpec
+import org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsRootPlugin
+import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnPlugin
+import org.jetbrains.kotlin.gradle.targets.wasm.yarn.WasmYarnRootEnvSpec
 
 plugins {
-    kotlin("multiplatform") version "2.0.21"
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
-    id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
-    id("org.jetbrains.compose") version "1.7.3"
+    // Kept newer than the Android app on purpose: Compose Multiplatform
+    // rewrote browser input handling after 1.7 (stuck hover/pressed states,
+    // cancelled taps), so the web target tracks the latest stable CMP.
+    kotlin("multiplatform") version "2.3.21"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.3.21"
+    id("org.jetbrains.compose") version "1.11.1"
 }
 
 // Use the system Node and Yarn (present locally and on CI runners) so the
 // build never depends on nodejs.org being reachable.
 plugins.withType<NodeJsRootPlugin> {
-    the<NodeJsRootExtension>().download = false
+    the<NodeJsEnvSpec>().download.set(false)
 }
 plugins.withType<YarnPlugin> {
-    the<YarnRootExtension>().download = false
+    the<YarnRootEnvSpec>().download.set(false)
+}
+// Kotlin 2.3 gives the wasm target its own node/yarn plugins.
+plugins.withType<WasmNodeJsRootPlugin> {
+    the<WasmNodeJsEnvSpec>().download.set(false)
+}
+plugins.withType<WasmYarnPlugin> {
+    the<WasmYarnRootEnvSpec>().download.set(false)
 }
 
 kotlin {

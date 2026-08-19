@@ -16,7 +16,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.CanvasBasedWindow
+import androidx.compose.ui.window.ComposeViewport
 import com.clocktower.engine.BotcResources
 import com.clocktower.engine.GameData
 import com.clocktower.grimoire.WebApp
@@ -63,7 +63,10 @@ fun main() {
         }
         startIconPrefetch()
         kotlinx.browser.document.getElementById("boot")?.remove()
-        CanvasBasedWindow(canvasElementId = "compose", title = "Clocktower Grimoire") {
+        // ComposeViewport (CMP 1.10+) owns its canvas inside the container
+        // div and ships the rewritten browser input pipeline — no more
+        // stuck hover/pressed states or swallowed taps.
+        ComposeViewport(kotlinx.browser.document.getElementById("compose")!!) {
             WebRoot()
         }
     }

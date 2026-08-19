@@ -6,6 +6,7 @@ pluginManagement {
     repositories {
         mavenCentral()
         gradlePluginPortal()
+        google()
     }
 }
 dependencyResolutionManagement {
@@ -14,6 +15,9 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         mavenCentral()
+        // CMP 1.10+ ships its multiplatform artifacts under androidx.*
+        // coordinates on Google's Maven repository.
+        google()
         // The binaryen distribution the Kotlin/Wasm plugin needs, mirrored
         // here because settings-mode ignores plugin-added repositories.
         ivy("https://github.com/WebAssembly/binaryen/releases/download") {
