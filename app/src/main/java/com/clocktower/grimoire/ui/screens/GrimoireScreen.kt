@@ -116,26 +116,6 @@ fun GrimoireScreen(
                         radius = kotlin.math.max(w, h) / 1.4f,
                     ),
                 )
-                // The decorative ring follows the SAME ellipse the seats
-                // sit on, so the two never disagree.
-                val childMax = SeatGeometry.childMax(state.players.size.coerceAtLeast(1), w.toInt(), h.toInt())
-                val inset = childMax / 2f + 8.dp.toPx()
-                val rx = w / 2f - inset
-                val ry = h / 2f - inset
-                if (rx > 0 && ry > 0) {
-                    drawOval(
-                        color = AgedGold.copy(alpha = 0.12f),
-                        topLeft = androidx.compose.ui.geometry.Offset(center.x - rx, center.y - ry),
-                        size = androidx.compose.ui.geometry.Size(rx * 2, ry * 2),
-                        style = Stroke(width = 2.dp.toPx()),
-                    )
-                    drawOval(
-                        color = AgedGold.copy(alpha = 0.05f),
-                        topLeft = androidx.compose.ui.geometry.Offset(center.x - rx * 0.55f, center.y - ry * 0.55f),
-                        size = androidx.compose.ui.geometry.Size(rx * 1.1f, ry * 1.1f),
-                        style = Stroke(width = 1.dp.toPx()),
-                    )
-                }
             }
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
@@ -148,11 +128,38 @@ fun GrimoireScreen(
         CircleLayout(
             modifier = Modifier
                 .fillMaxSize()
+                // Keep the top seat's name clear of the status line, and the
+                // bottom seat clear of the corner controls.
+                .padding(top = 30.dp, bottom = 12.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                     translationX = offsetX
                     translationY = offsetY
+                }
+                // The decorative ring follows the SAME ellipse the seats sit
+                // on — drawn after the layer so it zooms and pans with them.
+                .drawBehind {
+                    val w = this.size.width
+                    val h = this.size.height
+                    val childMax = SeatGeometry.childMax(state.players.size.coerceAtLeast(1), w.toInt(), h.toInt())
+                    val inset = childMax / 2f + 8.dp.toPx()
+                    val rx = w / 2f - inset
+                    val ry = h / 2f - inset
+                    if (rx > 0 && ry > 0) {
+                        drawOval(
+                            color = AgedGold.copy(alpha = 0.12f),
+                            topLeft = androidx.compose.ui.geometry.Offset(center.x - rx, center.y - ry),
+                            size = androidx.compose.ui.geometry.Size(rx * 2, ry * 2),
+                            style = Stroke(width = 2.dp.toPx()),
+                        )
+                        drawOval(
+                            color = AgedGold.copy(alpha = 0.05f),
+                            topLeft = androidx.compose.ui.geometry.Offset(center.x - rx * 0.55f, center.y - ry * 0.55f),
+                            size = androidx.compose.ui.geometry.Size(rx * 1.1f, ry * 1.1f),
+                            style = Stroke(width = 1.dp.toPx()),
+                        )
+                    }
                 },
         ) {
             for (player in state.players) {

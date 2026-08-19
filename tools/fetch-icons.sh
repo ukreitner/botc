@@ -51,18 +51,38 @@ fs.writeFileSync(path.join(dest, '.missing'), missing.join('\n'));
 EOF
 
 # Second pass: newer characters absent from the bundle come straight from
-# the official wiki's stable file redirect.
+# the official wiki. The wiki's Special:FilePath redirect (and anything
+# that doesn't look like a real browser) gets HTTP 418 from its bot
+# shield, so we compute MediaWiki's hashed image path directly —
+# /images/{m1}/{m1m2}/{filename} with m = md5(filename) — and send
+# browser-like headers.
+md5hex() {
+  if command -v md5sum >/dev/null 2>&1; then
+    printf '%s' "$1" | md5sum | cut -c1-32
+  else
+    printf '%s' "$1" | md5 | cut -c1-32
+  fi
+}
+BROWSER_UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 MISSING_FILE="$DEST/.missing"
 if [ -s "$MISSING_FILE" ]; then
   echo "Fetching remaining icons from the wiki..."
   consecutive_misses=0
-  while IFS= read -r id; do
+  # `|| [ -n "$id" ]` still processes a final line with no trailing
+  # newline — exactly how node writes the list (this silently skipped the
+  # last missing icon for months).
+  while IFS= read -r id || [ -n "$id" ]; do
     [ -z "$id" ] && continue
     got=""
     for candidate in "Icon_${id}.png" "Icon_${id}.webp"; do
-      url="https://wiki.bloodontheclocktower.com/Special:FilePath/${candidate}"
+      hash="$(md5hex "$candidate")"
+      url="https://wiki.bloodontheclocktower.com/images/${hash:0:1}/${hash:0:2}/${candidate}"
       out="$WORK/wiki-$id"
-      if curl -sSLf --max-time 15 --retry 1 --retry-delay 2 -o "$out" "$url" 2>/dev/null; then
+      if curl -sSf --max-time 15 --retry 1 --retry-delay 2 -o "$out" "$url" \
+           -H "User-Agent: $BROWSER_UA" \
+           -H "Accept: image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8" \
+           -H "Accept-Language: en-US,en;q=0.9" \
+           -H "Referer: https://wiki.bloodontheclocktower.com/" 2>/dev/null; then
         # Accept only real image payloads (PNG or WEBP magic bytes).
         magic=$(head -c 4 "$out" | od -An -tx1 | tr -d ' \n')
         if [ "${magic:0:8}" = "89504e47" ] || [ "${magic:0:8}" = "52494646" ]; then

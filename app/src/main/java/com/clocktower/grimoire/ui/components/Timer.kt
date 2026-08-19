@@ -3,8 +3,15 @@ package com.clocktower.grimoire.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -12,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -23,18 +31,32 @@ import kotlinx.coroutines.delay
  * A compact discussion timer anchored to a wall-clock deadline, so it keeps
  * counting while other tabs are open. When it expires it shows "Time!"
  * until the storyteller taps it away.
+ *
+ * Idle it collapses to a single icon button, so it never sits on top of the
+ * bottom seat of the circle; tapping it reveals the preset chips.
  */
 @Composable
 fun DiscussionTimer(modifier: Modifier = Modifier) {
     // 0 = idle; otherwise the epoch-millis deadline.
     var endAt by rememberSaveable { mutableLongStateOf(0L) }
     var now by rememberSaveable { mutableLongStateOf(com.clocktower.engine.Time.epochMillis()) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(endAt) {
         while (endAt != 0L) {
             now = com.clocktower.engine.Time.epochMillis()
             delay(250)
         }
+    }
+
+    if (endAt == 0L && !expanded) {
+        FilledTonalIconButton(
+            onClick = { expanded = true },
+            modifier = modifier.size(44.dp),
+        ) {
+            Icon(Icons.Filled.Timer, contentDescription = "Discussion timer")
+        }
+        return
     }
 
     Surface(
@@ -65,8 +87,18 @@ fun DiscussionTimer(modifier: Modifier = Modifier) {
                 Text("Timer", style = MaterialTheme.typography.labelLarge)
                 for ((label, secs) in listOf("1m" to 60, "2m" to 120, "5m" to 300)) {
                     AssistChip(
-                        onClick = { endAt = com.clocktower.engine.Time.epochMillis() + secs * 1000L },
+                        onClick = {
+                            endAt = com.clocktower.engine.Time.epochMillis() + secs * 1000L
+                            expanded = false
+                        },
                         label = { Text(label) },
+                    )
+                }
+                IconButton(onClick = { expanded = false }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Hide timer presets",
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }

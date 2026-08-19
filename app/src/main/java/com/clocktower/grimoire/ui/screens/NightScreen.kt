@@ -401,22 +401,35 @@ private fun GuideShowDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    // The token being shown is almost always in play (or a
+                    // bluff of one) — surface those before the rest.
+                    val inPlayIds = state.players.mapNotNull { it.characterId }.toSet()
                     val candidates = viewModel.gameData.resolve(state.script)
                         .filter { it.team != Team.FABLED }
                         .filter { search.isBlank() || it.name.contains(search, ignoreCase = true) }
                         .sortedBy { it.name }
+                        .sortedByDescending { it.id in inPlayIds }
                         .take(24)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        for (c in candidates) {
-                            FilterChip(
-                                selected = tokenId == c.id,
-                                onClick = { tokenId = if (tokenId == c.id) null else c.id },
-                                leadingIcon = { CharacterToken(character = c, size = 24.dp) },
-                                label = { Text(c.name) },
-                            )
+                    val (inPlay, others) = candidates.partition { it.id in inPlayIds }
+                    for ((section, chars) in listOf("In play" to inPlay, "Not in play" to others)) {
+                        if (chars.isEmpty()) continue
+                        Text(
+                            section,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            for (c in chars) {
+                                FilterChip(
+                                    selected = tokenId == c.id,
+                                    onClick = { tokenId = if (tokenId == c.id) null else c.id },
+                                    leadingIcon = { CharacterToken(character = c, size = 24.dp) },
+                                    label = { Text(c.name) },
+                                )
+                            }
                         }
                     }
                 }
