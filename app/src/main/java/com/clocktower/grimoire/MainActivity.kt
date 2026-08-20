@@ -82,6 +82,7 @@ private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
                 onLibrary = { nav.navigate(Routes.LIBRARY) },
                 onEndGame = { viewModel.endGame() },
                 onEndNotes = { viewModel.endNotes() },
+                buildLabel = BuildConfig.BUILD_SHA.take(7),
             )
         }
         composable(Routes.SETUP) {

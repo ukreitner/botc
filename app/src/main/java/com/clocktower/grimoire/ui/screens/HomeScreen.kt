@@ -44,6 +44,9 @@ fun HomeScreen(
     onLibrary: () -> Unit,
     onEndGame: () -> Unit,
     onEndNotes: () -> Unit = {},
+    // Short build id shown as a footer, so it's obvious which build is
+    // installed (handy right after an in-app update). Hidden when blank.
+    buildLabel: String = "",
 ) {
     var confirmEnd by rememberSaveable { mutableStateOf(false) }
     var confirmEndNotes by rememberSaveable { mutableStateOf(false) }
@@ -138,6 +141,14 @@ fun HomeScreen(
             TextButton(onClick = { confirmEndNotes = true }) {
                 Text("End notes session", color = MaterialTheme.colorScheme.error)
             }
+        }
+        if (buildLabel.isNotBlank()) {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "build $buildLabel",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            )
         }
     }
 
