@@ -1,10 +1,13 @@
 package com.clocktower.grimoire.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Team
 
 // A candlelit gothic palette: deep night purples, aged gold, parchment.
@@ -64,6 +67,16 @@ private val GrimoireColors = darkColorScheme(
     outlineVariant = Color(0xFF32294A),
 )
 
+// Softer, rounder silhouettes than stock Material — closer to tokens and
+// aged paper than to a settings app.
+private val GrimoireShapes = Shapes(
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(26.dp),
+)
+
 @Composable
 fun GrimoireTheme(content: @Composable () -> Unit) {
     // The grimoire is always a night-time artifact: one dark theme, tuned
@@ -72,6 +85,7 @@ fun GrimoireTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = GrimoireColors,
         typography = GrimoireTypography,
+        shapes = GrimoireShapes,
         content = content,
     )
 }

@@ -67,6 +67,13 @@ import com.clocktower.engine.Team
 import com.clocktower.engine.Trust
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.clocktower.grimoire.ui.components.ZoomControls
+import com.clocktower.grimoire.ui.components.rememberZoomState
+import com.clocktower.grimoire.ui.components.zoomGestures
+import com.clocktower.grimoire.ui.components.zoomTransform
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.NightSky
@@ -97,6 +104,9 @@ private val LinkColors = mapOf(
     LinkKind.SAME_TEAM to Color(0xFFA46FD1),
     LinkKind.OPPOSITE_TEAM to Color(0xFFE0862C),
 )
+
+/** A seat token's on-screen centre and radius, in circle-local coords. */
+private data class LinkAnchor(val center: Offset, val radius: Float)
 
 private fun LinkKind.label(): String = when (this) {
     LinkKind.ACCUSES -> "Accuses »"
@@ -162,6 +172,12 @@ fun NotesScreen(
         }
 
         // ---- The circle -------------------------------------------------
+        // Every link is anchored to the seat tokens' REAL on-screen
+        // positions (captured during layout), so arrows always start and
+        // end exactly at the token edge — and the whole circle pinch-zooms.
+        val zoom = rememberZoomState()
+        val anchors = remember { mutableStateMapOf<Long, LinkAnchor>() }
+        var circleCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -176,76 +192,85 @@ fun NotesScreen(
                             radius = kotlin.math.max(w, h) / 1.4f,
                         ),
                     )
-                    val count = state.seats.size
-                    if (count == 0) return@drawBehind
-                    val childMax = SeatGeometry.childMax(count, w.toInt(), h.toInt())
-                    val inset = childMax / 2f + 8.dp.toPx()
-                    val rx = w / 2f - inset
-                    val ry = h / 2f - inset
-                    if (rx <= 0 || ry <= 0) return@drawBehind
-                    val angles = SeatGeometry.equalArcAngles(count, rx, ry)
-                    val centers = angles.map { angle ->
-                        Offset(
-                            center.x + rx * cos(angle).toFloat(),
-                            center.y + ry * sin(angle).toFloat(),
-                        )
-                    }
-                    val indexById = state.seats.mapIndexed { i, s -> s.id to i }.toMap()
-                    val gap = childMax * 0.42f
-                    for (link in state.links) {
-                        val fromIndex = indexById[link.fromSeatId] ?: continue
-                        val toIndex = indexById[link.toSeatId] ?: continue
-                        val from = centers[fromIndex]
-                        val to = centers[toIndex]
-                        val dir = to - from
-                        val length = kotlin.math.hypot(dir.x, dir.y)
-                        if (length < gap * 2.2f) continue
-                        val unit = Offset(dir.x / length, dir.y / length)
-                        val start = from + Offset(unit.x * gap, unit.y * gap)
-                        val end = to - Offset(unit.x * gap, unit.y * gap)
-                        val color = LinkColors[link.kind] ?: AgedGold
-                        // Curve every line gently toward the table centre so
-                        // parallel accusations don't overlap into mush.
-                        val mid = Offset((start.x + end.x) / 2f, (start.y + end.y) / 2f)
-                        val ctrl = Offset(
-                            mid.x + (center.x - mid.x) * 0.30f,
-                            mid.y + (center.y - mid.y) * 0.30f,
-                        )
-                        val path = Path().apply {
-                            moveTo(start.x, start.y)
-                            quadraticBezierTo(ctrl.x, ctrl.y, end.x, end.y)
-                        }
-                        // Soft halo underneath, crisp line on top.
-                        drawPath(
-                            path,
-                            color = color.copy(alpha = 0.20f),
-                            style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round),
-                        )
-                        drawPath(
-                            path,
-                            color = color.copy(alpha = 0.90f),
-                            style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
-                        )
-                        if (link.kind.directed) {
-                            // Filled arrowhead aligned with the curve's end tangent.
-                            val tangent = Offset(end.x - ctrl.x, end.y - ctrl.y)
-                            val tLength = kotlin.math.hypot(tangent.x, tangent.y).coerceAtLeast(0.001f)
-                            val u = Offset(tangent.x / tLength, tangent.y / tLength)
-                            val n = Offset(-u.y, u.x)
-                            val headLength = 11.dp.toPx()
-                            val headWidth = 6.dp.toPx()
-                            val base = Offset(end.x - u.x * headLength, end.y - u.y * headLength)
-                            val arrow = Path().apply {
-                                moveTo(end.x, end.y)
-                                lineTo(base.x + n.x * headWidth, base.y + n.y * headWidth)
-                                lineTo(base.x - n.x * headWidth, base.y - n.y * headWidth)
-                                close()
-                            }
-                            drawPath(arrow, color = color)
-                        }
-                    }
-                },
+                }
+                .zoomGestures(zoom),
         ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .zoomTransform(zoom)
+                    .onGloballyPositioned { circleCoords = it }
+                    .drawBehind {
+                        val w = this.size.width
+                        val h = this.size.height
+                        // The same faint gold ellipse the grimoire rests on.
+                        val count = state.seats.size.coerceAtLeast(1)
+                        val childMax = SeatGeometry.childMax(count, w.toInt(), h.toInt())
+                        val ringInset = childMax / 2f + 8.dp.toPx()
+                        val ringRx = w / 2f - ringInset
+                        val ringRy = h / 2f - ringInset
+                        if (ringRx > 0 && ringRy > 0) {
+                            drawOval(
+                                color = AgedGold.copy(alpha = 0.12f),
+                                topLeft = Offset(center.x - ringRx, center.y - ringRy),
+                                size = androidx.compose.ui.geometry.Size(ringRx * 2, ringRy * 2),
+                                style = Stroke(width = 2.dp.toPx()),
+                            )
+                        }
+                        for (link in state.links) {
+                            val fromAnchor = anchors[link.fromSeatId] ?: continue
+                            val toAnchor = anchors[link.toSeatId] ?: continue
+                            val from = fromAnchor.center
+                            val to = toAnchor.center
+                            val dir = to - from
+                            val length = kotlin.math.hypot(dir.x, dir.y)
+                            if (length < fromAnchor.radius + toAnchor.radius + 18.dp.toPx()) continue
+                            val unit = Offset(dir.x / length, dir.y / length)
+                            val start = from + Offset(unit.x, unit.y) * (fromAnchor.radius + 2.dp.toPx())
+                            val end = to - Offset(unit.x, unit.y) * (toAnchor.radius + 2.dp.toPx())
+                            val color = LinkColors[link.kind] ?: AgedGold
+                            // Bow every line to the left of its direction of
+                            // travel: opposing links mirror instead of
+                            // overlapping, and diameters still curve.
+                            val mid = Offset((start.x + end.x) / 2f, (start.y + end.y) / 2f)
+                            val normal = Offset(-unit.y, unit.x)
+                            val bow = (length * 0.12f).coerceAtMost(56.dp.toPx())
+                            val ctrl = mid + normal * bow
+                            val path = Path().apply {
+                                moveTo(start.x, start.y)
+                                quadraticBezierTo(ctrl.x, ctrl.y, end.x, end.y)
+                            }
+                            // Soft halo underneath, crisp line on top.
+                            drawPath(
+                                path,
+                                color = color.copy(alpha = 0.20f),
+                                style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round),
+                            )
+                            drawPath(
+                                path,
+                                color = color.copy(alpha = 0.90f),
+                                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round),
+                            )
+                            if (link.kind.directed) {
+                                // Filled arrowhead aligned with the curve's end tangent.
+                                val tangent = Offset(end.x - ctrl.x, end.y - ctrl.y)
+                                val tLength = kotlin.math.hypot(tangent.x, tangent.y).coerceAtLeast(0.001f)
+                                val u = Offset(tangent.x / tLength, tangent.y / tLength)
+                                val n = Offset(-u.y, u.x)
+                                val headLength = 11.dp.toPx()
+                                val headWidth = 6.dp.toPx()
+                                val base = Offset(end.x - u.x * headLength, end.y - u.y * headLength)
+                                val arrow = Path().apply {
+                                    moveTo(end.x, end.y)
+                                    lineTo(base.x + n.x * headWidth, base.y + n.y * headWidth)
+                                    lineTo(base.x - n.x * headWidth, base.y - n.y * headWidth)
+                                    close()
+                                }
+                                drawPath(arrow, color = color)
+                            }
+                        }
+                    },
+            ) {
             CircleLayout(Modifier.fillMaxSize()) {
                 for (seat in state.seats) {
                     NoteSeatView(
@@ -254,6 +279,19 @@ fun NotesScreen(
                         isMe = state.mySeatId == seat.id,
                         linkPickActive = linkKind != null,
                         linkFirstPick = linkFirst == seat.id,
+                        onTokenPositioned = { tokenCoords ->
+                            val base = circleCoords
+                            if (base != null && base.isAttached && tokenCoords.isAttached) {
+                                val centerLocal = base.localPositionOf(
+                                    tokenCoords,
+                                    Offset(tokenCoords.size.width / 2f, tokenCoords.size.height / 2f),
+                                )
+                                anchors[seat.id] = LinkAnchor(
+                                    center = centerLocal,
+                                    radius = minOf(tokenCoords.size.width, tokenCoords.size.height) / 2f,
+                                )
+                            }
+                        },
                         onClick = {
                             val kind = linkKind
                             if (kind == null) {
@@ -276,6 +314,7 @@ fun NotesScreen(
                     )
                 }
             }
+            }
             if (state.seats.isEmpty()) {
                 Text(
                     "No seats yet — add some below.",
@@ -283,6 +322,12 @@ fun NotesScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            ZoomControls(
+                state = zoom,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(10.dp),
+            )
             if (linkKind != null) {
                 Text(
                     text = if (linkFirst == null) {
@@ -647,6 +692,7 @@ private fun NoteSeatView(
     isMe: Boolean,
     linkPickActive: Boolean,
     linkFirstPick: Boolean,
+    onTokenPositioned: (LayoutCoordinates) -> Unit = {},
     onClick: () -> Unit,
 ) {
     val claim = viewModel.notesCharacterById(seat.currentClaimId)
@@ -671,6 +717,7 @@ private fun NoteSeatView(
         )
         Box(
             modifier = Modifier
+                .onGloballyPositioned(onTokenPositioned)
                 .border(
                     width = if (linkFirstPick || seat.trust != Trust.UNKNOWN) 3.dp else 1.5.dp,
                     color = ring,

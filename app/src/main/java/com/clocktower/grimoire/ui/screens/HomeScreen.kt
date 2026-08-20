@@ -26,11 +26,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NotesState
 import com.clocktower.engine.Phase
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.FadedInk
+import com.clocktower.grimoire.ui.theme.Midnight
+import com.clocktower.grimoire.ui.theme.NightSky
+import com.clocktower.grimoire.ui.theme.PaleGold
+import com.clocktower.grimoire.ui.theme.Twilight
+import kotlin.random.Random
 
 /** Landing screen: resume, new game, or browse the library. */
 @Composable
@@ -51,9 +67,54 @@ fun HomeScreen(
     var confirmEnd by rememberSaveable { mutableStateOf(false) }
     var confirmEndNotes by rememberSaveable { mutableStateOf(false) }
 
+    // A quiet night sky behind everything: fixed stars, a crescent moon,
+    // and a candle-glow pooling behind the title. Drawn, not image assets.
+    val stars = remember {
+        val rnd = Random(1913)
+        List(70) {
+            Triple(rnd.nextFloat(), rnd.nextFloat(), 0.4f + rnd.nextFloat() * 1.1f)
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .drawBehind {
+                drawRect(NightSky)
+                // Candlelight rising from behind the title block.
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(Twilight, Midnight.copy(alpha = 0f)),
+                        center = Offset(size.width / 2f, size.height * 0.42f),
+                        radius = size.width * 0.9f,
+                    ),
+                )
+                for ((fx, fy, r) in stars) {
+                    // Keep the lower third mostly clear — that's button land.
+                    val y = fy * size.height * 0.62f
+                    val alpha = 0.10f + (r - 0.4f) * 0.22f
+                    drawCircle(
+                        color = PaleGold.copy(alpha = alpha),
+                        radius = r * density,
+                        center = Offset(fx * size.width, y),
+                    )
+                }
+                // Crescent moon, top right — a real path difference, so it
+                // renders correctly over any backdrop and any aspect ratio.
+                val moonR = minOf(size.width, size.height) * 0.055f
+                val moonC = Offset(size.width * 0.82f, size.height * 0.10f)
+                val disc = Path().apply {
+                    addOval(Rect(moonC - Offset(moonR, moonR), Size(moonR * 2, moonR * 2)))
+                }
+                val bite = Path().apply {
+                    val c = moonC + Offset(moonR * 0.45f, -moonR * 0.28f)
+                    val r = moonR * 0.86f
+                    addOval(Rect(c - Offset(r, r), Size(r * 2, r * 2)))
+                }
+                drawPath(
+                    Path.combine(PathOperation.Difference, disc, bite),
+                    color = AgedGold.copy(alpha = 0.8f),
+                )
+            }
             .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
@@ -62,7 +123,12 @@ fun HomeScreen(
     ) {
         Text(
             "Clocktower",
-            style = MaterialTheme.typography.displayLarge,
+            style = MaterialTheme.typography.displayLarge.copy(
+                shadow = Shadow(
+                    color = AgedGold.copy(alpha = 0.45f),
+                    blurRadius = 26f,
+                ),
+            ),
             color = AgedGold,
             textAlign = TextAlign.Center,
         )
@@ -79,7 +145,25 @@ fun HomeScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(18.dp))
+        // A hairline gold rule, fading out at both ends.
+        Spacer(
+            Modifier
+                .height(1.dp)
+                .fillMaxWidth(0.55f)
+                .drawBehind {
+                    drawRect(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Transparent,
+                                AgedGold.copy(alpha = 0.65f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    )
+                },
+        )
+        Spacer(Modifier.height(28.dp))
 
         if (game != null) {
             FilledTonalButton(onClick = onResume, modifier = Modifier.fillMaxWidth()) {

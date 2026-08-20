@@ -3,7 +3,6 @@ package com.clocktower.grimoire.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,16 +16,11 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CenterFocusStrong
-import androidx.compose.material.icons.filled.ZoomIn
-import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,8 +35,6 @@ import com.clocktower.grimoire.ui.theme.NightSky
 import com.clocktower.grimoire.ui.theme.Parchment
 import com.clocktower.grimoire.ui.theme.Twilight
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +51,10 @@ import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.ZoomControls
+import com.clocktower.grimoire.ui.components.rememberZoomState
+import com.clocktower.grimoire.ui.components.zoomGestures
+import com.clocktower.grimoire.ui.components.zoomTransform
 import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.BloodRed
@@ -81,9 +77,7 @@ fun GrimoireScreen(
     onOpenFabled: () -> Unit = {},
     onOpenSeat: (Long) -> Unit,
 ) {
-    var scale by rememberSaveable { mutableFloatStateOf(1f) }
-    var offsetX by rememberSaveable { mutableFloatStateOf(0f) }
-    var offsetY by rememberSaveable { mutableFloatStateOf(0f) }
+    val zoom = rememberZoomState()
 
     // During the night, badge each seat with its wake-order position.
     val wakeOrder: Map<String, Int> = remember(state.players, state.phase, state.cycle, state.fabledIds) {
@@ -117,13 +111,7 @@ fun GrimoireScreen(
                     ),
                 )
             }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(0.6f, 2.5f)
-                    offsetX += pan.x
-                    offsetY += pan.y
-                }
-            },
+            .zoomGestures(zoom),
     ) {
         CircleLayout(
             modifier = Modifier
@@ -131,12 +119,7 @@ fun GrimoireScreen(
                 // Keep the top seat's name clear of the status line, and the
                 // bottom seat clear of the corner controls.
                 .padding(top = 30.dp, bottom = 12.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = offsetX
-                    translationY = offsetY
-                }
+                .zoomTransform(zoom)
                 // The decorative ring follows the SAME ellipse the seats sit
                 // on — drawn after the layer so it zooms and pans with them.
                 .drawBehind {
@@ -235,42 +218,12 @@ fun GrimoireScreen(
             }
         }
 
-        // Tap-based zoom works reliably on every platform (browser pinch
-        // gestures are flaky); pinch still works where the platform allows.
-        Column(
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ZoomControls(
+            state = zoom,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(12.dp),
-        ) {
-            FilledTonalIconButton(
-                onClick = { scale = (scale * 1.3f).coerceAtMost(2.5f) },
-                modifier = Modifier.size(44.dp),
-            ) {
-                Icon(Icons.Filled.ZoomIn, contentDescription = "Zoom in")
-            }
-            FilledTonalIconButton(
-                onClick = { scale = (scale / 1.3f).coerceAtLeast(0.6f) },
-                modifier = Modifier.size(44.dp),
-            ) {
-                Icon(Icons.Filled.ZoomOut, contentDescription = "Zoom out")
-            }
-            if (scale != 1f || offsetX != 0f || offsetY != 0f) {
-                FilledTonalIconButton(
-                    onClick = {
-                        scale = 1f
-                        offsetX = 0f
-                        offsetY = 0f
-                    },
-                    modifier = Modifier.size(44.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.CenterFocusStrong,
-                        contentDescription = "Reset zoom and recenter grimoire",
-                    )
-                }
-            }
-        }
+        )
 
         if (state.players.isEmpty()) {
             Text(
