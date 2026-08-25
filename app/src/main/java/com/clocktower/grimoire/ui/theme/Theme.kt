@@ -39,6 +39,8 @@ val Team.color: Color
         Team.DEMON -> DemonRed
         Team.TRAVELLER -> TravellerPurple
         Team.FABLED -> FabledGold
+        Team.LORIC -> FabledGold
+        Team.UNKNOWN -> FadedInk
     }
 
 private val GrimoireColors = darkColorScheme(
