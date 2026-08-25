@@ -1,0 +1,20 @@
+{
+ "repo": "https://github.com/ThePandemoniumInstitute/botc-release",
+ "path": "resources/data",
+ "commit": "915347e627c3f6cd1f438f82b6001784e11b3e8b",
+ "commitDate": "2026-07-08T11:49:08Z",
+ "commitMessage": "Update Magician/Mathematician jinxes",
+ "files": [
+  "roles.json",
+  "jinxes.json",
+  "nightsheet.json"
+ ],
+ "counts": {
+  "roles": 181,
+  "jinxes": 131,
+  "firstNight": 80,
+  "otherNight": 99
+ },
+ "vendoredAt": "2026-08-25T00:00:00Z",
+ "note": "Pinned copy of The Pandemonium Institute's official machine-readable data (lead decision D31). Re-vendor with `python3 tools/regen-data.py --fetch`; nothing in the build reads the network."
+}

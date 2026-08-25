@@ -1,0 +1,404 @@
+{
+ "_comment": "The app's own fields, merged over The Pandemonium Institute's official roles.json by tools/regen-data.py. `characters` holds per-id extras: the app's verbose storyteller night prose (kept over the official terse strings per data-accuracy P3 #18) and `spentLabel` (lead D49). `manualOverrides` holds field-level corrections applied AFTER the official data, each of which must be justified in tools/DATA.md.",
+ "manualOverrides": {},
+ "characters": {
+  "acrobat": {
+   "otherNightReminder": "The Acrobat chooses a player."
+  },
+  "alchemist": {
+   "firstNightReminder": "Show the 'You are' info token and a Minion token."
+  },
+  "alhadikhia": {
+   "otherNightReminder": "The Al-Hadikhia chooses 3 players. In order, wake each target. They nod or shake their head. Put them to sleep before waking the next target."
+  },
+  "apprentice": {
+   "firstNightReminder": "Show the Apprentice the 'You are' card, then a Townsfolk or Minion token. In the Grimoire, replace the Apprentice token with that character token, and put the Apprentice's 'Is the Apprentice' reminder by that character token."
+  },
+  "artist": {
+   "spentLabel": "No Ability"
+  },
+  "assassin": {
+   "otherNightReminder": "If the Assassin has not yet used their ability: The Assassin either shows the 'no' head signal, or points to a player. That player dies.",
+   "spentLabel": "No Ability"
+  },
+  "balloonist": {
+   "firstNightReminder": "Point to any player.",
+   "otherNightReminder": "Point to a player with a different character type to the previously shown player."
+  },
+  "banshee": {
+   "otherNightReminder": "If the Banshee was killed by the Demon tonight, announce that the Banshee has died."
+  },
+  "barber": {
+   "otherNightReminder": "If the Barber died today: Wake the Demon. Show the 'This character selected you' card, then Barber token. The Demon either shows a 'no' head signal, or points to 2 players. If they chose players: Swap the character tokens. Wake each player. Show 'You are', then their new character token."
+  },
+  "barista": {
+   "firstNightReminder": "Choose a player, wake them and tell them which Barista power is affecting them. Treat them accordingly (sober/healthy/true info or activate their ability twice).",
+   "otherNightReminder": "Choose a player, wake them and tell them which Barista power is affecting them. Treat them accordingly (sober/healthy/true info or activate their ability twice)."
+  },
+  "boffin": {
+   "firstNightReminder": "Wake the Boffin and the Demon. Show the 'This character selected you' & Boffin tokens, then the not-in-play good character token."
+  },
+  "bonecollector": {
+   "otherNightReminder": "The Bone Collector either shakes their head no or points at any dead player. If they pointed at any dead player, put the Bone Collector's 'Has Ability' reminder by the chosen player's character token. (They may need to be woken tonight to use it.)",
+   "spentLabel": "No Ability"
+  },
+  "bountyhunter": {
+   "firstNightReminder": "Point to the player marked 'Know'.",
+   "otherNightReminder": "If the player marked 'Know' died today or tonight, point to the new player marked 'Know'."
+  },
+  "bureaucrat": {
+   "firstNightReminder": "The Bureaucrat points to a player. Put the Bureaucrat's '3 votes' reminder by the chosen player's character token.",
+   "otherNightReminder": "The Bureaucrat points to a player. Put the Bureaucrat's '3 votes' reminder by the chosen player's character token."
+  },
+  "butler": {
+   "firstNightReminder": "The Butler points to a player. Mark that player as 'Master'.",
+   "otherNightReminder": "The Butler points to a player. Mark that player as 'Master'."
+  },
+  "cerenovus": {
+   "firstNightReminder": "The Cerenovus points to a player, then to a character on their sheet. Wake that player. Show the 'This character selected you' card, then the Cerenovus token. Show the selected character token. If the player is not mad about being that character tomorrow, they can be executed.",
+   "otherNightReminder": "The Cerenovus points to a player, then to a character on their sheet. Wake that player. Show the 'This character selected you' card, then the Cerenovus token. Show the selected character token. If the player is not mad about being that character tomorrow, they can be executed."
+  },
+  "chambermaid": {
+   "firstNightReminder": "The Chambermaid points to two players. Show the number signal (0, 1, 2, ...) for how many of those players wake tonight for their ability.",
+   "otherNightReminder": "The Chambermaid points to two players. Show the number signal (0, 1, 2, ...) for how many of those players wake tonight for their ability."
+  },
+  "chef": {
+   "firstNightReminder": "Show the finger signal (0, 1, 2, ...) for the number of pairs of neighbouring evil players."
+  },
+  "clockmaker": {
+   "firstNightReminder": "Show the hand signal for the number (1, 2, 3, etc.) of places from Demon to closest Minion."
+  },
+  "courtier": {
+   "firstNightReminder": "The Courtier either shows a 'no' head signal, or points to a character on the sheet. If the Courtier used their ability: If that character is in play, that player is drunk.",
+   "otherNightReminder": "Reduce the remaining number of days the marked player is drunk. If the Courtier has not yet used their ability: The Courtier either shows a 'no' head signal, or points to a character on the sheet. If the Courtier used their ability: If that character is in play, that player is drunk.",
+   "spentLabel": "No Ability"
+  },
+  "cultleader": {
+   "firstNightReminder": "The Cult Leader might change alignment. If so, show the 'You are' info token & give a thumb signal.",
+   "otherNightReminder": "The Cult Leader might change alignment. If so, show the 'You are' info token & give a thumb signal."
+  },
+  "damsel": {
+   "firstNightReminder": "During Minion Info, show the Minions the Damsel token. If you haven't done this yet, do so now. If the Damsel was chosen by the Huntsman, show the 'You are' info token & their new character token.",
+   "otherNightReminder": "If the Damsel was chosen by the Huntsman, show the 'You are' info token & their new character token.",
+   "spentLabel": "Guess Used"
+  },
+  "devilsadvocate": {
+   "firstNightReminder": "The Devil's Advocate points to a living player. That player survives execution tomorrow.",
+   "otherNightReminder": "The Devil's Advocate points to a living player, different from the previous night. That player survives execution tomorrow."
+  },
+  "dreamer": {
+   "firstNightReminder": "The Dreamer points to a player. Show 1 good and 1 evil character token; one of these is correct.",
+   "otherNightReminder": "The Dreamer points to a player. Show 1 good and 1 evil character token; one of these is correct."
+  },
+  "duchess": {
+   "otherNightReminder": "Wake each player marked \"Visitor\" or \"False Info\" one at a time. Show them the Duchess token, then fingers (1, 2, 3) equaling the number of evil players marked \"Visitor\" or, if you are waking the player marked \"False Info,\" show them any number of fingers except the number of evil players marked \"Visitor.\""
+  },
+  "empath": {
+   "firstNightReminder": "Show the finger signal (0, 1, 2) for the number of evil alive neighbours of the Empath.",
+   "otherNightReminder": "Show the finger signal (0, 1, 2) for the number of evil alive neighbours of the Empath."
+  },
+  "engineer": {
+   "firstNightReminder": "The Engineer might choose Minions or Demons. Put the Engineer to sleep. Wake the target(s) one at a time. Show the 'You are' info token & their new character token.",
+   "otherNightReminder": "The Engineer might choose Minions or Demons. Put the Engineer to sleep. Wake the target(s) one at a time. Show the 'You are' info token & their new character token.",
+   "spentLabel": "No Ability"
+  },
+  "eviltwin": {
+   "firstNightReminder": "Wake the Evil Twin and their twin. Confirm that they have acknowledged each other. Point to the Evil Twin. Show their Evil Twin token to the twin player. Point to the twin. Show their character token to the Evil Twin player."
+  },
+  "exorcist": {
+   "otherNightReminder": "The Exorcist points to a player, different from the previous night. If that player is the Demon: Wake the Demon. Show the Exorcist token. Point to the Exorcist. The Demon does not act tonight."
+  },
+  "fanggu": {
+   "otherNightReminder": "The Fang Gu points to a player. That player dies. Or, if that player was an Outsider and there are no other Fang Gu in play: The Fang Gu dies instead of the chosen player. The chosen player is now an evil Fang Gu. Wake the new Fang Gu. Show the 'You are' card, then the Fang Gu token. Show the 'You are' card, then the thumb-down 'evil' hand sign."
+  },
+  "farmer": {
+   "otherNightReminder": "If the Farmer died tonight, wake a living good player. Show the 'You are' info token and a Farmer token."
+  },
+  "fearmonger": {
+   "firstNightReminder": "The Fearmonger chooses a player. Announce that the Fearmonger has chosen a player.",
+   "otherNightReminder": "The Fearmonger chooses a player. If the target is different to last night, announce that the Fearmonger has chosen a player."
+  },
+  "fibbin": {
+   "spentLabel": "No Ability"
+  },
+  "fisherman": {
+   "spentLabel": "No Ability"
+  },
+  "flowergirl": {
+   "otherNightReminder": "Nod 'yes' or shake head 'no' for whether the Demon voted today. Place the 'Demon not voted' marker (remove 'Demon voted', if any)."
+  },
+  "fool": {
+   "spentLabel": "No Ability"
+  },
+  "fortuneteller": {
+   "firstNightReminder": "The Fortune Teller points to two players. Give the head signal (nod 'yes', shake 'no') for whether one of those players is the Demon.",
+   "otherNightReminder": "The Fortune Teller points to two players. Give the head signal (nod 'yes', shake 'no') for whether one of those players is the Demon."
+  },
+  "gambler": {
+   "otherNightReminder": "The Gambler points to a player, and a character on their sheet. If incorrect, the Gambler dies."
+  },
+  "godfather": {
+   "firstNightReminder": "Show each of the Outsider tokens in play.",
+   "otherNightReminder": "If an Outsider died today: The Godfather points to a player. That player dies."
+  },
+  "golem": {
+   "spentLabel": "May Not Nominate"
+  },
+  "gossip": {
+   "otherNightReminder": "If the Gossip's public statement was true: Choose a player not protected from dying tonight. That player dies."
+  },
+  "grandmother": {
+   "firstNightReminder": "Show the marked character token. Point to the marked player.",
+   "otherNightReminder": "If the Grandmother's grandchild was killed by the Demon tonight: The Grandmother dies."
+  },
+  "harlot": {
+   "otherNightReminder": "The Harlot points at any player. Then, put the Harlot to sleep. Wake the chosen player, show them the 'This character selected you' token, then the Harlot token. That player either nods their head yes or shakes their head no. If they nodded their head yes, wake the Harlot and show them the chosen player's character token. Then, you may decide that both players die."
+  },
+  "harpy": {
+   "firstNightReminder": "The Harpy chooses 2 players. Put the Harpy to sleep. Wake the 1st target. Show the 'This character selected you' token, the Harpy token, then point to the 2nd target.",
+   "otherNightReminder": "The Harpy chooses 2 players. Put the Harpy to sleep. Wake the 1st target. Show the 'This character selected you' token, the Harpy token, then point to the 2nd target."
+  },
+  "hatter": {
+   "otherNightReminder": "If the Hatter died, wake the Minions & Demons. Each may choose a new character. If they do, show the 'You are' token & their new character token."
+  },
+  "huntsman": {
+   "firstNightReminder": "The Huntsman might choose a player. If they chose the Damsel: Put the Huntsman to sleep. Wake the target. Show the 'You are' info token & their new character token.",
+   "otherNightReminder": "The Huntsman might choose a player. If they chose the Damsel: Put the Huntsman to sleep. Wake the target. Show the 'You are' info token & their new character token.",
+   "spentLabel": "No Ability"
+  },
+  "imp": {
+   "otherNightReminder": "The Imp points to a player. That player dies. If the Imp chose themselves: Replace the character of 1 alive Minion with a spare Imp token. Show the 'You are' card, then the Imp token."
+  },
+  "innkeeper": {
+   "otherNightReminder": "The previously protected and drunk players lose those markers. The Innkeeper points to two players. Those players are protected. One is drunk."
+  },
+  "investigator": {
+   "firstNightReminder": "Show the character token of a Minion in play. Point to two players, one of which is that character."
+  },
+  "judge": {
+   "spentLabel": "No Ability"
+  },
+  "juggler": {
+   "otherNightReminder": "If today was the Juggler's first day: Show the hand signal for the number (0, 1, 2, etc.) of 'Correct' markers. Remove markers."
+  },
+  "kazali": {
+   "firstNightReminder": "The Kazali chooses which players are which Minions. Wake each target. Show the 'You are' and Minion tokens & give a thumbs-down.",
+   "otherNightReminder": "The Kazali chooses a player."
+  },
+  "king": {
+   "firstNightReminder": "Wake the Demon: Show the 'This player is' & King tokens, then point to the King."
+  },
+  "knight": {
+   "firstNightReminder": "Point to the 2 players marked 'Know'."
+  },
+  "legion": {
+   "otherNightReminder": "A player might die."
+  },
+  "leviathan": {
+   "firstNightReminder": "Announce that the Leviathan is in play.",
+   "otherNightReminder": "Change the Leviathan reminder token to the relevant day. You may announce that the Leviathan is in play."
+  },
+  "librarian": {
+   "firstNightReminder": "Show the character token of an Outsider in play. Point to two players, one of which is that character."
+  },
+  "lilmonsta": {
+   "firstNightReminder": "Wake the Minions. They choose a player. Put the Minions to sleep. Wake the target. Show the 'You are' & Lil' Monsta tokens.",
+   "otherNightReminder": "Wake the Minions. They choose a player. Put the Minions to sleep. Wake the target. Show the 'You are' & Lil' Monsta tokens. A player might die."
+  },
+  "lleech": {
+   "firstNightReminder": "The Lleech chooses a player.",
+   "otherNightReminder": "The Lleech chooses a player."
+  },
+  "lordoftyphon": {
+   "firstNightReminder": "Wake the Lord of Typhon's neighbors. Show the 'You are' and Minion tokens & give a thumbs-down.",
+   "otherNightReminder": "The Lord of Typhon chooses a player."
+  },
+  "lunatic": {
+   "firstNightReminder": "If 7 or more players: Show the Lunatic a number of arbitrary 'Minions', players equal to the number of Minions in play. Show 3 character tokens of arbitrary good characters. If the token received by the Lunatic is a Demon that would wake tonight: Allow the Lunatic to do the Demon actions. Place their 'attack' markers. Wake the Demon. Show the Demon's real character token. Show them the Lunatic player. If the Lunatic attacked players: Show the real Demon each marked player. Remove any Lunatic 'attack' markers.",
+   "otherNightReminder": "Allow the Lunatic to do the actions of the Demon. Place their 'attack' markers. If the Lunatic selected players: Wake the Demon. Show the 'attack' marker, then point to each marked player. Remove any Lunatic 'attack' markers."
+  },
+  "lycanthrope": {
+   "otherNightReminder": "The Lycanthrope chooses a player."
+  },
+  "marionette": {
+   "firstNightReminder": "Wake the Demon. Show the 'This player is' & Marionette tokens. Point to the Marionette."
+  },
+  "mathematician": {
+   "firstNightReminder": "Show the hand signal for the number (0, 1, 2, etc.) of players whose ability malfunctioned due to other abilities.",
+   "otherNightReminder": "Show the hand signal for the number (0, 1, 2, etc.) of players whose ability malfunctioned due to other abilities."
+  },
+  "mezepheles": {
+   "otherNightReminder": "If a good player said the secret word, wake the player. Show the 'You are' info token & give a thumbs-down.",
+   "spentLabel": "No Ability"
+  },
+  "monk": {
+   "otherNightReminder": "The previously protected player is no longer protected. The Monk points to a player not themself. Mark that player 'Safe'."
+  },
+  "moonchild": {
+   "otherNightReminder": "If the Moonchild used their ability to target a player today: If that player is good, they die."
+  },
+  "nightwatchman": {
+   "firstNightReminder": "The Nightwatchman might choose a player. Put the Nightwatchman to sleep. Wake the target. Show the 'This player is' & Nightwatchman tokens, then point to the Nightwatchman.",
+   "otherNightReminder": "The Nightwatchman might choose a player. Put the Nightwatchman to sleep. Wake the target. Show the 'This player is' & Nightwatchman tokens, then point to the Nightwatchman.",
+   "spentLabel": "No Ability"
+  },
+  "noble": {
+   "firstNightReminder": "Point to the 3 players marked 'Know'."
+  },
+  "nodashii": {
+   "otherNightReminder": "The No Dashii points to a player. That player dies."
+  },
+  "ogre": {
+   "firstNightReminder": "The Ogre chooses a player."
+  },
+  "ojo": {
+   "otherNightReminder": "The Ojo chooses a character."
+  },
+  "oracle": {
+   "otherNightReminder": "Show the hand signal for the number (0, 1, 2, etc.) of dead evil players."
+  },
+  "organgrinder": {
+   "firstNightReminder": "The Organ Grinder either nods their head yes to be drunk, or shakes their head no to be sober.",
+   "otherNightReminder": "The Organ Grinder either nods their head yes to be drunk, or shakes their head no to be sober."
+  },
+  "philosopher": {
+   "firstNightReminder": "The Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is the Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
+   "otherNightReminder": "If the Philosopher has not used their ability: the Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is the Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
+   "spentLabel": "Is The Philosopher"
+  },
+  "pithag": {
+   "otherNightReminder": "The Pit-Hag points to a player and a character on the sheet. If this character is not in play, wake that player and show them the 'You are' card and the relevant character token. If the character is in play, nothing happens."
+  },
+  "pixie": {
+   "firstNightReminder": "Show the Townsfolk character token marked 'Mad'."
+  },
+  "plaguedoctor": {
+   "otherNightReminder": "If the Plague Doctor died, the Storyteller gained a Minion ability. If you haven't done this yet, do so now."
+  },
+  "po": {
+   "otherNightReminder": "If the Po chose no-one the previous night: The Po points to three players. Otherwise: The Po either shows the 'no' head signal, or points to a player. Chosen players die."
+  },
+  "poisoner": {
+   "firstNightReminder": "The Poisoner points to a player. That player is poisoned.",
+   "otherNightReminder": "The previously poisoned player is no longer poisoned. The Poisoner points to a player. That player is poisoned."
+  },
+  "poppygrower": {
+   "firstNightReminder": "Skip Minion Info and Demon Info. Wake the Demon. Show the 'These characters are not in play' token. Show 3 not-in-play good character tokens.",
+   "otherNightReminder": "If the Poppy Grower died today or tonight, wake all Minions. Show the 'This is the Demon' token. Point to the Demon. Put the Minions to sleep. Wake the Demon. Show the 'These are your Minions' token. Point to the Minions."
+  },
+  "preacher": {
+   "firstNightReminder": "The Preacher chooses a player. If they chose a Minion: Put the Preacher to sleep. Wake the target. Show the 'This character selected you' & Preacher tokens.",
+   "otherNightReminder": "The Preacher chooses a player. If they chose a Minion: Put the Preacher to sleep. Wake the target. Show the 'This character selected you' & Preacher tokens."
+  },
+  "princess": {
+   "otherNightReminder": "If the Princess nominated the player who was executed today, wake the Demon as normal, but no one dies to the Demon's ability."
+  },
+  "professor": {
+   "otherNightReminder": "If the Professor has not used their ability: The Professor either shakes their head no, or points to a player. If that player is a Townsfolk, they are now alive.",
+   "spentLabel": "No Ability"
+  },
+  "pukka": {
+   "firstNightReminder": "The Pukka points to a player. That player is poisoned.",
+   "otherNightReminder": "The Pukka points to a player. That player is poisoned. The previously poisoned player dies."
+  },
+  "puzzlemaster": {
+   "spentLabel": "Guess Used"
+  },
+  "ravenkeeper": {
+   "otherNightReminder": "If the Ravenkeeper died tonight: The Ravenkeeper points to a player. Show that player's character token."
+  },
+  "riot": {
+   "otherNightReminder": "Change the Riot reminder token to the relevant day. If it is night 3, you may wake the Minions. Show the 'You are' & Riot tokens."
+  },
+  "sage": {
+   "otherNightReminder": "If the Sage was killed by a Demon: Point to two players, one of which is that Demon."
+  },
+  "sailor": {
+   "firstNightReminder": "The Sailor points to a living player. Either the Sailor, or the chosen player, is drunk.",
+   "otherNightReminder": "The previously drunk player is no longer drunk. The Sailor points to a living player. Either the Sailor, or the chosen player, is drunk."
+  },
+  "scarletwoman": {
+   "otherNightReminder": "If the Scarlet Woman became the Demon today: Show the 'You are' card, then the Demon token."
+  },
+  "seamstress": {
+   "firstNightReminder": "The Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players , nod 'yes' or shake 'no' for whether they are of same alignment.",
+   "otherNightReminder": "If the Seamstress has not yet used their ability: the Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players , nod 'yes' or shake 'no' for whether they are of same alignment.",
+   "spentLabel": "No Ability"
+  },
+  "shabaloth": {
+   "otherNightReminder": "One player that the Shabaloth chose the previous night might be resurrected. The Shabaloth points to two players. Those players die."
+  },
+  "slayer": {
+   "spentLabel": "No Ability"
+  },
+  "snakecharmer": {
+   "firstNightReminder": "The Snake Charmer points to a player. If that player is the Demon: swap the Demon and Snake Charmer character and alignments. Wake each player to inform them of their new role and alignment. The new Snake Charmer is poisoned.",
+   "otherNightReminder": "The Snake Charmer points to a player. If that player is the Demon: swap the Demon and Snake Charmer character and alignments. Wake each player to inform them of their new role and alignment. The new Snake Charmer is poisoned."
+  },
+  "snitch": {
+   "firstNightReminder": "Wake each Minion. Show the 'These characters are not in play' token. Show 3 not-in-play character tokens."
+  },
+  "spy": {
+   "firstNightReminder": "Show the Grimoire to the Spy for as long as they need.",
+   "otherNightReminder": "Show the Grimoire to the Spy for as long as they need."
+  },
+  "steward": {
+   "firstNightReminder": "Point to the player marked 'Know'."
+  },
+  "summoner": {
+   "firstNightReminder": "Show the 'These characters are not in play' token. Show 3 not-in-play good character tokens.",
+   "otherNightReminder": "Change the Summoner reminder token to the relevant night. If it is night 3, the Summoner chooses a player & a Demon character. Put the Summoner to sleep. Wake the target. Show the 'You are' and Demon tokens & give a thumbs-down."
+  },
+  "sweetheart": {
+   "otherNightReminder": "Choose a player that is drunk."
+  },
+  "thief": {
+   "firstNightReminder": "The Thief points to a player. Put the Thief's 'Negative vote' reminder by the chosen player's character token.",
+   "otherNightReminder": "The Thief points to a player. Put the Thief's 'Negative vote' reminder by the chosen player's character token."
+  },
+  "tinker": {
+   "otherNightReminder": "The Tinker might die."
+  },
+  "towncrier": {
+   "otherNightReminder": "Nod 'yes' or shake head 'no' for whether a Minion nominated today. Place the 'Minion not nominated' marker (remove 'Minion nominated', if any)."
+  },
+  "toymaker": {
+   "otherNightReminder": "If it is a night when a Demon attack could end the game, and the Demon is marked \"Final night: No Attack,\" then the Demon does not act tonight. (Do not wake them.)"
+  },
+  "undertaker": {
+   "otherNightReminder": "If a player was executed today: Show that player's character token."
+  },
+  "vigormortis": {
+   "otherNightReminder": "The Vigormortis points to a player. That player dies. If a Minion, they keep their ability and one of their Townsfolk neighbours is poisoned."
+  },
+  "villageidiot": {
+   "firstNightReminder": "If there are multiple Village Idiots, mark one as 'Drunk'. Wake the Village Idiots one at a time to choose a player. Give a thumb signal."
+  },
+  "virgin": {
+   "spentLabel": "No Ability"
+  },
+  "vortox": {
+   "otherNightReminder": "The Vortox points to a player. That player dies."
+  },
+  "washerwoman": {
+   "firstNightReminder": "Show the character token of a Townsfolk in play. Point to two players, one of which is that character."
+  },
+  "widow": {
+   "firstNightReminder": "Show the Grimoire for as long as the Widow needs. The Widow chooses a player. Put the Widow to sleep. Wake the player marked 'Know' & show the Widow token."
+  },
+  "witch": {
+   "firstNightReminder": "The Witch points to a player. If that player nominates tomorrow they die immediately.",
+   "otherNightReminder": "If there are 4 or more players alive: The Witch points to a player. If that player nominates tomorrow they die immediately."
+  },
+  "xaan": {
+   "firstNightReminder": "If X is 1, mark the Xaan with the 'X' reminder token.",
+   "otherNightReminder": "Change the Xaan reminder token to the relevant night. If it is night X, mark the Xaan with the 'X' reminder token."
+  },
+  "yaggababble": {
+   "otherNightReminder": "For each time the Yaggababble said their phrase today, a player might die."
+  },
+  "zombuul": {
+   "otherNightReminder": "If no-one died during the day: The Zombuul points to a player. That player dies."
+  }
+ }
+}
