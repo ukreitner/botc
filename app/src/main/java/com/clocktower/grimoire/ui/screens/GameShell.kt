@@ -4,11 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import com.clocktower.grimoire.ui.components.DiscussionTimer
 import com.clocktower.grimoire.ui.components.PrivacyCover
@@ -45,7 +43,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,21 +52,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.Color
-import com.clocktower.engine.DeathCause
-import com.clocktower.engine.Character
-import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Phase
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
-import com.clocktower.grimoire.ui.components.CharacterToken
 import com.clocktower.grimoire.ui.theme.AgedGold
-
-private enum class GameTab { GRIMOIRE, NIGHT, DAY, REFERENCE }
 
 /**
  * The in-game scaffold: grimoire / night / day / reference tabs, phase
@@ -95,23 +83,17 @@ fun GameShell(
     var showJinxes by rememberSaveable { mutableStateOf(false) }
     var showReorder by rememberSaveable { mutableStateOf(false) }
     var revealGoodWins by rememberSaveable { mutableStateOf<Boolean?>(null) }
-    var setupGuardIssues by rememberSaveable { mutableStateOf(listOf<String>()) }
-    var duskGuard by rememberSaveable { mutableStateOf(false) }
-    var unfinishedNightSteps by rememberSaveable { mutableStateOf(listOf<String>()) }
+    val phaseGuards = rememberPhaseGuards()
     var dismissedAdvisory by rememberSaveable { mutableStateOf("") }
     var showRevealFlow by rememberSaveable { mutableStateOf(false) }
     var grimoireLocked by rememberSaveable { mutableStateOf(false) }
     var nightScrim by rememberSaveable { mutableStateOf(false) }
-    var drunkPromptDone by rememberSaveable { mutableStateOf(false) }
-    var lunaticPromptDone by rememberSaveable { mutableStateOf(false) }
-    var marionettePromptDone by rememberSaveable { mutableStateOf(false) }
 
     // The table's phone must not sleep mid-game.
     com.clocktower.grimoire.ui.platform.KeepScreenOn()
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val stateHolder = rememberSaveableStateHolder()
-    var lastAdvanceAt by remember { mutableLongStateOf(0L) }
 
     val phaseLabel = when (state.phase) {
         Phase.SETUP -> "Setup"
@@ -123,48 +105,9 @@ fun GameShell(
         Phase.NIGHT -> "Dawn"
         Phase.DAY -> "Dusk"
     }
-    val requestPhaseAdvance: () -> Unit = advance@{
-        // Debounce: an accidental double tap must not skip a whole phase.
-        val nowMs = com.clocktower.engine.Time.epochMillis()
-        if (nowMs - lastAdvanceAt < 800) return@advance
-        lastAdvanceAt = nowMs
-        // Setup guard: empty/manual games must meet the same adjusted team
-        // distribution as the bag builder before first night can begin.
-        if (state.phase == Phase.SETUP) {
-            val issues = GameActions.validateSetupState(state, viewModel::characterById)
-            if (issues.isNotEmpty()) {
-                setupGuardIssues = issues
-                tab = GameTab.GRIMOIRE
-                return@advance
-            }
-        }
-        // Dusk guard: someone is on the block and hasn't died.
-        val onBlock = GameActions.aboutToDie(state)?.let { state.player(it) }
-        if (state.phase == Phase.DAY && onBlock?.alive == true) {
-            duskGuard = true
-            return@advance
-        }
-        if (state.phase == Phase.NIGHT) {
-            val nightSteps = if (state.cycle == 1) {
-                viewModel.gameData.nightOrder.firstNight(state, viewModel::characterById)
-            } else {
-                viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
-            }
-            val unfinished = nightSteps
-                .filterNot { it.id in state.nightStepsDone }
-                .map { it.title }
-            if (unfinished.isNotEmpty()) {
-                unfinishedNightSteps = unfinished
-                tab = GameTab.NIGHT
-                return@advance
-            }
-        }
-        viewModel.advancePhase()
-        // Jump to the tab that matters for the new phase.
-        tab = when (state.phase) {
-            Phase.SETUP, Phase.DAY -> GameTab.NIGHT
-            Phase.NIGHT -> GameTab.DAY
-        }
+    // Phase logic lives in PhaseFlow.kt (WP0 extraction; WP6 owns it next).
+    val onPhaseButton: () -> Unit = {
+        requestPhaseAdvance(viewModel, state, phaseGuards)?.let { tab = it }
     }
 
     Scaffold(
@@ -193,7 +136,7 @@ fun GameShell(
                         Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
                     }
                     if (compactTopBar) {
-                        FilledTonalIconButton(onClick = requestPhaseAdvance) {
+                        FilledTonalIconButton(onClick = onPhaseButton) {
                             Icon(
                                 imageVector = if (state.phase == Phase.NIGHT) {
                                     Icons.Filled.WbSunny
@@ -205,7 +148,7 @@ fun GameShell(
                         }
                     } else {
                         FilledTonalButton(
-                            onClick = requestPhaseAdvance,
+                            onClick = onPhaseButton,
                             modifier = Modifier.padding(horizontal = 4.dp),
                         ) {
                             Text(phaseActionLabel)
@@ -344,139 +287,8 @@ fun GameShell(
     if (grimoireLocked) {
         PrivacyCover(onUnlock = { grimoireLocked = false })
     }
-    // The Fortune Teller needs a red herring before night one.
-    var herringPromptDone by rememberSaveable { mutableStateOf(false) }
-    val ftSeat = state.players.find { it.characterId == "fortuneteller" }
-    val waitingForHerring = !herringPromptDone && state.phase == Phase.SETUP && ftSeat != null &&
-        state.players.none { p -> p.reminders.any { it.label.equals("Red herring", true) } }
-    if (waitingForHerring) {
-        AlertDialog(
-            onDismissRequest = { herringPromptDone = true },
-            title = { Text("Fortune Teller red herring") },
-            text = {
-                Column {
-                    Text("Pick the good player who registers as the Demon to the Fortune Teller:")
-                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                        val candidates = state.players.filter { !it.isEvil(viewModel::characterById) }
-                        items(candidates.size) { i ->
-                            val p = candidates[i]
-                            TextButton(onClick = {
-                                viewModel.addReminder(
-                                    p.id,
-                                    com.clocktower.engine.PlacedReminder("fortuneteller", "Red herring"),
-                                )
-                                herringPromptDone = true
-                            }) { Text(p.name) }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { herringPromptDone = true }) { Text("Later") } },
-        )
-    }
-    // The Drunk needs a believed-character before night one.
-    val drunkSeat = state.players.find { it.characterId == "drunk" }
-    val waitingForDrunk = !drunkPromptDone && !waitingForHerring &&
-        state.phase == Phase.SETUP && drunkSeat != null && drunkSeat.shownCharacterId == null
-    if (waitingForDrunk) {
-        checkNotNull(drunkSeat)
-        val inPlay = state.players.mapNotNull { it.characterId }.toSet()
-        val options = viewModel.gameData.resolve(state.script)
-            .filter { it.team == com.clocktower.engine.Team.TOWNSFOLK && it.id !in inPlay }
-        HiddenIdentityDialog(
-            title = "The Drunk is in play",
-            explanation = "${drunkSeat.name} is the Drunk. Which Townsfolk token do they see?",
-            options = options,
-            onPick = { character ->
-                viewModel.update { current ->
-                    var next = GameActions.setShownCharacter(current, drunkSeat.id, character.id)
-                    if (next.player(drunkSeat.id)?.reminders?.none {
-                            it.sourceId == "drunk" && it.label == "Is the Drunk"
-                        } == true
-                    ) {
-                        next = GameActions.addReminder(
-                            next,
-                            drunkSeat.id,
-                            com.clocktower.engine.PlacedReminder("drunk", "Is the Drunk"),
-                        )
-                    }
-                    GameActions.setNote(
-                        next,
-                        drunkSeat.id,
-                        "Believes they are the ${character.name}",
-                    )
-                }
-                drunkPromptDone = true
-            },
-            onLater = { drunkPromptDone = true },
-        )
-    }
-
-    // The Lunatic sees a Demon token but keeps the Lunatic's real rules.
-    val lunaticSeat = state.players.find { it.characterId == "lunatic" }
-    val waitingForLunatic = !lunaticPromptDone && !waitingForHerring && !waitingForDrunk &&
-        state.phase == Phase.SETUP && lunaticSeat != null && lunaticSeat.shownCharacterId == null
-    if (waitingForLunatic) {
-        checkNotNull(lunaticSeat)
-        val options = viewModel.gameData.resolve(state.script)
-            .filter { it.team == com.clocktower.engine.Team.DEMON }
-        HiddenIdentityDialog(
-            title = "The Lunatic is in play",
-            explanation = "${lunaticSeat.name} is the Lunatic. Which Demon token do they see?",
-            options = options,
-            onPick = { character ->
-                viewModel.update { current ->
-                    val next = GameActions.setShownCharacter(current, lunaticSeat.id, character.id)
-                    GameActions.setNote(
-                        next,
-                        lunaticSeat.id,
-                        "Believes they are the ${character.name}",
-                    )
-                }
-                lunaticPromptDone = true
-            },
-            onLater = { lunaticPromptDone = true },
-        )
-    }
-
-    // The Marionette sees a good token and wakes as that apparent role.
-    val marionetteSeat = state.players.find { it.characterId == "marionette" }
-    val waitingForMarionette = !marionettePromptDone && !waitingForHerring &&
-        !waitingForDrunk && !waitingForLunatic && state.phase == Phase.SETUP &&
-        marionetteSeat != null && marionetteSeat.shownCharacterId == null
-    if (waitingForMarionette) {
-        checkNotNull(marionetteSeat)
-        val inPlay = state.players.mapNotNull { it.characterId }.toSet()
-        val options = viewModel.gameData.resolve(state.script)
-            .filter { !it.team.isEvil && it.team.isTownResident && it.id !in inPlay }
-        HiddenIdentityDialog(
-            title = "The Marionette is in play",
-            explanation = "${marionetteSeat.name} is the Marionette. Which good token do they think they are?",
-            options = options,
-            onPick = { character ->
-                viewModel.update { current ->
-                    var next = GameActions.setShownCharacter(current, marionetteSeat.id, character.id)
-                    if (next.player(marionetteSeat.id)?.reminders?.none {
-                            it.sourceId == "marionette" && it.label == "Is the Marionette"
-                        } == true
-                    ) {
-                        next = GameActions.addReminder(
-                            next,
-                            marionetteSeat.id,
-                            com.clocktower.engine.PlacedReminder("marionette", "Is the Marionette"),
-                        )
-                    }
-                    GameActions.setNote(
-                        next,
-                        marionetteSeat.id,
-                        "Believes they are the ${character.name}",
-                    )
-                }
-                marionettePromptDone = true
-            },
-            onLater = { marionettePromptDone = true },
-        )
-    }
+    // Setup identity prompts live in GameExtras.kt (WP0 extraction; WP11 owns them next).
+    SetupIdentityPrompts(viewModel, state)
 
     openSeat?.let { seatId ->
         SeatSheet(
@@ -548,115 +360,7 @@ fun GameShell(
             onDismiss = { revealGoodWins = null },
         )
     }
-    if (setupGuardIssues.isNotEmpty()) {
-        AlertDialog(
-            onDismissRequest = { setupGuardIssues = emptyList() },
-            title = { Text("Setup isn't legal yet") },
-            text = {
-                Column(
-                    verticalArrangement =
-                        androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Fix these issues before beginning the first night:")
-                    LazyColumn(Modifier.heightIn(max = 280.dp)) {
-                        items(setupGuardIssues) { issue ->
-                            Text(
-                                "• $issue",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(vertical = 2.dp),
-                            )
-                        }
-                    }
-                    Text(
-                        "Running a Fabled or house rule the checker doesn't know? " +
-                            "You can start anyway — the guard only advises.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            confirmButton = {
-                FilledTonalButton(onClick = {
-                    setupGuardIssues = emptyList()
-                    tab = GameTab.GRIMOIRE
-                }) { Text("Fix setup") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    setupGuardIssues = emptyList()
-                    viewModel.advancePhase()
-                }) { Text("Start the night anyway") }
-            },
-        )
-    }
-    if (duskGuard) {
-        val onBlock = GameActions.aboutToDie(state)?.let { state.player(it) }
-        AlertDialog(
-            onDismissRequest = { duskGuard = false },
-            title = { Text("Dusk falls") },
-            text = { Text("${onBlock?.name ?: "Someone"} is on the block and hasn't been executed. Execute before night?") },
-            confirmButton = {
-                FilledTonalButton(onClick = {
-                    duskGuard = false
-                    onBlock?.let { viewModel.kill(it.id, DeathCause.EXECUTION) }
-                    viewModel.advancePhase()
-                    tab = GameTab.NIGHT
-                }) { Text("Execute & begin night") }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        duskGuard = false
-                        viewModel.advancePhase()
-                        tab = GameTab.NIGHT
-                    }) { Text("No execution") }
-                    TextButton(onClick = { duskGuard = false }) { Text("Cancel") }
-                }
-            },
-        )
-    }
-    if (unfinishedNightSteps.isNotEmpty()) {
-        AlertDialog(
-            onDismissRequest = { unfinishedNightSteps = emptyList() },
-            title = { Text("Night checklist incomplete") },
-            text = {
-                Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "${unfinishedNightSteps.size} step${if (unfinishedNightSteps.size == 1) " is" else "s are"} still unchecked:",
-                    )
-                    LazyColumn(Modifier.heightIn(max = 260.dp)) {
-                        items(unfinishedNightSteps) { title ->
-                            Text(
-                                "• $title",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(vertical = 2.dp),
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                FilledTonalButton(onClick = {
-                    unfinishedNightSteps = emptyList()
-                    val expectedCycle = state.cycle
-                    viewModel.update { current ->
-                        if (current.phase == Phase.NIGHT && current.cycle == expectedCycle) {
-                            GameActions.advancePhase(current)
-                        } else {
-                            current
-                        }
-                    }
-                    tab = GameTab.DAY
-                }) { Text("Dawn anyway") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    unfinishedNightSteps = emptyList()
-                    tab = GameTab.NIGHT
-                }) { Text("Keep checking") }
-            },
-        )
-    }
+    PhaseGuardDialogs(viewModel, state, phaseGuards) { tab = it }
     activeCard?.let { card ->
         FullScreenShow(card = card, viewModel = viewModel, onDismiss = { activeCard = null })
     }
@@ -704,48 +408,6 @@ fun GameShell(
             dismissButton = { TextButton(onClick = { showNotes = false }) { Text("Cancel") } },
         )
     }
-}
-
-@Composable
-private fun HiddenIdentityDialog(
-    title: String,
-    explanation: String,
-    options: List<Character>,
-    onPick: (Character) -> Unit,
-    onLater: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onLater,
-        title = { Text(title) },
-        text = {
-            Column {
-                Text(explanation)
-                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    if (options.isEmpty()) {
-                        item {
-                            Text(
-                                "No eligible characters are available on this script. " +
-                                    "You can set the shown identity from the player's seat.",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                    items(options, key = { it.id }) { character ->
-                        TextButton(
-                            onClick = { onPick(character) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            CharacterToken(character = character, size = 40.dp)
-                            Spacer(Modifier.width(12.dp))
-                            Text(character.name, modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onLater) { Text("Later") } },
-    )
 }
 
 @Composable
