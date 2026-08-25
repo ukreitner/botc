@@ -4,14 +4,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.clocktower.engine.Character
-import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
-import com.clocktower.engine.Nomination
 import com.clocktower.engine.NotesActions
 import com.clocktower.engine.NotesState
-import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Script
 import com.clocktower.engine.ScriptLink
 import com.clocktower.engine.ScriptParser
@@ -28,10 +25,12 @@ import kotlinx.coroutines.launch
  * Single source of truth for the running game. All mutations flow through
  * [update], which snapshots history for undo and persists asynchronously.
  */
-class GameViewModel(application: Application) : AndroidViewModel(application) {
+class GameViewModel(application: Application) :
+    AndroidViewModel(application),
+    GameActionsApi {
 
     private val app = application as GrimoireApp
-    val gameData: GameData get() = app.gameData
+    override val gameData: GameData get() = app.gameData
 
     private val _game = MutableStateFlow<GameState?>(null)
     val game: StateFlow<GameState?> = _game
@@ -98,7 +97,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Applies a transition, recording history and persisting. */
-    fun update(transform: (GameState) -> GameState) {
+    override fun update(transform: (GameState) -> GameState) {
         val current = _game.value ?: return
         val next = transform(current)
         if (next == current) return
@@ -191,36 +190,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             ?: gameData.character(charId)
     }
 
-    // ---- Convenience wrappers over GameActions --------------------------
-
-    fun addSeat(name: String) = update { GameActions.addSeat(it, name) }
-    fun removeSeat(playerId: Long) = update { GameActions.removeSeat(it, playerId) }
-    fun rename(playerId: Long, name: String) = update { GameActions.rename(it, playerId, name) }
-    fun assign(playerId: Long, characterId: String?, isTraveller: Boolean = false) =
-        update { GameActions.assignCharacter(it, playerId, characterId, isTraveller) }
-
-    fun setShownCharacter(playerId: Long, characterId: String?) =
-        update { GameActions.setShownCharacter(it, playerId, characterId) }
-
-    fun flipAlignment(playerId: Long) = update { GameActions.flipAlignment(it, playerId) }
-    fun setNote(playerId: Long, note: String) = update { GameActions.setNote(it, playerId, note) }
-    fun kill(playerId: Long, cause: DeathCause) =
-        update { GameActions.kill(it, playerId, cause, ::characterById) }
-    fun revive(playerId: Long) = update { GameActions.revive(it, playerId) }
-    fun resurrect(playerId: Long) = update { GameActions.resurrect(it, playerId) }
-    fun toggleGhostVote(playerId: Long) = update { GameActions.toggleGhostVote(it, playerId) }
-    fun addReminder(playerId: Long, reminder: PlacedReminder) =
-        update { GameActions.addReminder(it, playerId, reminder) }
-
-    fun removeReminder(playerId: Long, index: Int) =
-        update { GameActions.removeReminder(it, playerId, index) }
-
-    fun setBluffs(ids: List<String>) = update { GameActions.setBluffs(it, ids) }
-    fun setFabled(ids: List<String>) = update { GameActions.setFabled(it, ids) }
-    fun advancePhase() = update { GameActions.advancePhase(it) }
-    fun toggleNightStep(stepId: String) = update { GameActions.toggleNightStep(it, stepId) }
-    fun recordNomination(nomination: Nomination) = update { GameActions.recordNomination(it, nomination) }
-    fun setStorytellerNotes(notes: String) = update { it.copy(storytellerNotes = notes) }
+    // ---- Engine verbs ---------------------------------------------------
+    // Every wrapper is a default method on GameActionsApi (ARCHITECTURE §3.3).
+    // Never add one here: add it to that interface's per-WP block instead.
 
     // ---- Scripts --------------------------------------------------------
 
@@ -256,7 +228,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun characterById(id: String?): Character? = id?.let { charId ->
+    override fun characterById(id: String?): Character? = id?.let { charId ->
         _game.value?.script?.customCharacters?.find { it.id == charId }
             ?: gameData.character(charId)
     }

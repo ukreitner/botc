@@ -54,7 +54,7 @@ import com.clocktower.engine.StatusEffects
 import com.clocktower.engine.GuideShow
 import com.clocktower.engine.NightGuide
 import com.clocktower.engine.NightMarkers
-import com.clocktower.engine.NightStep
+import com.clocktower.engine.NightOrderStep
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Player
 import com.clocktower.engine.Team
@@ -462,7 +462,7 @@ private fun GuideShowDialog(
 private fun QuickResolutions(
     viewModel: GameViewModel,
     state: GameState,
-    step: NightStep,
+    step: NightOrderStep,
 ) {
     val holder = step.playerIds.firstOrNull()?.let { state.player(it) } ?: return
     fun teamOf(p: Player): Team? = viewModel.characterById(p.characterId)?.team
@@ -690,7 +690,7 @@ private fun ResolutionPicker(
 private fun NightStepRow(
     viewModel: GameViewModel,
     state: GameState,
-    step: NightStep,
+    step: NightOrderStep,
     done: Boolean,
     expanded: Boolean,
     onExpand: () -> Unit,
@@ -770,7 +770,7 @@ private fun NightStepRow(
 private fun StepDetailPanel(
     viewModel: GameViewModel,
     state: GameState,
-    step: NightStep,
+    step: NightOrderStep,
     onShow: (ShowCard) -> Unit,
 ) {
     Column(

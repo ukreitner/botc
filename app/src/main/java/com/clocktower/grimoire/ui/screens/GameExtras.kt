@@ -55,6 +55,10 @@ fun GameLogDialog(state: GameState, onDismiss: () -> Unit) {
                 DeathCause.DEMON -> "died in the night"
                 DeathCause.OTHER_NIGHT_DEATH -> "died in the night (other)"
                 DeathCause.EXILE -> "exiled"
+                DeathCause.DEMON_KILL -> "died in the night"
+                DeathCause.EVIL_ABILITY, DeathCause.GOOD_ABILITY,
+                DeathCause.DAY_ABILITY, DeathCause.TRAVELLER_ABILITY,
+                -> "died to an ability"
                 DeathCause.STORYTELLER -> "died (storyteller)"
             }
             list += Entry(
@@ -325,6 +329,10 @@ fun RevealSheet(
                                             DeathCause.DEMON -> "killed night ${death.day}"
                                             DeathCause.OTHER_NIGHT_DEATH -> "died night ${death.day}"
                                             DeathCause.EXILE -> "exiled day ${death.day}"
+                                            DeathCause.DEMON_KILL -> "killed night ${death.day}"
+                                            DeathCause.EVIL_ABILITY, DeathCause.GOOD_ABILITY,
+                                            DeathCause.DAY_ABILITY, DeathCause.TRAVELLER_ABILITY,
+                                            -> "died day ${death.day}"
                                             DeathCause.STORYTELLER -> "died day ${death.day}"
                                         },
                                     )
