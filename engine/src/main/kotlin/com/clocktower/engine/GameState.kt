@@ -1,13 +1,46 @@
 package com.clocktower.engine
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** A reminder token placed on a player's seat. */
+/** Explicit alignment, used where it is a choice rather than a consequence of the character. */
+@Serializable
+enum class Alignment { GOOD, EVIL }
+
+/** A dated storyteller note on one seat. Append-only: setup prompts must never overwrite. */
+@Serializable
+data class SeatNote(
+    val cycle: Int,
+    val phase: Phase,
+    val text: String,
+)
+
+/**
+ * A storyteller-placed grimoire token with no rule attached.
+ *
+ * Rule-bearing tokens are NOT stored here — they are rendered from [Effect]
+ * (see `Effects.rendered`). This list is the storyteller's own scratch layer:
+ * free markers, improvised rulings, and any legacy token the load migration
+ * could not match to a [TokenRule].
+ *
+ * NOTE FOR IMPLEMENTERS: never compare two `PlacedReminder`s with `==` to decide
+ * whether "the same token" is already placed — the payload fields make that
+ * comparison fail. Compare `Tokens.key(sourceId, label)`.
+ */
 @Serializable
 data class PlacedReminder(
-    /** Character id the token belongs to, or "" for generic tokens. */
+    /** Character id the token belongs to, or "st" for a storyteller token. Never "". */
     val sourceId: String,
+    /** Official Title Case label from `characters.json`. Compared case-insensitively. */
     val label: String,
+    /** Character this token points at: Cerenovus's mad character, Courtier's target. */
+    val characterId: String? = null,
+    /** Seat this token points back at: Harpy's 2nd, Grandmother's grandchild. */
+    val targetPlayerId: Long? = null,
+    /** Free text for an improvised ruling. Rendered under the token; searchable. */
+    val note: String = "",
+    /** `state.cycle` when placed — powers "placed N3" and homebrew countdowns. */
+    val placedCycle: Int = 0,
 )
 
 /** One seat in the grimoire circle. */
@@ -15,27 +48,74 @@ data class PlacedReminder(
 data class Player(
     val id: Long,
     val name: String,
+    /** THE TRUTH. What this player actually is. Never what they believe. */
     val characterId: String? = null,
     /**
-     * Character identity presented to this player when it differs from the
-     * truth (Drunk, Lunatic, Marionette). Null means show [characterId].
+     * The token this player has SEEN — Drunk, Lunatic, Marionette, a mid-change
+     * seat whose new token has not been handed over yet, and the real Demon in a
+     * Lunatic game (set to "lunatic" at deal, cleared at DEMON_INFO).
      */
     val shownCharacterId: String? = null,
-    /** True when this player's alignment differs from their character's default. */
-    val alignmentFlipped: Boolean = false,
+    /**
+     * Explicit alignment override. Wins over the character's natural team.
+     * Set for Travellers (always asked), Bounty Hunter's evil Townsfolk, an
+     * evil-turned good player. Null = derive from the character.
+     */
+    val alignment: Alignment? = null,
     val alive: Boolean = true,
     /** Dead players hold one ghost vote until they spend it. */
     val ghostVoteUsed: Boolean = false,
     val isTraveller: Boolean = false,
+    /** True once a Traveller has left the game: no seat, no vote, no threshold. */
+    val leftGame: Boolean = false,
+    /** Storyteller free tokens only — see [PlacedReminder]. */
     val reminders: List<PlacedReminder> = emptyList(),
-    val note: String = "",
+    /** Abilities this seat exercises in addition to / instead of its own. */
+    val grants: List<AbilityGrant> = emptyList(),
+    val notes: List<SeatNote> = emptyList(),
+    /** Wall-clock millis when this seat's token was last handed to the player. */
+    val tokenShownAt: Long? = null,
+    /**
+     * Effect-id watermark stamped whenever this seat's `characterId` changes.
+     * Standing (innate) effects are ordered by it, so "the Poisoner poisoned the
+     * No Dashii on night 1" resolves correctly while a Snake-Charmer-created
+     * No Dashii on night 4 starts fresh.
+     */
+    val standingSince: Long = 0L,
+
+    // ---- migration-only, never read by new code ----
+    @SerialName("note") internal val legacyNote: String = "",
+    @SerialName("alignmentFlipped") internal val legacyAlignmentFlipped: Boolean = false,
 ) {
+    /** The token a "YOU ARE" card must show. Alias of `Identity.believedCharacterId`. */
     val characterShownToPlayerId: String? get() = shownCharacterId ?: characterId
+
+    /** Seats that have left the game are not seats. */
+    val seated: Boolean get() = !leftGame
+
+    /**
+     * Legacy single-note view of [notes], kept so the seat sheet compiles until
+     * WP10 renders the note list. Reads every note, newest last.
+     */
+    @Deprecated("Use Player.notes (List<SeatNote>). Removed with WP10.")
+    val note: String
+        get() = if (notes.isEmpty()) legacyNote else notes.joinToString("\n") { it.text }
+
+    /**
+     * Legacy "this seat's alignment is not its character's" flag, kept so the
+     * seat sheet compiles until WP10 reads [alignment] directly.
+     */
+    @Deprecated("Use Player.alignment. Removed with WP10.")
+    val alignmentFlipped: Boolean get() = alignment != null || legacyAlignmentFlipped
 
     /**
      * Drunk and Marionette wake as the good character they believe they are.
      * A Lunatic keeps its own dedicated wake row, despite seeing a Demon token.
      */
+    @Deprecated(
+        "Deleted with WP2. Use Identity.actingRoles(state, lookup, player).",
+        ReplaceWith("Identity.actingRoles(state, lookup, this).firstOrNull()?.abilityId"),
+    )
     val nightRoleId: String?
         get() = if (characterId == "drunk" || characterId == "marionette") {
             shownCharacterId ?: characterId
@@ -46,108 +126,174 @@ data class Player(
     fun team(lookup: (String) -> Character?): Team? =
         characterId?.let { lookup(it)?.team }
 
+    /**
+     * True when this seat plays for evil: the explicit [alignment] override
+     * when set, otherwise the character's natural team.
+     */
     fun isEvil(lookup: (String) -> Character?): Boolean {
+        alignment?.let { return it == Alignment.EVIL }
         val base = team(lookup)?.isEvil ?: false
-        return base != alignmentFlipped
+        return base != legacyAlignmentFlipped
     }
 }
 
+/** A Fabled in play, with the per-Fabled state the rules need. */
+@Serializable
+data class FabledEntry(
+    val id: String,
+    /** Seats this Fabled points at (Revolutionary's pair, Angel's protectee, Djinn's none). */
+    val playerIds: List<Long> = emptyList(),
+    /** Seats that have used the Fabled's once-per-player affordance (Doomsayer). */
+    val spentBy: List<Long> = emptyList(),
+    /** Once-per-game Fabled effects (Fibbin, Toymaker's skipped night). */
+    val used: Boolean = false,
+    /** The storyteller's own wording (Djinn's special rule, Bootlegger's house rules). */
+    val note: String = "",
+    val addedOnCycle: Int = 0,
+    /**
+     * Typed keys: "sentinel.outsiderDelta", "stormcatcher.favouredCharacterId",
+     * "revolutionary.pair", "spiritofivory.baselineEvil", "toymaker.skipUsed".
+     */
+    val config: Map<String, String> = emptyMap(),
+)
+
 @Serializable
 enum class Phase { SETUP, NIGHT, DAY }
-
-@Serializable
-enum class NominationResult { ABOUT_TO_DIE, SAFE, TIED, WITHDRAWN }
-
-/** A nomination and its vote tally. */
-@Serializable
-data class Nomination(
-    val day: Int,
-    val nominatorId: Long,
-    val nomineeId: Long,
-    val votes: Int = 0,
-    /** Player ids that raised hands, in clock order (for the record). */
-    val voterIds: List<Long> = emptyList(),
-    val result: NominationResult = NominationResult.SAFE,
-    val isExile: Boolean = false,
-)
-
-@Serializable
-enum class DeathCause { EXECUTION, DEMON, OTHER_NIGHT_DEATH, EXILE, STORYTELLER }
-
-@Serializable
-data class DeathRecord(
-    val playerId: Long,
-    /** Day/night number on which the death happened. */
-    val day: Int,
-    val atNight: Boolean,
-    val cause: DeathCause,
-    /** Snapshots prevent later character changes from rewriting a death. */
-    val characterIdAtDeath: String? = null,
-    /** Null only for saves created before impairment snapshots existed. */
-    val abilityImpairedAtDeath: Boolean? = null,
-    /** True when this death happened but was later undone in-game. */
-    val resurrected: Boolean = false,
-)
 
 /** Everything the storyteller tracks for one game. */
 @Serializable
 data class GameState(
     val script: Script,
-    /** Custom characters carried by the script, id -> character. */
+    /** Stable id, stamped at newGame — the key for archived games. */
+    val id: String = "",
     val players: List<Player> = emptyList(),
-    val fabledIds: List<String> = emptyList(),
     val phase: Phase = Phase.SETUP,
-    /** Night 1 is the first night; day N follows night N. */
+    /** Night N is followed by day N. */
     val cycle: Int = 1,
-    val demonBluffIds: List<String> = emptyList(),
+    /** Millis timestamp of last modification, for save management. */
+    val updatedAt: Long = 0L,
+
+    // ---- history (append-only) ----
+    val deaths: List<DeathEvent> = emptyList(),
+    val nextDeathId: Long = 1L,
     val nominations: List<Nomination> = emptyList(),
-    val deaths: List<DeathRecord> = emptyList(),
-    /** Ids of night-order steps already completed tonight. */
+    val executions: List<ExecutionRecord> = emptyList(),
+    val ledger: List<LedgerEntry> = emptyList(),
+    val nextLedgerId: Long = 1L,
+    val identityLog: List<IdentityRecord> = emptyList(),
+
+    // ---- live rules state ----
+    val effects: List<Effect> = emptyList(),
+    val nextEffectId: Long = 1L,
+    val prompts: List<Prompt> = emptyList(),
+    val nextPromptId: Long = 1L,
+    /** Abilities held by no fixed seat: the Boffin's grant, the Plague Doctor's. */
+    val floatingGrants: List<FloatingGrant> = emptyList(),
+    /** Tokens that live in the centre of the grimoire, on no seat. */
+    val storytellerReminders: List<PlacedReminder> = emptyList(),
+    val fabled: List<FabledEntry> = emptyList(),
+
+    // ---- storyteller decisions ----
+    /** Bluff sets, keyed by BluffRequirement.key ("demon", "lunatic:7", "snitch:7"). */
+    val bluffSets: Map<String, List<String>> = emptyMap(),
+    /** Setup choices and secrets that must survive the whole game. See [Decisions]. */
+    val decisions: Map<String, String> = emptyMap(),
+    /** Day the storyteller has declared final (Ferryman, Angel, Fiddler). */
+    val finalDayCycle: Int? = null,
+
+    // ---- night progress ----
+    /** Holds [StepKey.token] values. Degrades to bare ability ids for simple steps. */
     val nightStepsDone: Set<String> = emptySet(),
+
+    // ---- computed-and-frozen briefings ----
+    /** The dawn briefing, computed BEFORE tokens were swept, so saves are re-openable. */
+    val lastDawn: Briefing? = null,
+    val lastDusk: Briefing? = null,
+
     /**
      * True while the Mastermind's extra day is being played out after the
      * Demon died by execution: if anyone is executed, their team loses.
      */
     val mastermindDayActive: Boolean = false,
     val storytellerNotes: String = "",
-    /** Millis timestamp of last modification, for save management. */
-    val updatedAt: Long = 0L,
-) {
-    val alivePlayers: List<Player> get() = players.filter { it.alive }
-    val aliveNonTravellers: List<Player> get() = players.filter { it.alive && !it.isTraveller }
+    /** Night-screen dim level, 0 = off, 1 = 55%, 2 = 25%. Persisted, not remembered. */
+    val dimLevel: Int = 0,
 
+    // ---- migration-only, never read by new code ----
+    @SerialName("demonBluffIds") internal val legacyDemonBluffIds: List<String> = emptyList(),
+    @SerialName("fabledIds") internal val legacyFabledIds: List<String> = emptyList(),
+) {
+    // ---- seats ----
     fun player(id: Long): Player? = players.find { it.id == id }
+
+    val seats: List<Player> get() = players.filter { it.seated }
+    val alivePlayers: List<Player> get() = seats.filter { it.alive }
+    val aliveNonTravellers: List<Player> get() = seats.filter { it.alive && !it.isTraveller }
+
+    /** Alive seats INCLUDING travellers — the Mayor's count (wiki: "Travellers count"). */
+    val aliveCountWithTravellers: Int get() = alivePlayers.size
+
+    /** Alive seats EXCLUDING travellers — the evil-wins-at-2 count and Scarlet Woman's 5+. */
+    val aliveCountResidents: Int get() = aliveNonTravellers.size
+
+    /**
+     * True when the player is alive by the RULES, which a Zombuul's first death is
+     * (they are stored dead and register as dead, but the game is not over).
+     */
+    fun isTrulyAlive(playerId: Long): Boolean {
+        val p = player(playerId) ?: return false
+        if (p.alive) return true
+        return deaths.lastOrNull { it.playerId == playerId && it.resurrectedAtCycle == null }
+            ?.registeredOnly == true
+    }
 
     fun updatePlayer(id: Long, transform: (Player) -> Player): GameState =
         copy(players = players.map { if (it.id == id) transform(it) else it })
 
-    /** Votes needed for an execution: at least half of alive players, rounded up. */
-    val executionThreshold: Int get() = (alivePlayers.size + 1) / 2
+    /** The two physical neighbours of a seat, over ALL seats including Travellers. */
+    fun seatNeighbours(playerId: Long): List<Player> {
+        val i = players.indexOfFirst { it.id == playerId }
+        if (i < 0 || players.size < 2) return emptyList()
+        return listOf(players[(i - 1 + players.size) % players.size], players[(i + 1) % players.size])
+    }
 
-    /**
-     * Votes needed to exile a traveller: at least half of ALL players
-     * (alive and dead), rounded up.
-     */
-    val exileThreshold: Int get() = (players.size + 1) / 2
+    // ---- derived compatibility accessors (read-only) ----
+    val fabledIds: List<String> get() = fabled.map { it.id }
+    val demonBluffIds: List<String> get() = bluffSets[BluffRequirement.DEMON_KEY].orEmpty()
+
+    /** Votes needed for an execution. Prefer DayRules.voteRules(...) — this ignores abilities. */
+    val executionThreshold: Int get() = (aliveCountWithTravellers + 1) / 2
+
+    /** Votes needed for an exile. Never modified by any ability. */
+    val exileThreshold: Int get() = (seats.size + 1) / 2
+
+    companion object {
+        /** Nominee id used when the STORYTELLER is nominated (Atheist games). */
+        const val STORYTELLER_SEAT_ID: Long = -1L
+    }
 }
 
-object Voting {
-    /** Threshold for an execution among [aliveCount] living players. */
-    fun executionThreshold(aliveCount: Int): Int = (aliveCount + 1) / 2
+/** Typed accessors over [GameState.decisions]. Keys are stable; do not invent new spellings. */
+object Decisions {
+    const val XAAN_X = "xaan.X"
+    const val BOFFIN_GRANT = "boffin.grant"
+    const val ALCHEMIST_GRANT = "alchemist.grant"
+    const val MEZEPHELES_WORD = "mezepheles.word"
+    const val LUNATIC_DEMON = "lunatic.demon"
+    const val AMNESIAC_ABILITY = "amnesiac.ability"
+    const val OUTSIDER_BRANCH = "setup.outsiderBranch"
 
-    /** Threshold for a traveller exile among [totalCount] players. */
-    fun exileThreshold(totalCount: Int): Int = (totalCount + 1) / 2
+    /** "true" = Travellers count towards the 7+ minion/demon-info threshold. */
+    const val COUNT_TRAVELLERS_FOR_INFO = "teensyville.countTravellers"
 
-    /**
-     * Whether [votes] makes the nominee about-to-die, given the current
-     * highest tally [currentHighest] today (0 if none) and the threshold.
-     * Equal to the highest is a tie (no one dies); beating it marks the new
-     * about-to-die player.
-     */
-    fun outcome(votes: Int, threshold: Int, currentHighest: Int): NominationResult = when {
-        votes < threshold -> NominationResult.SAFE
-        votes > currentHighest -> NominationResult.ABOUT_TO_DIE
-        votes == currentHighest -> NominationResult.TIED
-        else -> NominationResult.SAFE // below today's highest tally
-    }
+    fun int(state: GameState, key: String): Int? = state.decisions[key]?.toIntOrNull()
+
+    fun bool(state: GameState, key: String, default: Boolean = false): Boolean =
+        state.decisions[key]?.toBooleanStrictOrNull() ?: default
+
+    fun set(state: GameState, key: String, value: String): GameState =
+        state.copy(decisions = state.decisions + (key to value))
+
+    fun clear(state: GameState, key: String): GameState =
+        state.copy(decisions = state.decisions - key)
 }

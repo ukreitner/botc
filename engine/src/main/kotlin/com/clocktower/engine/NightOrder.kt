@@ -2,19 +2,9 @@ package com.clocktower.engine
 
 import kotlinx.serialization.Serializable
 
-/** Special (non-character) entries in the night order. */
-object NightMarkers {
-    const val DUSK = "DUSK"
-    const val MINION_INFO = "MINION_INFO"
-    const val DEMON_INFO = "DEMON_INFO"
-    const val DAWN = "DAWN"
-
-    val all = setOf(DUSK, MINION_INFO, DEMON_INFO, DAWN)
-}
-
 /** One row of the night sheet for the current game. */
 @Serializable
-data class NightStep(
+data class NightOrderStep(
     /** Character id, or one of [NightMarkers]. */
     val id: String,
     val title: String,
@@ -25,16 +15,19 @@ data class NightStep(
 
 /**
  * Builds the per-game night sheet from the canonical global wake order.
+ *
+ * SUPERSEDED by [NightPlan] — WP2 deletes this file. Its row type was renamed
+ * to [NightOrderStep] in WP0 so the new [NightStep] could take the name.
  */
 class NightOrder(
     private val firstNightOrder: List<String>,
     private val otherNightOrder: List<String>,
 ) {
 
-    fun firstNight(state: GameState, lookup: (String) -> Character?): List<NightStep> =
+    fun firstNight(state: GameState, lookup: (String) -> Character?): List<NightOrderStep> =
         build(state, lookup, firstNightOrder, isFirstNight = true)
 
-    fun otherNight(state: GameState, lookup: (String) -> Character?): List<NightStep> =
+    fun otherNight(state: GameState, lookup: (String) -> Character?): List<NightOrderStep> =
         build(state, lookup, otherNightOrder, isFirstNight = false)
 
     private fun build(
@@ -42,7 +35,7 @@ class NightOrder(
         lookup: (String) -> Character?,
         order: List<String>,
         isFirstNight: Boolean,
-    ): List<NightStep> {
+    ): List<NightOrderStep> {
         val inPlay: Map<String, List<Player>> = state.players
             .filter { it.nightRoleId != null }
             .groupBy { it.nightRoleId!! }
@@ -52,11 +45,11 @@ class NightOrder(
         val infoSteps = state.players.count { !it.isTraveller } >= 7
         val actualMarionettes = state.players.filter { it.characterId == "marionette" }
 
-        val steps = mutableListOf<NightStep>()
+        val steps = mutableListOf<NightOrderStep>()
         for (id in order) {
             when (id) {
-                NightMarkers.DUSK -> steps += NightStep(id, "Dusk", "Everyone closes their eyes. Wait for quiet.")
-                NightMarkers.DAWN -> steps += NightStep(id, "Dawn", "Wait a few seconds. Everyone opens their eyes. Announce who died.")
+                NightMarkers.DUSK -> steps += NightOrderStep(id, "Dusk", "Everyone closes their eyes. Wait for quiet.")
+                NightMarkers.DAWN -> steps += NightOrderStep(id, "Dawn", "Wait a few seconds. Everyone opens their eyes. Announce who died.")
                 NightMarkers.MINION_INFO -> if (isFirstNight && infoSteps) {
                     val minions = state.players.filter { p ->
                         p.characterId != "marionette" &&
@@ -65,7 +58,7 @@ class NightOrder(
                     val demon = state.players.filter { p ->
                         p.characterId?.let(lookup)?.team == Team.DEMON
                     }
-                    steps += NightStep(
+                    steps += NightOrderStep(
                         id = id,
                         title = "Minion info",
                         detail = buildString {
@@ -88,7 +81,7 @@ class NightOrder(
                     }
                     val lunatics = state.players.filter { it.characterId == "lunatic" }
                     val bluffs = state.demonBluffIds.mapNotNull { lookup(it)?.name }
-                    steps += NightStep(
+                    steps += NightOrderStep(
                         id = id,
                         title = "Demon info",
                         detail = buildString {
@@ -123,7 +116,7 @@ class NightOrder(
                             val demons = state.players.filter { player ->
                                 player.characterId?.let(lookup)?.team == Team.DEMON
                             }
-                            steps += NightStep(
+                            steps += NightOrderStep(
                                 id = id,
                                 title = "Marionette info",
                                 detail = buildString {
@@ -170,7 +163,7 @@ class NightOrder(
                             }
                         }
                     }
-                    steps += NightStep(
+                    steps += NightOrderStep(
                         id = id,
                         title = character.name,
                         detail = detail,
@@ -194,7 +187,7 @@ class NightOrder(
             .sortedBy { (_, c) -> if (isFirstNight) c.firstNight else c.otherNight }
             .map { (id, c) ->
                 val reminder = if (isFirstNight) c.firstNightReminder else c.otherNightReminder
-                NightStep(
+                NightOrderStep(
                     id = id,
                     title = "${c.name} (homebrew)",
                     detail = reminder.ifEmpty { c.ability },

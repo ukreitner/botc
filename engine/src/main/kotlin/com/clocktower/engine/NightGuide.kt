@@ -33,10 +33,24 @@ data class GuideNight(
     val shows: List<GuideShow> = emptyList(),
 )
 
+/**
+ * One character's complete run-book, in channels (lead D23). Every id in
+ * `characters.json` has at least one of `first` / `setup` / `day` / `reference`;
+ * `first` exists iff the id is in the first-night order and `other` iff it is in
+ * the other-night order. Content is WP5's.
+ */
 @Serializable
 data class NightGuideEntry(
+    /** First night. */
     val first: GuideNight? = null,
+    /** Other nights. */
     val other: GuideNight? = null,
+    /** Before night 1: bag changes, token swaps, storyteller picks. */
+    val setup: GuideNight? = null,
+    /** Day-phase procedure to run or watch for. */
+    val day: GuideNight? = null,
+    /** Passive/always-on rules, no storyteller action. */
+    val reference: GuideNight? = null,
 )
 
 object NightGuide {
@@ -56,5 +70,26 @@ object NightGuide {
     fun forStep(characterId: String, isFirstNight: Boolean): GuideNight? {
         val entry = entries[characterId] ?: return null
         return if (isFirstNight) entry.first else entry.other
+    }
+
+    /**
+     * The run-book for one ACTING ability (lead D23/D39): a `StepVariant.FIRST`
+     * re-run shows the first-night book, and a Boffin-granted row shows the
+     * granted character's book. WP2 makes this the only entry point.
+     */
+    fun forStep(abilityId: String, style: WakeStyle): GuideNight? =
+        forStep(abilityId, style == WakeStyle.FIRST_NIGHT)
+
+    /** The day / setup / reference channels, for the seat sheet and the script tab. */
+    fun channel(characterId: String, channel: String): GuideNight? {
+        val entry = entries[characterId] ?: return null
+        return when (channel) {
+            "first" -> entry.first
+            "other" -> entry.other
+            "setup" -> entry.setup
+            "day" -> entry.day
+            "reference" -> entry.reference
+            else -> null
+        }
     }
 }
