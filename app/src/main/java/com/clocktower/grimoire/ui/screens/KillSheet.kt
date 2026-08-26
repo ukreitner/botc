@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
 import com.clocktower.engine.DeathCause
+import com.clocktower.engine.DeathEvent
 import com.clocktower.engine.DeathNote
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.GameState
@@ -155,11 +156,10 @@ private fun KillSheetBody(
     }
     val (applies, irrelevant) = notes.partition { it.relevantTo(cause) }
 
+    // Death and ruling land in ONE update, so the seat sheet's Undo reverts
+    // the whole thing rather than only the note.
     fun apply(optionId: String = "") {
-        viewModel.attemptDeath(target.id, killCause, optionId)
-        if (why.isNotBlank()) {
-            viewModel.recordRuling(target.id, "st", why.trim())
-        }
+        viewModel.attemptDeath(target.id, killCause, optionId, ruling = why)
         onRecorded(outcome)
         onDismiss()
     }
@@ -449,7 +449,12 @@ private fun causeOptions(target: Player): List<CauseOption> = buildList {
 fun deathSummary(state: GameState, lookup: (String) -> Character?, playerId: Long): String {
     val death = state.deaths.lastOrNull { it.playerId == playerId && it.resurrectedAtCycle == null }
         ?: return if (state.player(playerId)?.alive == false) "dead" else "alive"
-    val when0 = (if (death.atNight) "N" else "D") + death.day
+    return deathLine(death, lookup)
+}
+
+/** One death, in the storyteller's words: "killed N2 by the Pukka", "executed D3". */
+fun deathLine(death: DeathEvent, lookup: (String) -> Character?): String {
+    val stamp = (if (death.atNight) "N" else "D") + death.day
     val by = death.killerCharacterId.takeIf { it.isNotEmpty() }?.let { lookup(it)?.name ?: it }
     val verb = when (death.cause) {
         DeathCause.EXECUTION -> "executed"
@@ -460,9 +465,10 @@ fun deathSummary(state: GameState, lookup: (String) -> Character?, playerId: Lon
     return buildString {
         append(verb)
         append(' ')
-        append(when0)
+        append(stamp)
         if (by != null) append(" by the $by")
         if (death.registeredOnly) append(" (registers dead)")
+        if (death.resurrectedAtCycle != null) append(" — alive again")
     }
 }
 

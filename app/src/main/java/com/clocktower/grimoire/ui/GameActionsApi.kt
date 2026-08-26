@@ -190,8 +190,16 @@ interface GameActionsApi {
      * [optionId] answers a `KillOutcome.Choice` — pass "" the first time, then
      * one of `Deaths.OPTION_DIES` / `OPTION_LIVES` / `OPTION_REDIRECT`.
      */
-    fun attemptDeath(targetId: Long, cause: KillCause, optionId: String = "") =
-        update { Deaths.attempt(it, lookup, targetId, cause, optionId).state }
+    fun attemptDeath(
+        targetId: Long,
+        cause: KillCause,
+        optionId: String = "",
+        /** A storyteller's own reason, recorded with the death as ONE undo step. */
+        ruling: String = "",
+    ) = update {
+        val after = Deaths.attempt(it, lookup, targetId, cause, optionId).state
+        if (ruling.isBlank()) after else withRuling(after, targetId, "st", ruling.trim())
+    }
 
     /** Removes one effect by id — the rule behind a rendered token. */
     fun removeEffect(effectId: Long) = update { Effects.remove(it, effectId) }
@@ -333,9 +341,17 @@ interface GameActionsApi {
      * When WP3 lands, this body becomes
      * `Ledger.ruling(it, sourceId, playerId, text)` and nothing else changes.
      */
-    fun recordRuling(playerId: Long?, sourceId: String, text: String) = update { state ->
+    fun recordRuling(playerId: Long?, sourceId: String, text: String) =
+        update { withRuling(it, playerId, sourceId, text) }
+
+    private fun withRuling(
+        state: GameState,
+        playerId: Long?,
+        sourceId: String,
+        text: String,
+    ): GameState {
         val id = state.nextLedgerId
-        state.copy(
+        return state.copy(
             ledger = state.ledger + LedgerEntry(
                 id = id,
                 cycle = state.cycle,

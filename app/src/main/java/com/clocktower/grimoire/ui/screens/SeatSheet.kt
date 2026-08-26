@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -252,7 +253,9 @@ private fun SeatActions(
     var showAdvanced by rememberSaveable(player.id) { mutableStateOf(false) }
     val canUndo by viewModel.canUndo.collectAsState()
 
-    Column(Modifier.fillMaxWidth()) {
+    // fillMaxHeight is load-bearing: it bounds the Column so the body can take
+    // `weight(1f)` and the action bar can stay pinned to the bottom edge.
+    Column(Modifier.fillMaxWidth().fillMaxHeight()) {
         // ---- fixed header: the facts the storyteller asks for most ----
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -310,7 +313,7 @@ private fun SeatActions(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false)
+                .weight(1f)
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
@@ -621,7 +624,7 @@ private fun seatHistory(
         out += HistoryLine(
             order = d.day * 10 + (if (d.atNight) 0 else 1),
             stamp = stamp(d.day, d.atNight),
-            text = deathSummary(state, lookup, playerId).ifEmpty { "died" },
+            text = deathLine(d, lookup),
             trailing = if (d.registeredOnly) "registers dead" else "",
             warn = true,
         )

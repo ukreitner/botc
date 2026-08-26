@@ -2,8 +2,9 @@ package com.clocktower.grimoire.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,9 +23,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -148,7 +151,7 @@ fun GrimoireScreen(
             onOpenBluffs = onOpenBluffs,
             onOpenFabled = onOpenFabled,
         )
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
             if (board) {
                 BoardView(
                     viewModel = viewModel,
@@ -727,6 +730,7 @@ object SeatGeometry {
 }
 
 /** One seat on the circle: name, token, shroud, status pips. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SeatView(
     viewModel: GameViewModel,
@@ -756,9 +760,11 @@ private fun SeatView(
                 role = Role.Button
                 contentDescription = seatDescription(state, viewModel, player, seatNumber, character, tokens)
             }
-            .pointerInput(player.id) {
-                detectTapGestures(onTap = { onClick() }, onLongPress = { onLongClick() })
-            },
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = "Show every token on this seat",
+            ),
     ) {
         Text(
             text = player.name,
@@ -972,7 +978,7 @@ private fun BoardView(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun BoardRow(
     viewModel: GameViewModel,
@@ -989,9 +995,11 @@ private fun BoardRow(
     Column(
         Modifier
             .fillMaxWidth()
-            .pointerInput(player.id) {
-                detectTapGestures(onTap = { onClick() }, onLongPress = { onLongClick() })
-            }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = "Show every token on this seat",
+            )
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -1106,7 +1114,10 @@ private fun TokenPeek(
         onDismissRequest = onDismiss,
         title = { Text("Tokens on ${player.name}") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
                 val target = moving
                 if (target != null) {
                     Text("Move \"${target.label}\" to…", style = MaterialTheme.typography.titleSmall)
