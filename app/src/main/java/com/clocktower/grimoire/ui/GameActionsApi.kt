@@ -2,6 +2,10 @@ package com.clocktower.grimoire.ui
 
 import com.clocktower.engine.Alignment
 import com.clocktower.engine.Bluffs
+import com.clocktower.engine.Briefing
+import com.clocktower.engine.BriefingItem
+import com.clocktower.engine.BriefingSlot
+import com.clocktower.engine.Briefings
 import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.Character
 import com.clocktower.engine.DayRules
@@ -29,6 +33,8 @@ import com.clocktower.engine.Phase
 import com.clocktower.engine.Phases
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Player
+import com.clocktower.engine.Prompt
+import com.clocktower.engine.Prompts
 import com.clocktower.engine.RenderedToken
 import com.clocktower.engine.SeatNote
 import com.clocktower.engine.Seats
@@ -321,6 +327,51 @@ interface GameActionsApi {
     fun clearDecision(key: String) = update { Decisions.clear(it, key) }
 
     // ---- WP6: prompts and briefings ----
+
+    /**
+     * The briefing for one slot, derived fresh from prompts + effects + ledger
+     * + deaths. Pure and cheap — never cache it; `state.lastDawn` and
+     * `state.lastDusk` are the frozen snapshots, taken before the token sweep.
+     */
+    fun briefing(state: GameState, slot: BriefingSlot): Briefing =
+        Briefings.at(state, lookup, slot)
+
+    /** Everything that constrains today — the Day tab's morning card. */
+    fun dayBriefing(state: GameState): Briefing =
+        Briefings.at(state, lookup, BriefingSlot.DAY_START)
+
+    /**
+     * Acts on one [BriefingItem]'s `actionId` where the engine owns the
+     * follow-through: ticking off a sentence that has been said, and retiring
+     * an obligation. Navigation actions ("open-seat:7") stay with the screen.
+     *
+     * Returns true when the item was consumed here.
+     */
+    fun resolveBriefingItem(item: BriefingItem): Boolean = when {
+        item.actionId.startsWith(Briefings.ACTION_MARK_ANNOUNCED) -> {
+            item.ledgerId?.let { markAnnounced(it) }
+            item.ledgerId != null
+        }
+
+        item.actionId.startsWith(Briefings.ACTION_RESOLVE_PROMPT) -> {
+            item.promptId?.let { resolvePrompt(it) }
+            item.promptId != null
+        }
+
+        else -> false
+    }
+
+    /** Unresolved obligations that come due at [slot], oldest first. */
+    fun promptsDue(state: GameState, slot: BriefingSlot): List<Prompt> = Prompts.due(state, slot)
+
+    /** Retires one obligation as done, keeping it for the log and undo. */
+    fun resolvePrompt(promptId: Long) = update { Prompts.resolve(it, promptId) }
+
+    /** Drops an obligation entirely — the storyteller ruled it never applied. */
+    fun dismissPrompt(promptId: Long) = update { Prompts.dismiss(it, promptId) }
+
+    /** Queues an obligation the storyteller owes. */
+    fun queuePrompt(prompt: Prompt) = update { Prompts.queue(it, prompt) }
 
     // ---- WP8: night screen ----
 

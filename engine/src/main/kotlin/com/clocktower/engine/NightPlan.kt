@@ -302,7 +302,7 @@ data class NightPlan(
                 sourceCharacterId = step.abilityId,
                 targets = targets,
                 characterIds = input.characterIds,
-                previous = lastChosen(state, step.abilityId, holderId, state.cycle - 1),
+                previous = Memory.forbiddenTargets(state, step.abilityId, holderId),
             )
 
             var next = state
@@ -980,9 +980,9 @@ data class NightPlan(
                     TargetConstraint.GOOD -> !target.isEvil(lookup)
                     TargetConstraint.EVIL -> target.isEvil(lookup)
                     TargetConstraint.DIFFERENT_FROM_LAST_NIGHT ->
-                        targetId !in lastChosen(state, step.abilityId, holderId, state.cycle - 1)
+                        targetId !in Memory.forbiddenTargets(state, step.abilityId, holderId)
                     TargetConstraint.NOT_CHOSEN_BEFORE ->
-                        targetId !in everChosen(state, step.abilityId, holderId)
+                        targetId !in Memory.everChosen(state, step.abilityId, holderId)
                     TargetConstraint.NEIGHBOUR_OF_SOURCE ->
                         holderId == null || targetId in state.seatNeighbours(holderId).map { it.id }
                 }
@@ -1334,9 +1334,9 @@ data class NightPlan(
             step.promptId?.let { Prompts.resolve(state, it) } ?: state
 
         /**
-         * One append-only ledger write. WP3 routes these through `Ledger.record`
-         * once it lands; the shape is identical (WP1 writes IMPAIRMENT_SPAN the
-         * same way).
+         * One append-only ledger write, routed through `Ledger.record` (WP6),
+         * which owns id allocation and the cycle / atNight stamp. Nothing in
+         * this file touches `GameState.nextLedgerId`.
          */
         @Suppress("LongParameterList")
         private fun ledger(
@@ -1352,60 +1352,25 @@ data class NightPlan(
             genuine: Boolean = true,
             byStoryteller: Boolean = false,
             announcePending: Boolean = false,
-        ): GameState {
-            val id = state.nextLedgerId
-            return state.copy(
-                ledger = state.ledger + LedgerEntry(
-                    id = id,
-                    cycle = state.cycle,
-                    atNight = state.phase != Phase.DAY,
-                    kind = kind,
-                    sourceId = sourceId,
-                    actorId = actorId,
-                    targetIds = targetIds,
-                    characterIds = characterIds,
-                    text = text,
-                    shown = shown,
-                    impaired = impaired,
-                    genuine = genuine,
-                    byStoryteller = byStoryteller,
-                    announcePending = announcePending,
-                ),
-                nextLedgerId = id + 1,
-            )
-        }
+        ): GameState = Ledger.record(
+            state,
+            LedgerEntry(
+                kind = kind,
+                sourceId = sourceId,
+                actorId = actorId,
+                targetIds = targetIds,
+                characterIds = characterIds,
+                text = text,
+                shown = shown,
+                impaired = impaired,
+                genuine = genuine,
+                byStoryteller = byStoryteller,
+                announcePending = announcePending,
+            ),
+        )
 
         /** `LedgerEntry.text` for a recorded "they chose nobody". */
         const val NO_CHOICE = "chose nobody"
-
-        // ---- memory (read-only; WP3's `Memory` supersedes these) ------------
-
-        /** Seats [sourceId] chose on the night [night]. */
-        internal fun lastChosen(
-            state: GameState,
-            sourceId: String,
-            holderId: Long?,
-            night: Int,
-        ): Set<Long> = state.ledger
-            .lastOrNull {
-                it.kind == LedgerKind.CHOICE &&
-                    Character.normalizeId(it.sourceId) == Character.normalizeId(sourceId) &&
-                    (holderId == null || it.actorId == holderId) &&
-                    it.cycle == night && it.atNight
-            }
-            ?.targetIds
-            .orEmpty()
-            .toSet()
-
-        internal fun everChosen(state: GameState, sourceId: String, holderId: Long?): Set<Long> =
-            state.ledger
-                .filter {
-                    it.kind == LedgerKind.CHOICE &&
-                        Character.normalizeId(it.sourceId) == Character.normalizeId(sourceId) &&
-                        (holderId == null || it.actorId == holderId)
-                }
-                .flatMap { it.targetIds }
-                .toSet()
     }
 }
 
