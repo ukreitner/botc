@@ -26,22 +26,14 @@ object Phases {
      *
      * Injectable so a test can assert what the grimoire looked like at the moment
      * the briefing ran — the acceptance criterion is that the Monk token is still
-     * present then. [Briefings.at] is WP6's; until it lands, a `NotImplementedError`
-     * degrades to "no briefing" instead of breaking the phase flow.
+     * present then.
      */
     fun interface BriefingSource {
         fun at(state: GameState, lookup: (String) -> Character?, slot: BriefingSlot): Briefing?
     }
 
     /** The production source: WP6's pure `Briefings.at`. */
-    val DEFAULT_BRIEFINGS: BriefingSource = BriefingSource { state, lookup, slot ->
-        @Suppress("SwallowedException")
-        try {
-            Briefings.at(state, lookup, slot)
-        } catch (e: NotImplementedError) {
-            null // WP6 has not landed yet.
-        }
-    }
+    val DEFAULT_BRIEFINGS: BriefingSource = BriefingSource(Briefings::at)
 
     /**
      * Removes every effect and every hand-placed token whose [TokenRule] retires
