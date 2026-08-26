@@ -221,10 +221,17 @@ class GameActionsTest {
         val pool = data.resolve(data.builtInScripts().first { it.id == "bmr" })
             .filter { it.team != Team.DEMON } + listOf(assertNotNull(data.character("lilmonsta")))
         val bag = assertNotNull(GameActions.randomBag(pool, 10, Random(7)))
-        assertEquals(10, bag.size)
+        // Lead D18: Lil' Monsta is a token in the centre, not a seat, so the
+        // draw is 11 tokens for 10 players — 7 / 0 / 3 / 0 plus Lil' Monsta.
+        assertEquals(11, bag.size)
+        assertEquals(10, bag.count { it.id != "lilmonsta" }, "10 seats are filled")
         assertEquals(3, bag.count { it.team == Team.MINION }, "+1 Minion applied")
+        assertEquals(0, bag.count { it.team == Team.DEMON && it.id != "lilmonsta" })
         assertEquals(1, bag.count { it.id == "lilmonsta" })
-        assertTrue(GameActions.validateBag(bag, 10).isEmpty())
+        assertTrue(
+            GameActions.validateBag(bag, 10).isEmpty(),
+            GameActions.validateBag(bag, 10).toString(),
+        )
     }
 
     @Test
@@ -472,8 +479,10 @@ class GameActionsTest {
         state = GameActions.setShownCharacter(state, 1, "chef")
         state = GameActions.swapCharacters(state, 0, 1)
         assertEquals("mayor", state.player(0)?.characterId)
-        assertEquals("chef", state.player(0)?.shownCharacterId)
         assertEquals("imp", state.player(1)?.characterId)
+        // Lead D33 / setup-and-identity defect 15: a swap moves the CHARACTER,
+        // never the believed token — a Drunk keeps believing what they believed.
+        assertEquals(null, state.player(0)?.shownCharacterId)
         assertEquals(null, state.player(1)?.shownCharacterId)
     }
 
