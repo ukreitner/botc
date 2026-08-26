@@ -1,12 +1,18 @@
 package com.clocktower.grimoire.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.Alignment
 import com.clocktower.grimoire.ui.components.DiscussionTimer
 import com.clocktower.grimoire.ui.components.PrivacyCover
@@ -30,6 +36,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,10 +44,12 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,10 +62,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.clocktower.engine.Effects
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Phase
+import com.clocktower.engine.Team
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
+import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.screens.night.dimLabel
+import com.clocktower.grimoire.ui.screens.night.nextDimLevel
+import com.clocktower.grimoire.ui.screens.night.screenBrightness
 import com.clocktower.grimoire.ui.theme.AgedGold
 
 /**
@@ -87,10 +104,21 @@ fun GameShell(
     var dismissedAdvisory by rememberSaveable { mutableStateOf("") }
     var showRevealFlow by rememberSaveable { mutableStateOf(false) }
     var grimoireLocked by rememberSaveable { mutableStateOf(false) }
-    var nightScrim by rememberSaveable { mutableStateOf(false) }
+    var showTravellerJoin by rememberSaveable { mutableStateOf(false) }
+    var spyMode by rememberSaveable { mutableStateOf(false) }
 
-    // The table's phone must not sleep mid-game.
+    // The table's phone must not sleep mid-game — and the browser drops its
+    // wake lock on every tab switch, so it is re-requested on resume too.
     com.clocktower.grimoire.ui.platform.KeepScreenOn()
+    com.clocktower.grimoire.ui.platform.RequestWakeLockOnResume()
+
+    // The night dim level lives in GameState (ux/night-screen §H): the scrim is
+    // the only lever the PWA has, and on Android the window brightness follows.
+    val setBrightness = com.clocktower.grimoire.ui.platform.rememberScreenBrightness()
+    val dimming = state.phase == Phase.NIGHT && state.dimLevel > 0
+    LaunchedEffect(state.dimLevel, state.phase) {
+        setBrightness(if (dimming) screenBrightness(state.dimLevel) else null)
+    }
     val canUndo by viewModel.canUndo.collectAsState()
     val canRedo by viewModel.canRedo.collectAsState()
     val stateHolder = rememberSaveableStateHolder()
@@ -110,6 +138,10 @@ fun GameShell(
         requestPhaseAdvance(viewModel, state, phaseGuards)?.let { tab = it }
     }
 
+    // The scrim lives OUTSIDE the Scaffold so it covers the top bar and the
+    // navigation bar — the two most saturated surfaces on the screen, and the
+    // ones the old in-content scrim left at full brightness (defect #21).
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             BoxWithConstraints {
@@ -175,8 +207,12 @@ fun GameShell(
                             onClick = { showMenu = false; showRevealFlow = true },
                         )
                         DropdownMenuItem(
-                            text = { Text(if (nightScrim) "Night dimming off" else "Night dimming on") },
-                            onClick = { showMenu = false; nightScrim = !nightScrim },
+                            text = { Text("Screen dimming: ${dimLabel(state.dimLevel)}") },
+                            onClick = { viewModel.setDimLevel(nextDimLevel(state.dimLevel)) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Show the grimoire to a player…") },
+                            onClick = { showMenu = false; spyMode = true },
                         )
                         DropdownMenuItem(
                             text = { Text("Fabled…") },
@@ -195,7 +231,11 @@ fun GameShell(
                             onClick = { showMenu = false; showReorder = true },
                         )
                         DropdownMenuItem(
-                            text = { Text("Add seat (traveller joins)") },
+                            text = { Text("A traveller joins…") },
+                            onClick = { showMenu = false; showTravellerJoin = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Add an empty seat") },
                             onClick = { showMenu = false; showAddSeat = true },
                         )
                         DropdownMenuItem(
@@ -250,6 +290,9 @@ fun GameShell(
                         viewModel = viewModel,
                         state = state,
                         onOpenShowTool = { showCardTool = true },
+                        // The last card of the sheet IS the dawn button
+                        // (ux/night-screen §F): "OPEN THE DAY →".
+                        onDawn = onPhaseButton,
                     )
                     GameTab.DAY -> DayScreen(viewModel, state)
                     // WP11: passing the live state marks what is in play and
@@ -257,22 +300,24 @@ fun GameShell(
                     GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script, state)
                 }
             }
-            if (tab == GameTab.GRIMOIRE || tab == GameTab.DAY) {
-                DiscussionTimer(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(12.dp),
-                )
-            }
-            if (nightScrim && state.phase == Phase.NIGHT) {
-                // Red-shifted dimming preserves the room's darkness; plain
-                // Box without pointer handling lets touches pass through.
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color(0x66300000)),
-                )
-            }
+            // Mounted on EVERY tab so its deadline survives a tab switch
+            // (grimoire-and-seats §13, P1-17); it docks out of the way of the
+            // night sheet's primary button rather than being destroyed.
+            DiscussionTimer(
+                modifier = Modifier
+                    .align(if (tab == GameTab.NIGHT) Alignment.TopEnd else Alignment.BottomEnd)
+                    .padding(12.dp),
+            )
+        }
+    }
+        if (dimming) {
+            // Red-shifted dimming preserves the room's darkness; a plain Box
+            // with no pointer handling lets every touch through.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFF2A0A0A).copy(alpha = nightScrimAlpha(state.dimLevel))),
+            )
         }
     }
     if (showRevealFlow) {
@@ -287,7 +332,9 @@ fun GameShell(
         )
     }
     if (grimoireLocked) {
-        PrivacyCover(onUnlock = { grimoireLocked = false })
+        // The caption lets the storyteller orient without opening anything —
+        // "Night 3 · press and hold to open" (grimoire-and-seats §8).
+        PrivacyCover(caption = phaseLabel, onUnlock = { grimoireLocked = false })
     }
     // Setup identity prompts live in GameExtras.kt (WP0 extraction; WP11 owns them next).
     SetupIdentityPrompts(viewModel, state)
@@ -364,7 +411,31 @@ fun GameShell(
     }
     PhaseGuardDialogs(viewModel, state, phaseGuards) { tab = it }
     activeCard?.let { card ->
-        FullScreenShow(card = card, viewModel = viewModel, onDismiss = { activeCard = null })
+        FullScreenShow(
+            card = card,
+            viewModel = viewModel,
+            coverCaption = phaseLabel,
+            onDismiss = { activeCard = null },
+        )
+    }
+    if (showTravellerJoin) {
+        TravellerJoinDialog(
+            viewModel = viewModel,
+            state = state,
+            onDismiss = { showTravellerJoin = false },
+        )
+    }
+    if (spyMode) {
+        ReadOnlyGrimoire(
+            viewModel = viewModel,
+            state = state,
+            onDone = {
+                spyMode = false
+                // The phone was just in a player's hands: re-arm the cover
+                // rather than dropping back into the open grimoire.
+                grimoireLocked = true
+            },
+        )
     }
     if (showAddSeat) {
         var seatName by rememberSaveable { mutableStateOf("") }
@@ -409,6 +480,249 @@ fun GameShell(
             },
             dismissButton = { TextButton(onClick = { showNotes = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/**
+ * A Traveller joins mid-game: one dialog, one confirm (grimoire-and-seats §10).
+ *
+ * The old path was "Add seat" and then roughly sixteen taps across the grimoire
+ * to give the seat a character and an alignment — and the alignment, which is
+ * always the storyteller's choice for a Traveller, was never actually asked.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TravellerJoinDialog(
+    viewModel: GameViewModel,
+    state: GameState,
+    onDismiss: () -> Unit,
+) {
+    var name by rememberSaveable { mutableStateOf("") }
+    var afterId by rememberSaveable { mutableStateOf(state.seats.lastOrNull()?.id) }
+    var characterId by rememberSaveable { mutableStateOf<String?>(null) }
+    var evil by rememberSaveable { mutableStateOf(false) }
+
+    val travellers = remember(state.script) {
+        val onScript = viewModel.gameData.resolve(state.script).filter { it.team == Team.TRAVELLER }
+        onScript.ifEmpty { viewModel.gameData.characters.filter { it.team == Team.TRAVELLER } }
+            .sortedBy { it.name }
+    }
+    val character = characterId?.let { viewModel.characterById(it) }
+    val announce = buildString {
+        append(name.ifBlank { "A traveller" })
+        append(" joins the game")
+        character?.let { append(" as the ").append(it.name) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("A traveller joins") },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 440.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                item {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item {
+                    Text("Sits after", style = MaterialTheme.typography.titleSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for ((index, seat) in state.seats.withIndex()) {
+                            FilterChip(
+                                selected = afterId == seat.id,
+                                onClick = { afterId = seat.id },
+                                label = { Text("${index + 1} ${seat.name}") },
+                            )
+                        }
+                    }
+                }
+                item {
+                    Text("Character", style = MaterialTheme.typography.titleSmall)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        for (traveller in travellers) {
+                            FilterChip(
+                                selected = characterId == traveller.id,
+                                onClick = { characterId = traveller.id },
+                                leadingIcon = { CharacterToken(character = traveller, size = 24.dp) },
+                                label = { Text(traveller.name) },
+                            )
+                        }
+                    }
+                }
+                item {
+                    Text("Alignment", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(
+                            selected = !evil,
+                            onClick = { evil = false },
+                            label = { Text("Good") },
+                        )
+                        FilterChip(
+                            selected = evil,
+                            onClick = { evil = true },
+                            label = { Text("Evil") },
+                        )
+                    }
+                    Text(
+                        "A Traveller's alignment is always your choice — never the character's.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item {
+                    Text("Announce", style = MaterialTheme.typography.titleSmall)
+                    Text(announce, style = MaterialTheme.typography.bodyMedium, color = AgedGold)
+                }
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    viewModel.joinTraveller(
+                        name = name.trim(),
+                        afterPlayerId = afterId,
+                        characterId = characterId,
+                        evil = evil,
+                        announce = announce,
+                    )
+                    onDismiss()
+                },
+            ) { Text("Seat them") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * The grimoire as a player may hold it (grimoire-and-seats §8): the Spy's and
+ * the Widow's look.
+ *
+ * Read-only means read-only — no taps, no long-press, no seat sheet, and none
+ * of the storyteller-private material (notes, bluffs, the log, the top bar, the
+ * tabs) is composed at all. Every token is listed in full text rather than
+ * truncated to `+N`, because this is the one view whose whole job is reading.
+ * Seats can be redacted before it is handed over, which is what the Magician
+ * jinx needs.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReadOnlyGrimoire(
+    viewModel: GameViewModel,
+    state: GameState,
+    onDone: () -> Unit,
+) {
+    var handedOver by rememberSaveable { mutableStateOf(false) }
+    var redacted by remember { mutableStateOf(emptySet<Long>()) }
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+        ),
+    ) {
+        Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (!handedOver) {
+                    Text("Show the grimoire", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
+                    Text(
+                        "Tap any seat you want hidden, then hand the phone over. " +
+                            "Nothing on the next screen can be tapped.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        for ((index, seat) in state.seats.withIndex()) {
+                            FilterChip(
+                                selected = seat.id in redacted,
+                                onClick = {
+                                    redacted = if (seat.id in redacted) redacted - seat.id else redacted + seat.id
+                                },
+                                label = { Text("${index + 1} ${seat.name}") },
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(
+                            onClick = { handedOver = true },
+                            modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                        ) { Text("HAND IT OVER") }
+                        TextButton(onClick = onDone) { Text("Cancel") }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        itemsIndexed(state.seats) { index, seat ->
+                            ReadOnlySeatRow(viewModel, state, index + 1, seat.id, seat.id in redacted)
+                        }
+                    }
+                    FilledTonalButton(
+                        onClick = onDone,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                    ) { Text("DONE — BACK TO THE SHEET") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadOnlySeatRow(
+    viewModel: GameViewModel,
+    state: GameState,
+    seatNumber: Int,
+    playerId: Long,
+    redacted: Boolean,
+) {
+    val player = state.player(playerId) ?: return
+    val tokens = remember(state, playerId) {
+        if (redacted) emptyList() else Effects.rendered(state, viewModel::characterById, playerId)
+    }
+    Row(verticalAlignment = Alignment.Top) {
+        CharacterToken(
+            character = if (redacted) null else viewModel.characterById(player.characterId),
+            size = 44.dp,
+            dimmed = !player.alive,
+        )
+        Column(Modifier.padding(start = 10.dp)) {
+            Text(
+                text = "$seatNumber  ${player.name}${if (player.alive) "" else " †"}",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            if (redacted) {
+                Text(
+                    "hidden by the storyteller",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text = viewModel.characterById(player.characterId)?.name ?: "no character",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                for (token in tokens) {
+                    TokenLine(viewModel = viewModel, token = token)
+                }
+            }
+        }
     }
 }
 
