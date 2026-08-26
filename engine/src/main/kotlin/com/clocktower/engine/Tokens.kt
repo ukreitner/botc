@@ -57,6 +57,9 @@ object Tokens {
      */
     const val STORYTELLER_SOURCE: String = STORYTELLER_SOURCE_ID
 
+    /** A token with no physical limit — the generic storyteller markers. */
+    const val UNLIMITED: Int = Int.MAX_VALUE
+
     // ---------------------------------------------------------------- registry
 
     /** `(sourceId, label)` of every once-per-game spend mark in the official data. */
@@ -181,10 +184,28 @@ object Tokens {
      */
     internal val BASE: List<TokenRule> = buildList {
         // ---- generic storyteller tokens (ARCHITECTURE §2.4, first bullet) ----
-        add(TokenRule(STORYTELLER_SOURCE, "Poisoned", EffectKind.POISONED, Until.DUSK, impairs = true))
-        add(TokenRule(STORYTELLER_SOURCE, "Drunk", EffectKind.DRUNK, Until.DUSK, impairs = true))
-        add(TokenRule(STORYTELLER_SOURCE, "Protected", EffectKind.SAFE_FROM_DEMON, Until.DAWN, protects = true))
-        add(TokenRule(STORYTELLER_SOURCE, "Mad", EffectKind.MAD, Until.DUSK))
+        // UNLIMITED copies: these are not physical character tokens, so the
+        // storyteller can mark as many seats as a ruling needs. With copies = 1
+        // a second hand-placed Poisoned would displace the first.
+        add(
+            TokenRule(
+                STORYTELLER_SOURCE, "Poisoned", EffectKind.POISONED, Until.DUSK,
+                copies = UNLIMITED, impairs = true,
+            ),
+        )
+        add(
+            TokenRule(
+                STORYTELLER_SOURCE, "Drunk", EffectKind.DRUNK, Until.DUSK,
+                copies = UNLIMITED, impairs = true,
+            ),
+        )
+        add(
+            TokenRule(
+                STORYTELLER_SOURCE, "Protected", EffectKind.SAFE_FROM_DEMON, Until.DAWN,
+                copies = UNLIMITED, protects = true,
+            ),
+        )
+        add(TokenRule(STORYTELLER_SOURCE, "Mad", EffectKind.MAD, Until.DUSK, copies = UNLIMITED))
 
         // ---- protection ----
         add(TokenRule("monk", "Safe", EffectKind.SAFE_FROM_DEMON, Until.DAWN, protects = true))

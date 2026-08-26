@@ -3,6 +3,7 @@ package com.clocktower.engine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -454,6 +455,159 @@ class EffectsTest {
         state = Effects.reconcile(Effects.remove(state, state.effects.last().id), lookup)
         val closed = state.ledger.first { it.kind == LedgerKind.IMPAIRMENT_SPAN && it.actorId == empath }
         assertEquals(state.cycle, closed.resolvedCycle, "closed when the seat became healthy")
+    }
+
+    // ---- regressions found in review ---------------------------------------
+
+    @Test
+    fun `a demon-harm-blocked neighbour does not manufacture a paradox`() {
+        // The No Dashii's positional rule asks demonHarmBlocked while the standing
+        // rules are still being emitted. Using the FULL query there re-enters that
+        // lazy and escapes only by tripping the paradox guard, which would prompt
+        // the storyteller to settle a paradox on a board that has none.
+        val sv = data.builtInScripts().first { it.id == "sv" }
+        var state = GameActions.newGame(sv, listOf("A", "B", "C", "D", "E"))
+        listOf("nodashii", "soldier", "imp", "mayor", "empath")
+            .forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
+        state = Phases.advancePhase(state, lookup)
+        // Now BOTH of the No Dashii's Townsfolk neighbours are safe from Demon harm.
+        state = Effects.place(
+            state, 4L, EffectKind.SAFE_FROM_DEMON, "monk", null, Until.DAWN, "Safe",
+        ).state
+
+        assertTrue(StatusEffects.derivedPoison(state, lookup).isEmpty(), "nobody is poisoned")
+        assertTrue(Status.paradoxSeats(state, lookup).isEmpty(), "and there is no paradox")
+        assertTrue(
+            Effects.reconcile(state, lookup).prompts.none { it.kind == PromptKind.DECIDE },
+            "so the storyteller is never asked to settle one",
+        )
+    }
+
+    @Test
+    fun `suspending an effect suppresses its rule but keeps its token`() {
+        var state = game("poisoner", "empath", "imp", "chef", "mayor")
+        val empath = state.seat("empath")
+        val placed = Effects.place(
+            state, empath, EffectKind.POISONED, "poisoner", state.seat("poisoner"),
+            Until.FOREVER, "Poisoned",
+        )
+        state = placed.state
+        assertTrue(Status.isImpaired(state, lookup, empath))
+
+        state = Effects.suspend(state, placed.effect.id, true)
+        assertFalse(Status.isImpaired(state, lookup, empath), "the rule is suppressed")
+        assertTrue(
+            Effects.rendered(state, lookup, empath).any { it.label == "Poisoned" && it.suspended },
+            "but the token stays on the grimoire, turned over",
+        )
+        assertTrue(Status.live(state, lookup, empath, EffectKind.POISONED).isEmpty())
+        assertTrue(Status.effectsOn(state, lookup, empath).any { it.kind == EffectKind.POISONED })
+    }
+
+    @Test
+    fun `a suspended spent mark gives the fool their ability back`() {
+        var state = Phases.advancePhase(game("fool", "empath", "imp", "chef", "mayor"), lookup)
+        val fool = state.seat("fool")
+        val spent = Effects.place(
+            state, fool, EffectKind.SPENT, "fool", fool, Until.FOREVER, "No Ability",
+        )
+        state = spent.state
+        assertIs<KillOutcome.Dies>(
+            Deaths.killOutcome(state, lookup, fool, KillCause(DeathCause.EXECUTION)),
+        )
+
+        state = Effects.suspend(state, spent.effect.id, true)
+        assertIs<KillOutcome.Spends>(
+            Deaths.killOutcome(state, lookup, fool, KillCause(DeathCause.EXECUTION)),
+            "\"turn the token over\" must reach the kill funnel",
+        )
+    }
+
+    @Test
+    fun `a storyteller ruling can make an evil seat register good`() {
+        var state = game("spy", "empath", "imp", "chef", "mayor")
+        val spy = state.seat("spy")
+        assertTrue(Registration.registersEvil(state, lookup, state.players.first { it.id == spy }))
+
+        state = Effects.place(
+            state, spy, EffectKind.REGISTERS_AS, "spy", spy, Until.FOREVER,
+            characterId = "chef",
+        ).state
+        val ruled = state.players.first { it.id == spy }
+        assertFalse(
+            Registration.registersEvil(state, lookup, ruled),
+            "a ruling REPLACES the true team, in both directions (lead D10)",
+        )
+        assertEquals(setOf(Team.TOWNSFOLK), Registration.registersAs(state, lookup, ruled))
+    }
+
+    @Test
+    fun `a recluse ruled evil registers evil`() {
+        var state = game("recluse", "empath", "imp", "chef", "mayor")
+        val recluse = state.seat("recluse")
+        assertFalse(
+            Registration.registersEvil(state, lookup, state.players.first { it.id == recluse }),
+        )
+
+        state = Effects.place(
+            state, recluse, EffectKind.REGISTERS_AS, "recluse", recluse, Until.FOREVER,
+            characterId = "imp",
+        ).state
+        assertTrue(
+            Registration.registersEvil(state, lookup, state.players.first { it.id == recluse }),
+        )
+    }
+
+    @Test
+    fun `a tea lady whose neighbour is ruled good starts protecting`() {
+        val bmr = data.builtInScripts().first { it.id == "bmr" }
+        var state = GameActions.newGame(bmr, listOf("A", "B", "C", "D", "E"))
+        listOf("spy", "tealady", "empath", "mayor", "imp")
+            .forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
+        state = Phases.advancePhase(state, lookup)
+        assertTrue(
+            Status.protections(state, lookup, 2L).none { it.kind == EffectKind.CANT_DIE },
+            "an unruled Spy registers evil, so the Tea Lady protects nobody",
+        )
+
+        state = Effects.place(
+            state, 0L, EffectKind.REGISTERS_AS, "spy", 0L, Until.FOREVER, characterId = "good",
+        ).state
+        assertTrue(
+            Status.protections(state, lookup, 2L).any { it.kind == EffectKind.CANT_DIE },
+            "ruled good, both neighbours are good, so they can't die",
+        )
+    }
+
+    @Test
+    fun `the storyteller can poison more than one seat at a time`() {
+        var state = game("poisoner", "empath", "imp", "chef", "mayor")
+        state = Effects.addReminder(state, 1L, PlacedReminder(Tokens.STORYTELLER_SOURCE, "Poisoned"))
+        state = Effects.addReminder(state, 3L, PlacedReminder(Tokens.STORYTELLER_SOURCE, "Poisoned"))
+        assertTrue(Status.isImpaired(state, lookup, 1L))
+        assertTrue(Status.isImpaired(state, lookup, 3L), "a generic token is not a physical one")
+
+        val first = Effects.place(state, 1L, EffectKind.POISONED, "st", null, Until.DUSK, "Poisoned")
+        val second = Effects.place(
+            first.state, 3L, EffectKind.POISONED, "st", null, Until.DUSK, "Poisoned",
+        )
+        assertEquals(null, second.displaced, "the second must not displace the first")
+        assertEquals(2, second.state.effects.count { it.label == "Poisoned" })
+    }
+
+    @Test
+    fun `the minstrel centre token clears itself at the dusk it names`() {
+        var state = game("minstrel", "poisoner", "imp", "chef", "mayor")
+        state = Effects.addCentreReminder(state, PlacedReminder("minstrel", "Everyone Is Drunk"))
+        assertEquals(1, state.storytellerReminders.size)
+
+        state = Phases.advancePhase(state, lookup) // day 1 — still in force
+        assertEquals(1, state.storytellerReminders.size)
+        state = Phases.advancePhase(state, lookup) // night 2 — and tonight
+        assertEquals(1, state.storytellerReminders.size)
+        state = Phases.advancePhase(state, lookup) // day 2
+        state = Phases.advancePhase(state, lookup) // night 3 — past dusk of day 2
+        assertTrue(state.storytellerReminders.isEmpty(), "gone at dusk tomorrow")
     }
 
     @Test

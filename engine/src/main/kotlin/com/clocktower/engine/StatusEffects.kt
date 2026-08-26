@@ -98,7 +98,7 @@ object StatusEffects {
                 sourceId = e.sourceCharacterId,
             )
         }
-        if (id == "fool" && Status.effectsOn(state, lookup, playerId).none { it.kind == EffectKind.SPENT }) {
+        if (id == "fool" && Status.live(state, lookup, playerId, EffectKind.SPENT).isEmpty()) {
             out += DeathNote(
                 DeathNote.Kind.PROTECTION,
                 DeathCause.entries.toSet(),
@@ -202,7 +202,7 @@ object StatusEffects {
         }
         if (nominee != null) {
             val virginSpent = holds(nominee, "virgin", "No Ability") ||
-                Status.effectsOn(state, lookup, nominee.id).any { it.kind == EffectKind.SPENT }
+                Status.live(state, lookup, nominee.id, EffectKind.SPENT).isNotEmpty()
             if (nominee.characterId == "virgin" && !virginSpent) {
                 notes += "Virgin's first nomination: if ${nominator?.name ?: "the nominator"} " +
                     "is a Townsfolk, they are executed immediately."
@@ -212,7 +212,7 @@ object StatusEffects {
             }
         }
         if (nominator != null &&
-            Status.effectsOn(state, lookup, nominator.id).any { it.kind == EffectKind.MAD }
+            Status.live(state, lookup, nominator.id, EffectKind.MAD).isNotEmpty()
         ) {
             notes += "${nominator.name} is Cerenovus-mad — check their claim before this goes further."
         }

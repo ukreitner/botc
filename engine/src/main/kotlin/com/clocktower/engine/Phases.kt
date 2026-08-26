@@ -52,10 +52,17 @@ object Phases {
         fun isCountdown(sourceId: String, label: String): Boolean =
             label.isNotEmpty() && Tokens.rule(sourceId, label)?.let(Tokens::isCountdown) == true
 
-        fun retires(sourceId: String, label: String): Boolean {
-            if (label.isEmpty()) return false
-            val rule = Tokens.rule(sourceId, label) ?: return false
-            return rule.until == at && !Tokens.isCountdown(rule)
+        fun retires(r: PlacedReminder): Boolean {
+            if (r.label.isEmpty()) return false
+            val rule = Tokens.rule(r.sourceId, r.label) ?: return false
+            if (Tokens.isCountdown(rule)) return false
+            // "Until dusk N days from now": the Minstrel's centre token. Nothing
+            // else retires these — a grimoire-centre token is never projected into
+            // an effect, so the clock in StatusQuery.expired never sees it.
+            if (rule.until == Until.DUSK_AFTER_N_DAYS) {
+                return at == Until.DUSK && state.cycle >= r.placedCycle + rule.untilDays
+            }
+            return rule.until == at
         }
         return state.copy(
             // Effects carry their own lifetime: an effect placed with an explicit
@@ -64,11 +71,9 @@ object Phases {
                 it.until == at && !isCountdown(it.sourceCharacterId, it.label)
             },
             players = state.players.map { p ->
-                p.copy(reminders = p.reminders.filterNot { retires(it.sourceId, it.label) })
+                p.copy(reminders = p.reminders.filterNot(::retires))
             },
-            storytellerReminders = state.storytellerReminders.filterNot {
-                retires(it.sourceId, it.label)
-            },
+            storytellerReminders = state.storytellerReminders.filterNot(::retires),
         )
     }
 

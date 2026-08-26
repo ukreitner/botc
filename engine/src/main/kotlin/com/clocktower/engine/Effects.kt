@@ -294,7 +294,7 @@ internal class StatusQuery(
 
     fun effectsOn(playerId: Long): List<Effect> = byTarget[playerId].orEmpty()
 
-    private fun keepsAbilityWhenDead(characterId: String?): Boolean {
+    fun keepsAbilityWhenDead(characterId: String?): Boolean {
         val id = characterId?.let(Character::normalizeId) ?: return false
         CharacterRules.all[id]?.let { return it.keepsAbilityWhenDead }
         return id in KEEPS_ABILITY_WHEN_DEAD
@@ -418,9 +418,11 @@ internal class StatusQuery(
      * Seats caught in a mutual-impairment paradox: A's poison is sustained by B
      * and B's by A, with the same effect id, so neither can be resolved first.
      *
-     * The `it.id < cap` filter already makes the recursion terminate — the pair
-     * resolves as "both active", which is the ruling — but the storyteller still
-     * has to be told, so the query records it rather than hiding it.
+     * Two mechanisms find these, deliberately. [active]'s in-flight guard catches
+     * any sustaining cycle as it is walked; this scan additionally catches the
+     * equal-id case, where two DERIVED effects (both stamped `standingSince`)
+     * impair each other. Two STORED effects never share an id, so their mutual
+     * poison resolves deterministically by id and is not a paradox at all.
      */
     fun detectParadox(): Set<Long> {
         val impairing = allEffects.filter {
@@ -441,10 +443,17 @@ internal class StatusQuery(
         return out + paradoxSeats
     }
 
-    /** SAFE_FROM_DEMON blocks non-kill Demon harm too, read from [baseEffects] only. */
+    /**
+     * SAFE_FROM_DEMON blocks non-kill Demon harm too, read from [baseEffects] only.
+     *
+     * It MUST use [activeBase]: the positional standing rules call this while
+     * [positionalStanding] is still initialising, and the full [active] would
+     * recurse back through that lazy — terminating only by tripping the paradox
+     * guard, which then raises a DECIDE prompt on a board with no paradox on it.
+     */
     fun demonHarmBlockedBase(playerId: Long): Boolean =
         baseByTarget[playerId].orEmpty().any {
-            it.kind == EffectKind.SAFE_FROM_DEMON && active(it, Long.MAX_VALUE)
+            it.kind == EffectKind.SAFE_FROM_DEMON && activeBase(it, Long.MAX_VALUE)
         }
 
     /**
@@ -456,12 +465,17 @@ internal class StatusQuery(
      * the base set already carries everything registration depends on.
      */
     fun registersEvilBase(player: Player): Boolean {
-        if (player.alignment == Alignment.EVIL) return true
         val ruled = baseByTarget[player.id].orEmpty()
-            .filter { it.kind == EffectKind.REGISTERS_AS && !it.suspended }
+            .filter { it.kind == EffectKind.REGISTERS_AS && !it.suspended && activeBase(it, Long.MAX_VALUE) }
             .mapNotNull { it.characterId?.trim()?.lowercase() }
-        if (ruled.any { it == "evil" || it == "minion" || it == "demon" }) return true
-        if (ruled.any { lookup(it)?.team?.isEvil == true }) return true
+        // A ruling REPLACES the seat's real side, in both directions: a Recluse
+        // ruled evil registers evil, and a Spy ruled good registers good.
+        if (ruled.isNotEmpty()) {
+            return ruled.any {
+                it == "evil" || it == "minion" || it == "demon" || lookup(it)?.team?.isEvil == true
+            }
+        }
+        if (player.alignment == Alignment.EVIL) return true
         return player.isEvil(lookup)
     }
 
@@ -481,9 +495,32 @@ internal class StatusQuery(
 /** Status queries over stored effects plus the standing rules (WP1). */
 object Status {
 
-    /** Stored + derived effects on this seat, with expiry and suspension applied. */
+    /**
+     * Stored + derived effects on this seat, with expiry applied.
+     *
+     * Suspended effects are RETURNED, not dropped — the grimoire still draws a
+     * turned-over token. Callers asking a rules question must skip them; use
+     * [live] rather than filtering by hand.
+     */
     fun effectsOn(state: GameState, lookup: (String) -> Character?, playerId: Long): List<Effect> =
         StatusQuery(state, lookup).effectsOn(playerId)
+
+    /**
+     * The effects on this seat that are actually in force: unexpired, unsuspended,
+     * and with a source whose ability still works. This is the list every rules
+     * question wants — "is this Fool spent?", "is this Virgin spent?".
+     */
+    fun live(
+        state: GameState,
+        lookup: (String) -> Character?,
+        playerId: Long,
+        kind: EffectKind? = null,
+    ): List<Effect> {
+        val q = StatusQuery(state, lookup)
+        return q.effectsOn(playerId).filter {
+            (kind == null || it.kind == kind) && !it.suspended && q.active(it)
+        }
+    }
 
     /**
      * Every reason this seat's ability is not working, in creation order.
@@ -508,8 +545,14 @@ object Status {
         if (role.alwaysFalse) return false
         val player = state.player(role.playerId) ?: return false
         if (role.worksWhileImpaired) {
-            return player.alive || StatusQuery(state, lookup).effectsOn(role.playerId)
-                .any { it.kind == EffectKind.HAS_ABILITY }
+            // Impairment is waived, but being dead is not: the seat must still be
+            // alive, keep its ability when dead, or hold a LIVE HAS_ABILITY effect.
+            if (player.alive) return true
+            val q = StatusQuery(state, lookup)
+            if (q.keepsAbilityWhenDead(player.characterId)) return true
+            return q.effectsOn(role.playerId).any {
+                it.kind == EffectKind.HAS_ABILITY && !it.suspended && q.active(it)
+            }
         }
         return hasAbility(state, lookup, role.playerId)
     }

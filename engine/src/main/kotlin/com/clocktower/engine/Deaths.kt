@@ -406,7 +406,7 @@ object Deaths {
         // 15. Fool: "The 1st time you die, you don't." LAST, so other protections
         //     take precedence and the once-per-game is not consumed.
         if (target.characterId?.let(Character::normalizeId) == "fool" &&
-            Status.effectsOn(state, lookup, targetId).none { it.kind == EffectKind.SPENT } &&
+            Status.live(state, lookup, targetId, EffectKind.SPENT).isEmpty() &&
             Status.hasAbility(state, lookup, targetId)
         ) {
             return KillOutcome.Spends(
@@ -591,10 +591,18 @@ object Deaths {
                     next = Prompts.queue(next, p.copy(causeEventId = event.id))
                     queued += next.prompts.last()
                 }
-                if (result.effects.isNotEmpty()) {
+                // Stamp ids the same way Prompts.queue does: a registry row writes
+                // `Effect(id = 0, ...)` and the funnel owns the numbering. Effect.id
+                // is the resolution-order key and the identity used for removal and
+                // rollback, so two unstamped effects would be indistinguishable.
+                var nextEffectId = next.nextEffectId
+                val stamped = result.effects.map {
+                    it.copy(id = nextEffectId++, causeEventId = event.id)
+                }
+                if (stamped.isNotEmpty()) {
                     next = next.copy(
-                        effects = next.effects + result.effects.map { it.copy(causeEventId = event.id) },
-                        nextEffectId = next.nextEffectId + result.effects.size,
+                        effects = next.effects + stamped,
+                        nextEffectId = nextEffectId,
                     )
                 }
             }

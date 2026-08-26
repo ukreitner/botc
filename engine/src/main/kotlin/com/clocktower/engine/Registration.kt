@@ -17,14 +17,17 @@ object Registration {
         val id = player.characterId?.let(Character::normalizeId)
         val trueTeam = id?.let(lookup)?.team
 
-        // Storyteller rulings win, and they ADD rather than replace: the wiki's
-        // "registers as" wording never removes the seat's real team from play.
-        val rulings = Status.effectsOn(state, lookup, player.id)
-            .filter { it.kind == EffectKind.REGISTERS_AS && !it.suspended }
-        for (e in rulings) {
-            teamOf(e.characterId, lookup)?.let { out += it }
+        // A storyteller ruling REPLACES the true team. A Spy ruled to register as
+        // the Chef registers Townsfolk and nothing else — keeping MINION alongside
+        // would make the ruling unable to do the one thing it exists for (lead D10).
+        val rulings = Status.live(state, lookup, player.id, EffectKind.REGISTERS_AS)
+        if (rulings.isNotEmpty()) {
+            for (e in rulings) teamOf(e.characterId, lookup)?.let { out += it }
+        } else {
+            trueTeam?.let { out += it }
         }
 
+        // Innate multi-registration is additive and is NOT a ruling.
         when (id) {
             // "You register as both a Minion and a Demon."
             "legion" -> {
@@ -35,7 +38,8 @@ object Registration {
             else -> if (holdsLilMonsta(player)) out += Team.DEMON
         }
 
-        trueTeam?.let { out += it }
+        // A ruling that named nothing recognisable must not empty the set.
+        if (out.isEmpty()) trueTeam?.let { out += it }
         return out
     }
 
@@ -74,7 +78,9 @@ object Registration {
     private fun teamOf(payload: String?, lookup: (String) -> Character?): Team? {
         val raw = payload?.trim()?.lowercase() ?: return null
         return when (raw) {
-            "", "good" -> null
+            "" -> null
+            // "Registers as good" is a real answer, not an absent one.
+            "good" -> Team.TOWNSFOLK
             "evil" -> Team.MINION
             "townsfolk" -> Team.TOWNSFOLK
             "outsider" -> Team.OUTSIDER
