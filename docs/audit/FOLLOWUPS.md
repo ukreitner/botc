@@ -1,0 +1,11 @@
+# Cross-package follow-ups (lead-maintained; implementers read the section for their WP)
+
+## From WP5 (data regeneration, branch worktree-agent-adad0faa2d40b58a5, base 7da2362)
+- Data facts now in force: 181 characters (11 Loric currently filed as team "fabled" until `Team.LORIC` exists — `tools/regen-data.py` flips them automatically once `@SerialName("loric")` is in Character.kt); 131 jinxes; night order 80/99 verbatim from nightsheet.json; night_guide 185 entries with first/other/setup/day/reference channels + DUSK/MINION_INFO/DEMON_INFO/DAWN markers; raw_*.json deleted; official Title Case labels; N-copy reminders repeated N times.
+- WP0: add `Team.LORIC` with `@SerialName("loric")`; rerun `python3 tools/regen-data.py` afterwards (it re-files the Loric entries).
+- WP1 (tokens/expiry): official labels changed — innkeeper "Protected"→"Safe" (×2; Monk and Innkeeper now share label "Safe", distinguish by sourceId), lunatic "Attack 1/2/3"→"Chosen"×3, devilsadvocate "Survives execution"→"Survives Execution", tealady "Can not die"→"Cannot Die"×2, pukka "Poisoned"×2, po "Dead"×3, shabaloth "Dead"×2, vigormortis "Has Ability"×3 + "Poisoned"×3, nodashii "Poisoned"×2, leviathan "Good Player Executed" ×1 (official), minstrel "Everyone Is Drunk" stays in `reminders` (use storytellerReminders in code). All matching case-insensitive on (sourceId,label).
+- WP4/WP11 (setup prompts): GameShell literals "Is the Drunk"→"Is The Drunk", "Red herring"→"Red Herring", "Is the Marionette"→"Is The Marionette".
+- WP10/WP8: token pickers must `distinct()` repeated labels and show copy counts.
+- WP12 (tests): three data-pin failures to fix — SetupTest "team warping brackets relax all counts" (Riot no longer setup; remove riot from TEAM_WARPING_IDS per D28 — WP4 owns Setup.kt), ScriptParserTest NightGuideTest "guide covers every night actor" (allow the 4 marker keys), FullGamePlaytestTest BMR night-2 order (courtier before innkeeper). Add a Kotlin parity test characters.json ↔ tools/data/roles.json (D28 amended: official file replaces raw_*.json).
+- ARCHITECTURE §4 WP5: `MINION_BLUFFS` marker not added (Snitch bluffs live in DEMON_INFO entry + snitch.setup); otherNight count is 99 not 96.
+- Storm Catcher: official data now uses "Stormcaught" + "THESE CHARACTERS ARE NOT IN PLAY" (Loric reclassification); registry entry (WP7) follows roles.json.
