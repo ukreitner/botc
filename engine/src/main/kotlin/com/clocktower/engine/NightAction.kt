@@ -107,11 +107,22 @@ sealed interface Ref {
 
     @Serializable data object AllTargets : Ref
 
+    /**
+     * The seat this ability chose on its previous wake, read from the ledger —
+     * the Pukka's standing victim, the Shabaloth's regurgitation candidates.
+     */
     @Serializable data object PreviousTarget : Ref
 
     @Serializable data class TargetN(val index: Int) : Ref
 
     @Serializable data object TownsfolkNeighbourOfTarget : Ref
+
+    /**
+     * One concrete seat, resolved by the registry lambda that built the effect
+     * (WP2 addition). A rule holding `NightContext` can already see the whole
+     * grimoire, so "the seat carrying my token" needs no new sealed member.
+     */
+    @Serializable data class Seat(val playerId: Long) : Ref
 }
 
 /** What a night action does once it resolves. Interpreted by `NightPlan.resolve`. */

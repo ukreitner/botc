@@ -139,7 +139,7 @@ class BmrSessionPlaytestTest {
         assertEquals("po", jonas.characterShownToPlayerId, "the Lunatic believes they are the Po")
         assertFalse(jonas.isEvil(data::character), "the Lunatic is a good Outsider")
 
-        val night1 = data.nightOrder.firstNight(state, data::character).map { it.id }
+        val night1 = NightPlan.build(state, data::character).steps.map { it.slotId }
         assertTrue("lunatic" in night1, "the Lunatic has a wake row of their own: $night1")
         // The real Demon still wakes; the two rows are independent.
         assertTrue(NightMarkers.DEMON_INFO in night1)
@@ -148,7 +148,7 @@ class BmrSessionPlaytestTest {
     @Test
     fun `night one wakes every actor of the reported game in official order`() {
         val state = GameActions.advancePhase(setUpSession())
-        val ids = data.nightOrder.firstNight(state, data::character).map { it.id }
+        val ids = NightPlan.build(state, data::character).steps.map { it.slotId }
 
         assertEquals(
             listOf(
@@ -183,7 +183,7 @@ class BmrSessionPlaytestTest {
         var state = GameActions.advancePhase(setUpSession())
         state = GameActions.advancePhase(state) // day 1
         state = GameActions.advancePhase(state) // night 2
-        val ids = data.nightOrder.otherNight(state, data::character).map { it.id }
+        val ids = NightPlan.build(state, data::character).steps.map { it.slotId }
 
         for (expected in listOf(
             "sailor", "devilsadvocate", "lunatic", "exorcist",

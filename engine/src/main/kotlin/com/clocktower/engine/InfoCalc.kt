@@ -1,54 +1,105 @@
 package com.clocktower.engine
 
+import kotlinx.serialization.Serializable
+
+/** What the engine owes this player tonight. MUST_LIE outranks MAY_LIE (lead D50). */
+@Serializable
+enum class InfoObligation { TRUTH, MAY_LIE, MUST_LIE }
+
+/** The shape of one piece of information, so the UI never parses prose. */
+@Serializable
+sealed interface Answer {
+    /** A number, with the range the storyteller may plausibly claim instead. */
+    @Serializable
+    data class Count(val n: Int, val min: Int = 0, val max: Int = 0) : Answer
+
+    @Serializable
+    data class YesNoAnswer(val yes: Boolean) : Answer
+
+    @Serializable
+    data class Characters(val ids: List<String>) : Answer
+
+    @Serializable
+    data class Players(val ids: List<Long>, val characterId: String? = null) : Answer
+
+    @Serializable
+    data class Message(val text: String) : Answer
+}
+
 /**
- * Computes the TRUE information a night ability would give, straight from
- * the grimoire state, together with every caveat the storyteller must weigh:
- * drunkenness/poisoning of the info holder, misregistration (Spy, Recluse),
- * and the Vortox inverting townsfolk info.
+ * One computed piece of night information: the true answer, the lies that are
+ * plausible instead, and the three DISTINCT reasons a lie may be owed
+ * (impairment, misregistration, a Vortox) kept apart (lead D10/D50).
+ */
+@Serializable
+data class InfoResult(
+    /** The TRUE answer, always computed. */
+    val answer: Answer,
+    /** Storyteller-voice headline: "1 of Ana's alive neighbours is evil". */
+    val headline: String,
+    val detail: String = "",
+    /**
+     * Plausible alternatives to show instead, generated for EVERY answer shape.
+     * Empty ONLY when the engine genuinely cannot lie — in which case the UI must
+     * not render a "false info" heading at all.
+     */
+    val alternatives: List<Answer> = emptyList(),
+    val obligation: InfoObligation = InfoObligation.TRUTH,
+    /** Impairment, misregistration and Vortox are THREE obligations — keep them apart. */
+    val caveats: List<String> = emptyList(),
+    /** True when the holder's ability is not working at all. */
+    val abilityMalfunctions: Boolean = false,
+)
+
+/**
+ * Computes the TRUE information a night ability would give, straight from the
+ * grimoire state, plus every caveat the storyteller must weigh: drunkenness or
+ * poisoning of the holder, misregistration (Spy, Recluse) and the Vortox.
+ *
+ * Every answer is typed ([Answer]) and carries the lies the engine can generate,
+ * so no screen ever string-matches a headline again (lead D10/D50).
  */
 object InfoCalc {
 
-    /** What the calculator produced for one step. */
-    data class InfoResult(
-        /** The true answer, e.g. "1 of Ana's alive neighbours is evil". */
-        val headline: String,
-        /** Supporting detail, e.g. which players/pairs were counted. */
-        val detail: String = "",
-        /** Warnings: impairment, misregistration, Vortox, approximations. */
-        val caveats: List<String> = emptyList(),
-    )
-
     /** How many player selections a character's calc needs (0 for none). */
-    fun targetsNeeded(characterId: String): Int = when (characterId) {
+    fun targetsNeeded(characterId: String): Int = when (Character.normalizeId(characterId)) {
         "fortuneteller", "seamstress", "chambermaid" -> 2
-        "dreamer", "villageidiot", "ravenkeeper", "grandmother" -> 1
+        "dreamer", "villageidiot", "ravenkeeper", "grandmother", "exorcist" -> 1
         else -> 0
     }
 
     /** Whether we can compute anything useful for this character. */
-    fun supports(characterId: String): Boolean = characterId in setOf(
+    fun supports(characterId: String): Boolean = Character.normalizeId(characterId) in SUPPORTED
+
+    private val SUPPORTED = setOf(
         "chef", "empath", "clockmaker", "shugenja", "oracle", "undertaker",
         "towncrier", "flowergirl", "fortuneteller", "dreamer", "seamstress",
         "villageidiot", "cultleader", "king", "washerwoman", "librarian",
         "investigator", "knight", "sage", "steward", "noble", "bountyhunter",
         "chambermaid", "mathematician", "balloonist", "ravenkeeper",
         "grandmother",
+        // WP2 additions (ARCHITECTURE §2.12, friction §10).
+        "godfather", "juggler", "exorcist", "courtier", "savant", "tealady",
     )
 
+    /**
+     * The engine-facing entry point: everything comes from [state] and [lookup].
+     *
+     * Never call this for an id whose [targetsNeeded] is greater than zero from
+     * inside `NightPlan.build` — the Chambermaid's answer is a function of the
+     * plan, and that would recurse.
+     */
     fun compute(
-        data: GameData,
         state: GameState,
+        lookup: (String) -> Character?,
         characterId: String,
         holderId: Long?,
         targets: List<Long> = emptyList(),
     ): InfoResult? {
-        if (!supports(characterId)) return null
-        val holder = holderId?.let { state.player(it) }
-        val lookup: (String) -> Character? = { id ->
-            state.script.customCharacters.find { it.id == id } ?: data.character(id)
-        }
-        val ctx = Ctx(data, state, lookup, holder)
-        val result = when (characterId) {
+        val id = Character.normalizeId(characterId)
+        if (!supports(id)) return null
+        val ctx = Ctx(state, lookup, holderId?.let { state.player(it) })
+        val result = when (id) {
             "chef" -> chef(ctx)
             "empath" -> empath(ctx)
             "clockmaker" -> clockmaker(ctx)
@@ -74,20 +125,36 @@ object InfoCalc {
             "noble" -> noble(ctx)
             "bountyhunter" -> bountyHunter(ctx)
             "chambermaid" -> chambermaid(ctx, targets)
-            "mathematician" -> InfoResult(
-                headline = "Count abilities that malfunctioned since dawn",
-                caveats = listOf("Track malfunctions manually — drunk/poisoned players whose ability 'worked' abnormally count."),
-            )
+            "mathematician" -> mathematician(ctx)
             "balloonist" -> balloonist(ctx)
+            "godfather" -> godfather(ctx)
+            "juggler" -> juggler(ctx)
+            "exorcist" -> exorcist(ctx, targets)
+            "courtier" -> courtier(ctx)
+            "savant" -> savant(ctx)
+            "tealady" -> teaLady(ctx)
             else -> null
         } ?: return null
-        return result.copy(caveats = commonCaveats(ctx, characterId) + result.caveats)
+        return finish(ctx, id, result)
+    }
+
+    /** Compatibility entry point for callers that hold the whole dataset. */
+    fun compute(
+        data: GameData,
+        state: GameState,
+        characterId: String,
+        holderId: Long?,
+        targets: List<Long> = emptyList(),
+    ): InfoResult? {
+        val lookup: (String) -> Character? = { id ->
+            state.script.customCharacters.find { it.id == id } ?: data.character(id)
+        }
+        return compute(state, lookup, characterId, holderId, targets)
     }
 
     // ---- shared helpers -------------------------------------------------
 
     private class Ctx(
-        val data: GameData,
         val state: GameState,
         val lookup: (String) -> Character?,
         val holder: Player?,
@@ -96,6 +163,16 @@ object InfoCalc {
         fun character(p: Player): Character? = p.characterId?.let(lookup)
         fun isEvil(p: Player): Boolean = p.isEvil(lookup)
         fun name(p: Player): String = p.name
+
+        /** Every character this game could name, custom ones included. */
+        val script: List<Character> by lazy {
+            val custom = state.script.customCharacters.associateBy { it.id }
+            state.script.characterIds.mapNotNull { custom[it] ?: lookup(it) }
+        }
+
+        val inPlayIds: Set<String> by lazy {
+            state.seats.mapNotNull { it.characterId?.let(Character::normalizeId) }.toSet()
+        }
     }
 
     /**
@@ -121,7 +198,13 @@ object InfoCalc {
     private fun misregistrations(ctx: Ctx, relevant: Collection<Player>): List<String> {
         val notes = mutableListOf<String>()
         for (p in relevant) {
-            when (p.characterId) {
+            val ruled = Status.live(ctx.state, ctx.lookup, p.id, EffectKind.REGISTERS_AS)
+            if (ruled.isNotEmpty()) {
+                notes += "${ctx.name(p)} has a standing registration ruling — " +
+                    ruled.joinToString { it.note.ifEmpty { it.label } }
+                continue
+            }
+            when (Character.normalizeId(p.characterId.orEmpty())) {
                 "spy" -> notes += "${ctx.name(p)} is the Spy — may register as good / a Townsfolk or Outsider."
                 "recluse" -> notes += "${ctx.name(p)} is the Recluse — may register as evil / a Minion or Demon."
             }
@@ -129,41 +212,109 @@ object InfoCalc {
         return notes
     }
 
-    /** Impairment: is the info holder drunk, poisoned, or ability-less? */
+    /**
+     * Impairment: is the info holder drunk, poisoned, or ability-less? Read from
+     * the typed effect model, never from a token label (lead D5/D11).
+     */
     fun impairments(state: GameState, lookup: (String) -> Character?, player: Player?): List<String> {
         player ?: return emptyList()
+        val own = Character.normalizeId(player.characterId.orEmpty())
         val notes = mutableListOf<String>()
-        if (player.characterId == "drunk") {
-            notes += "${player.name} IS the Drunk — their ability malfunctions."
-        }
-        if (player.characterId == "marionette") {
-            notes += "${player.name} IS the Marionette — their shown good ability has no effect; give arbitrary information."
-        }
-        for (r in player.reminders) {
-            val label = r.label.lowercase()
-            when {
-                "poison" in label -> notes += "${player.name} is POISONED (${sourceName(lookup, r)}) — give false info."
-                "drunk" in label -> notes += "${player.name} is DRUNK (${sourceName(lookup, r)}) — give false info."
-                label == "no ability" -> notes += "${player.name} has no ability (${sourceName(lookup, r)})."
+        for (reason in Status.impairment(state, lookup, player.id)) {
+            val source = Character.normalizeId(reason.effect.sourceCharacterId)
+            val sourceName = lookup(reason.effect.sourceCharacterId)?.name ?: "storyteller"
+            notes += when {
+                // "It is just as if this player is the Drunk / Marionette / Lunatic."
+                source == own && own.isNotEmpty() ->
+                    "${player.name} IS the $sourceName — their ability malfunctions."
+                reason.effect.kind == EffectKind.POISONED ->
+                    "${player.name} is POISONED ($sourceName) — give false info."
+                reason.effect.kind == EffectKind.DRUNK ->
+                    "${player.name} is DRUNK ($sourceName) — give false info."
+                else -> "${player.name} has no ability ($sourceName)."
             }
         }
         if (!player.alive) notes += "${player.name} is dead — they normally don't act."
-        StatusEffects.derivedPoison(state, lookup)[player.id]?.let { notes += "$it — give false info." }
         return notes
     }
 
-    private fun sourceName(lookup: (String) -> Character?, r: PlacedReminder): String =
-        lookup(r.sourceId)?.name ?: "marker"
+    /** An alive Vortox whose own ability is working forces every Townsfolk lie (D11). */
+    private fun vortoxActive(ctx: Ctx): Boolean = ctx.players.any {
+        Character.normalizeId(it.characterId.orEmpty()) == "vortox" &&
+            it.alive &&
+            Status.hasAbility(ctx.state, ctx.lookup, it.id)
+    }
 
     private fun commonCaveats(ctx: Ctx, characterId: String): List<String> {
         val notes = impairments(ctx.state, ctx.lookup, ctx.holder).toMutableList()
         val holderTeam = ctx.holder?.let { ctx.character(it)?.team }
-        val vortoxInPlay = ctx.players.any { it.characterId == "vortox" && it.alive }
-        if (vortoxInPlay && (holderTeam == Team.TOWNSFOLK || holderTeam == null)) {
+            ?: ctx.lookup(characterId)?.team
+        if (vortoxActive(ctx) && (holderTeam == Team.TOWNSFOLK || holderTeam == null)) {
             notes += "VORTOX in play — Townsfolk info must be FALSE."
         }
         return notes
     }
+
+    /** Fills in caveats, obligation and the generated lies. */
+    private fun finish(ctx: Ctx, characterId: String, result: InfoResult): InfoResult {
+        val caveats = commonCaveats(ctx, characterId) + result.caveats
+        val holderTeam = ctx.holder?.let { ctx.character(it)?.team }
+            ?: ctx.lookup(characterId)?.team
+        val malfunctions = ctx.holder?.let { !Status.hasAbility(ctx.state, ctx.lookup, it.id) } ?: false
+        val mustLie = vortoxActive(ctx) && holderTeam == Team.TOWNSFOLK && !malfunctions
+        val obligation = when {
+            // An impaired Vortox loses the whole ability: Townsfolk info is not
+            // forced false any more (lead D11).
+            mustLie -> InfoObligation.MUST_LIE
+            malfunctions || caveats.isNotEmpty() -> InfoObligation.MAY_LIE
+            else -> InfoObligation.TRUTH
+        }
+        return result.copy(
+            caveats = caveats,
+            obligation = obligation,
+            abilityMalfunctions = malfunctions,
+            alternatives = (result.alternatives + generatedLies(ctx, result.answer)).distinct(),
+        )
+    }
+
+    /**
+     * A plausible lie for every answer shape (friction §10): the other numbers in
+     * range, the opposite of a yes/no, a wrong character of the same team, a
+     * different pair of players.
+     */
+    private fun generatedLies(ctx: Ctx, answer: Answer): List<Answer> = when (answer) {
+        is Answer.Count -> {
+            val max = maxOf(answer.max, answer.n)
+            (answer.min..max).filter { it != answer.n }.take(MAX_LIES)
+                .map { Answer.Count(it, answer.min, max) }
+        }
+
+        is Answer.YesNoAnswer -> listOf(Answer.YesNoAnswer(!answer.yes))
+
+        is Answer.Characters -> {
+            val real = answer.ids.map(Character::normalizeId).toSet()
+            val team = answer.ids.firstOrNull()?.let { ctx.lookup(it)?.team }
+            val pool = ctx.script.filterNot { Character.normalizeId(it.id) in real }
+            val sameTeam = pool.filter { team == null || it.team == team }
+            (sameTeam.ifEmpty { pool })
+                .sortedBy { if (Character.normalizeId(it.id) in ctx.inPlayIds) 1 else 0 }
+                .take(MAX_LIES)
+                .map { Answer.Characters(listOf(it.id)) }
+        }
+
+        is Answer.Players -> {
+            val real = answer.ids.toSet()
+            ctx.state.seats.filterNot { it.id in real }
+                .take(MAX_LIES)
+                .map { Answer.Players(listOf(it.id), answer.characterId) }
+        }
+
+        // Prose answers can only be lied about by the storyteller; the calculator
+        // supplies its own alternatives where a false version is well defined.
+        is Answer.Message -> emptyList()
+    }
+
+    private const val MAX_LIES = 5
 
     /** Nearest alive neighbour on each side of [player] (excluding them). */
     private fun aliveNeighbours(ctx: Ctx, player: Player): List<Player> {
@@ -185,7 +336,7 @@ object InfoCalc {
 
     private fun chef(ctx: Ctx): InfoResult {
         val seats = ctx.players
-        if (seats.size < 2) return InfoResult("0 pairs")
+        if (seats.size < 2) return InfoResult(Answer.Count(0, 0, 0), "0 pairs")
         val evil = seats.map { ctx.isEvil(it) }
         var pairs = 0
         val pairNames = mutableListOf<String>()
@@ -198,6 +349,7 @@ object InfoCalc {
             }
         }
         return InfoResult(
+            answer = Answer.Count(pairs, 0, maxOf(1, evil.count { it })),
             headline = "$pairs pair${if (pairs == 1) "" else "s"} of neighbouring evil players",
             detail = if (pairNames.isEmpty()) "" else "Pairs: ${pairNames.joinToString()}",
             caveats = misregistrations(ctx, seats),
@@ -205,10 +357,12 @@ object InfoCalc {
     }
 
     private fun empath(ctx: Ctx): InfoResult {
-        val holder = ctx.holder ?: return InfoResult("Select the Empath's seat first")
+        val holder = ctx.holder
+            ?: return InfoResult(Answer.Message("?"), "Select the Empath's seat first")
         val neighbours = aliveNeighbours(ctx, holder)
         val evilCount = neighbours.count { ctx.isEvil(it) }
         return InfoResult(
+            answer = Answer.Count(evilCount, 0, 2),
             headline = "$evilCount of ${holder.name}'s alive neighbours ${if (evilCount == 1) "is" else "are"} evil",
             detail = neighbours.joinToString { "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})" },
             caveats = misregistrations(ctx, neighbours),
@@ -218,22 +372,29 @@ object InfoCalc {
     private fun clockmaker(ctx: Ctx): InfoResult {
         val seats = ctx.players
         val demonIdx = seats.indexOfFirst { ctx.character(it)?.team == Team.DEMON }
-        if (demonIdx < 0) return InfoResult("No Demon in the grimoire")
+        if (demonIdx < 0) return InfoResult(Answer.Message("?"), "No Demon in the grimoire")
         var best: Int? = null
         var bestName = ""
         for ((i, p) in seats.withIndex()) {
             if (ctx.character(p)?.team != Team.MINION) continue
             val d = kotlin.math.abs(i - demonIdx)
             val steps = minOf(d, seats.size - d)
-            if (best == null || steps < best!!) {
-                best = steps; bestName = ctx.name(p)
+            if (best == null || steps < best) {
+                best = steps
+                bestName = ctx.name(p)
             }
         }
-        return if (best == null) {
-            InfoResult("No Minion in the grimoire", caveats = misregistrations(ctx, seats))
+        val answer = best
+        return if (answer == null) {
+            InfoResult(
+                answer = Answer.Message("?"),
+                headline = "No Minion in the grimoire",
+                caveats = misregistrations(ctx, seats),
+            )
         } else {
             InfoResult(
-                headline = "$best step${if (best == 1) "" else "s"} from Demon to nearest Minion",
+                answer = Answer.Count(answer, 1, maxOf(1, seats.size / 2)),
+                headline = "$answer step${if (answer == 1) "" else "s"} from Demon to nearest Minion",
                 detail = "Nearest Minion: $bestName",
                 caveats = misregistrations(ctx, seats),
             )
@@ -241,7 +402,8 @@ object InfoCalc {
     }
 
     private fun shugenja(ctx: Ctx): InfoResult {
-        val holder = ctx.holder ?: return InfoResult("Select the Shugenja's seat first")
+        val holder = ctx.holder
+            ?: return InfoResult(Answer.Message("?"), "Select the Shugenja's seat first")
         val seats = ctx.players
         val index = seats.indexOfFirst { it.id == holder.id }
         var cw = -1
@@ -251,18 +413,26 @@ object InfoCalc {
             if (ccw < 0 && ctx.isEvil(seats[(index - step + seats.size) % seats.size])) ccw = step
         }
         val notes = misregistrations(ctx, seats)
+        val clockwise = Answer.Message("CLOCKWISE")
+        val anti = Answer.Message("ANTI-CLOCKWISE")
         return when {
-            cw < 0 && ccw < 0 -> InfoResult("No evil players found")
+            cw < 0 && ccw < 0 -> InfoResult(Answer.Message("?"), "No evil players found")
             cw == ccw -> InfoResult(
+                answer = clockwise,
                 headline = "Equidistant ($cw steps each way) — point either direction",
+                alternatives = listOf(anti),
                 caveats = notes,
             )
             ccw < 0 || (cw in 1 until ccw) -> InfoResult(
+                answer = clockwise,
                 headline = "Closest evil is CLOCKWISE ($cw steps)",
+                alternatives = listOf(anti),
                 caveats = notes,
             )
             else -> InfoResult(
+                answer = anti,
                 headline = "Closest evil is ANTI-CLOCKWISE ($ccw steps)",
+                alternatives = listOf(clockwise),
                 caveats = notes,
             )
         }
@@ -272,8 +442,13 @@ object InfoCalc {
         val dead = ctx.players.filter { !it.alive }
         val evilDead = dead.filter { ctx.isEvil(it) }
         return InfoResult(
+            answer = Answer.Count(evilDead.size, 0, maxOf(1, dead.size)),
             headline = "${evilDead.size} dead player${if (evilDead.size == 1) " is" else "s are"} evil",
-            detail = if (dead.isEmpty()) "No one is dead" else dead.joinToString { "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})" },
+            detail = if (dead.isEmpty()) {
+                "No one is dead"
+            } else {
+                dead.joinToString { "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})" }
+            },
             caveats = misregistrations(ctx, dead),
         )
     }
@@ -282,10 +457,15 @@ object InfoCalc {
         val day = relevantDay(ctx.state)
         val executed = ctx.state.deaths.lastOrNull {
             it.cause == DeathCause.EXECUTION && it.day == day
-        } ?: return InfoResult("No one was executed today — the Undertaker doesn't wake")
+        } ?: return InfoResult(
+            Answer.Message("—"),
+            "No one was executed today — the Undertaker doesn't wake",
+        )
         val player = ctx.state.player(executed.playerId)
-        val character = player?.let { ctx.character(it) }
+        val characterId = executed.characterIdAtDeath ?: player?.characterId
+        val character = characterId?.let(ctx.lookup)
         return InfoResult(
+            answer = Answer.Characters(listOfNotNull(characterId)),
             headline = "Show: ${character?.name ?: "?"}",
             detail = "${player?.name ?: "?"} was executed today",
             caveats = player?.let { misregistrations(ctx, listOf(it)) } ?: emptyList(),
@@ -298,7 +478,12 @@ object InfoCalc {
             ctx.state.player(n.nominatorId)?.takeIf { ctx.character(it)?.team == Team.MINION }
         }
         return InfoResult(
-            headline = if (minionNominators.isNotEmpty()) "YES — a Minion nominated today" else "NO — no Minion nominated today",
+            answer = Answer.YesNoAnswer(minionNominators.isNotEmpty()),
+            headline = if (minionNominators.isNotEmpty()) {
+                "YES — a Minion nominated today"
+            } else {
+                "NO — no Minion nominated today"
+            },
             detail = minionNominators.joinToString { ctx.name(it) },
             caveats = misregistrations(ctx, today.mapNotNull { ctx.state.player(it.nominatorId) }),
         )
@@ -314,39 +499,58 @@ object InfoCalc {
         val demonIds = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }.map { it.id }.toSet()
         val voted = today.any { n -> n.voterIds.any { it in demonIds } }
         return InfoResult(
+            answer = Answer.YesNoAnswer(voted),
             headline = if (voted) "YES — the Demon voted today" else "NO — the Demon did not vote today",
             caveats = misregistrations(ctx, ctx.players.filter { it.id in demonIds }) +
                 if (today.any { it.voterIds.isEmpty() && it.votes > 0 }) {
                     listOf("Some votes were tallied without recording who voted — verify manually.")
-                } else emptyList(),
+                } else {
+                    emptyList()
+                },
         )
     }
 
     private fun fortuneTeller(ctx: Ctx, targets: List<Long>): InfoResult {
         val chosen = validTargets(ctx, targets, 2)
-            ?: return InfoResult("Pick 2 different valid players the Fortune Teller chose")
+            ?: return InfoResult(
+                Answer.Message("?"),
+                "Pick 2 different valid players the Fortune Teller chose",
+            )
+        val herringKey = Tokens.key("fortuneteller", "Red Herring")
         val demonHit = chosen.filter { ctx.character(it)?.team == Team.DEMON }
-        val herringHit = chosen.filter { p -> p.reminders.any { it.label.equals("Red herring", true) } }
+        val herringHit = chosen.filter { p -> hasToken(ctx, p, herringKey) }
         val yes = demonHit.isNotEmpty() || herringHit.isNotEmpty()
         val reasons = buildList {
             demonHit.forEach { add("${ctx.name(it)} is the Demon") }
             herringHit.forEach { add("${ctx.name(it)} is the red herring") }
         }
-        val noHerring = ctx.players.none { p -> p.reminders.any { it.label.equals("Red herring", true) } }
+        val noHerring = ctx.players.none { p -> hasToken(ctx, p, herringKey) }
         return InfoResult(
+            answer = Answer.YesNoAnswer(yes),
             headline = if (yes) "YES" else "NO",
             detail = reasons.joinToString(),
             caveats = misregistrations(ctx, chosen) +
-                if (noHerring) listOf("No 'Red herring' reminder placed yet — assign one good player as the red herring.") else emptyList(),
+                if (noHerring) {
+                    listOf("No 'Red Herring' reminder placed yet — assign one good player as the red herring.")
+                } else {
+                    emptyList()
+                },
         )
     }
 
+    /** Token presence, matched on `(sourceId, label)` case-insensitively (lead D5). */
+    private fun hasToken(ctx: Ctx, player: Player, key: String): Boolean =
+        player.reminders.any { Tokens.key(it) == key } ||
+            Status.effectsOn(ctx.state, ctx.lookup, player.id)
+                .any { Tokens.key(it.sourceCharacterId, it.label) == key }
+
     private fun dreamer(ctx: Ctx, targets: List<Long>): InfoResult {
         val target = validTargets(ctx, targets, 1)?.single()
-            ?: return InfoResult("Pick the player the Dreamer chose")
+            ?: return InfoResult(Answer.Message("?"), "Pick the player the Dreamer chose")
         val character = ctx.character(target)
         val good = character?.team?.isEvil == false
         return InfoResult(
+            answer = Answer.Characters(listOfNotNull(target.characterId)),
             headline = "${ctx.name(target)} is the ${character?.name ?: "?"}",
             detail = "Show that token plus 1 ${if (good) "evil" else "good"} character token of your choice",
             caveats = misregistrations(ctx, listOf(target)),
@@ -355,9 +559,13 @@ object InfoCalc {
 
     private fun seamstress(ctx: Ctx, targets: List<Long>): InfoResult {
         val chosen = validTargets(ctx, targets, 2)
-            ?: return InfoResult("Pick 2 different valid players the Seamstress chose")
+            ?: return InfoResult(
+                Answer.Message("?"),
+                "Pick 2 different valid players the Seamstress chose",
+            )
         val same = ctx.isEvil(chosen[0]) == ctx.isEvil(chosen[1])
         return InfoResult(
+            answer = Answer.YesNoAnswer(same),
             headline = if (same) "YES — same alignment" else "NO — different alignments",
             detail = chosen.joinToString { "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})" },
             caveats = misregistrations(ctx, chosen),
@@ -366,8 +574,9 @@ object InfoCalc {
 
     private fun villageIdiot(ctx: Ctx, targets: List<Long>): InfoResult {
         val target = validTargets(ctx, targets, 1)?.single()
-            ?: return InfoResult("Pick the player the Village Idiot chose")
+            ?: return InfoResult(Answer.Message("?"), "Pick the player the Village Idiot chose")
         return InfoResult(
+            answer = Answer.YesNoAnswer(ctx.isEvil(target)),
             headline = "${ctx.name(target)} is ${if (ctx.isEvil(target)) "EVIL" else "GOOD"}",
             caveats = misregistrations(ctx, listOf(target)),
         )
@@ -375,18 +584,21 @@ object InfoCalc {
 
     private fun revealCharacter(ctx: Ctx, targets: List<Long>, who: String): InfoResult {
         val target = validTargets(ctx, targets, 1)?.single()
-            ?: return InfoResult("Pick the player the $who chose/knows")
+            ?: return InfoResult(Answer.Message("?"), "Pick the player the $who chose/knows")
         val character = ctx.character(target)
         return InfoResult(
+            answer = Answer.Characters(listOfNotNull(target.characterId)),
             headline = "${ctx.name(target)} is the ${character?.name ?: "?"}",
             caveats = misregistrations(ctx, listOf(target)),
         )
     }
 
     private fun cultLeader(ctx: Ctx): InfoResult {
-        val holder = ctx.holder ?: return InfoResult("Select the Cult Leader's seat first")
+        val holder = ctx.holder
+            ?: return InfoResult(Answer.Message("?"), "Select the Cult Leader's seat first")
         val neighbours = aliveNeighbours(ctx, holder)
         return InfoResult(
+            answer = Answer.Players(neighbours.map { it.id }),
             headline = "Alive neighbours: " + neighbours.joinToString {
                 "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})"
             },
@@ -397,11 +609,17 @@ object InfoCalc {
     private fun king(ctx: Ctx): InfoResult {
         val alive = ctx.players.count { it.alive }
         val dead = ctx.players.size - alive
-        if (dead < alive) return InfoResult("Dead ($dead) don't outnumber living ($alive) — the King doesn't wake")
-        val options = ctx.players.filter { it.alive }.mapNotNull { p -> ctx.character(p)?.name }
+        if (dead < alive) {
+            return InfoResult(
+                Answer.Message("—"),
+                "Dead ($dead) don't outnumber living ($alive) — the King doesn't wake",
+            )
+        }
+        val aliveSeats = ctx.players.filter { it.alive }
         return InfoResult(
+            answer = Answer.Characters(aliveSeats.mapNotNull { it.characterId }.take(1)),
             headline = "Show 1 alive character",
-            detail = "In play & alive: ${options.joinToString()}",
+            detail = "In play & alive: " + aliveSeats.mapNotNull { ctx.character(it)?.name }.joinToString(),
         )
     }
 
@@ -409,11 +627,16 @@ object InfoCalc {
         val inPlay = ctx.players.filter { ctx.character(it)?.team == team }
         if (inPlay.isEmpty()) {
             return InfoResult(
+                answer = Answer.Count(0, 0, 0),
                 headline = "No $label in play" + if (team == Team.OUTSIDER) " — show the 0 signal" else "",
+                alternatives = ctx.script.filter { it.team == team }
+                    .take(MAX_LIES)
+                    .map { Answer.Characters(listOf(it.id)) },
                 caveats = misregistrations(ctx, ctx.players),
             )
         }
         return InfoResult(
+            answer = Answer.Players(inPlay.map { it.id }, inPlay.first().characterId),
             headline = "$label in play: " + inPlay.joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" },
             detail = "Show one of those character tokens, point to that player plus 1 wrong player.",
             caveats = misregistrations(ctx, ctx.players),
@@ -422,8 +645,9 @@ object InfoCalc {
 
     private fun sage(ctx: Ctx): InfoResult {
         val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
-        if (demons.isEmpty()) return InfoResult("No Demon in the grimoire")
+        if (demons.isEmpty()) return InfoResult(Answer.Message("?"), "No Demon in the grimoire")
         return InfoResult(
+            answer = Answer.Players(demons.map { it.id }),
             headline = "Point to 2 players: one must be the Demon",
             detail = "Demon: ${demons.joinToString { ctx.name(it) }} — pair with any other player",
             caveats = listOf("Only if the Demon killed the Sage; other deaths don't wake them."),
@@ -432,7 +656,9 @@ object InfoCalc {
 
     private fun knight(ctx: Ctx): InfoResult {
         val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
+        val notDemon = ctx.players.filterNot { p -> demons.any { it.id == p.id } }
         return InfoResult(
+            answer = Answer.Players(notDemon.take(2).map { it.id }),
             headline = "Point to 2 players that are NOT the Demon",
             detail = "Demon: ${demons.joinToString { ctx.name(it) }}",
             caveats = misregistrations(ctx, ctx.players),
@@ -442,6 +668,7 @@ object InfoCalc {
     private fun steward(ctx: Ctx): InfoResult {
         val good = ctx.players.filter { !ctx.isEvil(it) }
         return InfoResult(
+            answer = Answer.Players(good.take(1).map { it.id }),
             headline = "Point to 1 good player",
             detail = "Good players: ${good.joinToString { ctx.name(it) }}",
             caveats = misregistrations(ctx, ctx.players),
@@ -450,7 +677,9 @@ object InfoCalc {
 
     private fun noble(ctx: Ctx): InfoResult {
         val evil = ctx.players.filter { ctx.isEvil(it) }
+        val good = ctx.players.filter { !ctx.isEvil(it) }
         return InfoResult(
+            answer = Answer.Players((evil.take(1) + good.take(2)).map { it.id }),
             headline = "Point to 3 players: exactly 1 evil, 2 good",
             detail = "Evil players: ${evil.joinToString { ctx.name(it) }}",
             caveats = misregistrations(ctx, ctx.players),
@@ -460,25 +689,42 @@ object InfoCalc {
     private fun bountyHunter(ctx: Ctx): InfoResult {
         val evil = ctx.players.filter { ctx.isEvil(it) }
         return InfoResult(
+            answer = Answer.Players(evil.take(1).map { it.id }),
             headline = "Point to 1 evil player (mark them 'Known')",
             detail = "Evil players: ${evil.joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" }}",
             caveats = listOf("Remember: 1 Townsfolk is evil in a Bounty Hunter game."),
         )
     }
 
+    /** Rewritten (lead D13): what tonight's sheet ACTUALLY did, not the static order. */
     private fun chambermaid(ctx: Ctx, targets: List<Long>): InfoResult {
         val chosen = validTargets(ctx, targets, 2)
-            ?: return InfoResult("Pick 2 different valid players the Chambermaid chose")
-        val order = if (ctx.state.cycle == 1) ctx.data.firstNightOrder else ctx.data.otherNightOrder
-        val wakers = chosen.filter { p ->
-            p.alive && p.characterId != null && p.characterId in order
-        }
+            ?: return InfoResult(
+                Answer.Message("?"),
+                "Pick 2 different valid players the Chambermaid chose",
+            )
+        val count = NightPlan.wokeCount(ctx.state, ctx.lookup, chosen.map { it.id })
+        val each = chosen.map { it to NightPlan.wokeCount(ctx.state, ctx.lookup, listOf(it.id)) }
         return InfoResult(
-            headline = "${wakers.size} of the 2 wake tonight (approximate)",
-            detail = chosen.joinToString { "${ctx.name(it)}: ${if (it in wakers) "wakes" else "doesn't wake"}" },
+            answer = Answer.Count(count, 0, 2),
+            headline = "$count of the 2 woke tonight for their own ability",
+            detail = each.joinToString { (p, n) -> "${ctx.name(p)}: ${if (n > 0) "woke" else "did not wake"}" },
             caveats = listOf(
-                "Approximation from the night order — characters that only sometimes wake " +
-                    "(Ravenkeeper, once-per-game abilities already spent...) need your judgement.",
+                "Counts own-ability wakes only: Minion info, an Exorcist's target and a " +
+                    "silenced Demon do not count.",
+            ),
+        )
+    }
+
+    /** Rewritten (lead D13): the malfunctions the engine recorded tonight. */
+    private fun mathematician(ctx: Ctx): InfoResult {
+        val count = NightPlan.malfunctionCount(ctx.state, ctx.state.cycle, excluding = ctx.holder?.id)
+        return InfoResult(
+            answer = Answer.Count(count, 0, maxOf(1, ctx.state.alivePlayers.size)),
+            headline = "$count abilit${if (count == 1) "y" else "ies"} malfunctioned since dawn",
+            detail = "The Mathematician never detects their own ability failing.",
+            caveats = listOf(
+                "Only malfunctions the engine could prove are counted — add any you ruled by hand.",
             ),
         )
     }
@@ -488,10 +734,138 @@ object InfoCalc {
             .mapNotNull { p -> ctx.character(p)?.let { c -> c.team to p } }
             .groupBy({ it.first }, { it.second })
         return InfoResult(
+            answer = Answer.Players(ctx.players.take(1).map { it.id }),
             headline = "Show a player of a DIFFERENT character type than last night",
             detail = byType.entries.joinToString("\n") { (team, ps) ->
                 "${team.displayName}: ${ps.joinToString { ctx.name(it) }}"
             },
+        )
+    }
+
+    // ---- WP2 additions ---------------------------------------------------
+
+    /** "You start knowing which Outsiders are in play." */
+    private fun godfather(ctx: Ctx): InfoResult {
+        val outsiders = ctx.players.filter { ctx.character(it)?.team == Team.OUTSIDER }
+        val ids = outsiders.mapNotNull { it.characterId }
+        return InfoResult(
+            answer = Answer.Characters(ids),
+            headline = if (ids.isEmpty()) {
+                "No Outsiders are in play"
+            } else {
+                "Outsiders in play: " + outsiders.mapNotNull { ctx.character(it)?.name }.joinToString()
+            },
+            detail = "Show each of those character tokens.",
+            alternatives = ctx.script
+                .filter { it.team == Team.OUTSIDER && Character.normalizeId(it.id) !in ctx.inPlayIds }
+                .take(MAX_LIES)
+                .map { Answer.Characters(listOf(it.id)) },
+            caveats = misregistrations(ctx, ctx.players),
+        )
+    }
+
+    /** "How many of your guesses were correct" — counted from the day's ledger. */
+    private fun juggler(ctx: Ctx): InfoResult {
+        val day = relevantDay(ctx.state)
+        val guesses = ctx.state.ledger.filter {
+            Character.normalizeId(it.sourceId) == "juggler" &&
+                it.kind == LedgerKind.STATEMENT &&
+                it.cycle == day
+        }
+        var correct = 0
+        val lines = mutableListOf<String>()
+        for (guess in guesses) {
+            for ((i, seat) in guess.targetIds.withIndex()) {
+                val guessed = guess.characterIds.getOrNull(i) ?: continue
+                val player = ctx.state.player(seat) ?: continue
+                val right = Character.normalizeId(player.characterId.orEmpty()) ==
+                    Character.normalizeId(guessed)
+                if (right) correct++
+                lines += "${ctx.name(player)} = ${ctx.lookup(guessed)?.name ?: guessed}" +
+                    if (right) " ✓" else " ✗"
+            }
+        }
+        val total = guesses.sumOf { it.targetIds.size }
+        return InfoResult(
+            answer = Answer.Count(correct, 0, maxOf(1, total)),
+            headline = "$correct of $total juggles were correct",
+            detail = lines.joinToString(", "),
+            caveats = if (guesses.isEmpty()) {
+                listOf("No juggle was recorded on day $day — record it on the Day tab first.")
+            } else {
+                emptyList()
+            },
+        )
+    }
+
+    /** "Is the player you chose the Demon?" — the Exorcist's own confirmation. */
+    private fun exorcist(ctx: Ctx, targets: List<Long>): InfoResult {
+        val target = validTargets(ctx, targets, 1)?.single()
+            ?: return InfoResult(Answer.Message("?"), "Pick the player the Exorcist chose")
+        val isDemon = ctx.character(target)?.team == Team.DEMON
+        return InfoResult(
+            answer = Answer.YesNoAnswer(isDemon),
+            headline = if (isDemon) {
+                "YES — ${ctx.name(target)} is the Demon; they do not act tonight"
+            } else {
+                "NO — ${ctx.name(target)} is not the Demon"
+            },
+            detail = "The Exorcist is not told either way; this is for you.",
+            caveats = misregistrations(ctx, listOf(target)),
+        )
+    }
+
+    /** "Is that character in play, and where?" — for the Courtier's pick. */
+    private fun courtier(ctx: Ctx): InfoResult {
+        val holder = ctx.holder
+        val inPlay = ctx.state.seats.filter { it.characterId != null }
+        return InfoResult(
+            answer = Answer.Players(inPlay.map { it.id }),
+            headline = "Whoever they name: these seats hold the characters in play",
+            detail = inPlay.joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" },
+            caveats = buildList {
+                if (holder != null && !Status.hasAbility(ctx.state, ctx.lookup, holder.id)) {
+                    add("${holder.name}'s ability is not working — nobody actually gets drunk.")
+                }
+            },
+        )
+    }
+
+    /** "Two statements, one true" — the true halves the grimoire can prove. */
+    private fun savant(ctx: Ctx): InfoResult {
+        val evil = ctx.players.filter { ctx.isEvil(it) }
+        val dead = ctx.players.count { !it.alive }
+        val facts = listOf(
+            "There are ${evil.size} evil players.",
+            "$dead player${if (dead == 1) " is" else "s are"} dead.",
+            "The evil players are: ${evil.joinToString { ctx.name(it) }}.",
+        )
+        return InfoResult(
+            answer = Answer.Message(facts.first()),
+            headline = "True facts you can pair with a false one",
+            detail = facts.joinToString("\n"),
+            alternatives = facts.drop(1).map { Answer.Message(it) },
+            caveats = listOf("Say one true and one false statement — the Savant must not know which."),
+        )
+    }
+
+    /** "Is the Tea Lady's protection on?" — both neighbours good and sober. */
+    private fun teaLady(ctx: Ctx): InfoResult {
+        val holder = ctx.holder
+            ?: return InfoResult(Answer.Message("?"), "Select the Tea Lady's seat first")
+        val neighbours = aliveNeighbours(ctx, holder)
+        val bothGood = neighbours.isNotEmpty() && neighbours.none { ctx.isEvil(it) }
+        val working = Status.hasAbility(ctx.state, ctx.lookup, holder.id)
+        val on = bothGood && working
+        return InfoResult(
+            answer = Answer.YesNoAnswer(on),
+            headline = if (on) {
+                "YES — both alive neighbours are good; neither can die"
+            } else {
+                "NO — the Tea Lady's protection is not on"
+            },
+            detail = neighbours.joinToString { "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})" },
+            caveats = misregistrations(ctx, neighbours),
         )
     }
 }

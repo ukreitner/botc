@@ -153,8 +153,8 @@ class GameActionsTest {
         assignments.forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
         state = GameActions.advancePhase(state)
 
-        val first = data.nightOrder.firstNight(state, data::character)
-        val ids = first.map { it.id }
+        val first = NightPlan.build(state, data::character).steps
+        val ids = first.map { it.slotId }
         // Dusk, minion info, demon info present; poisoner before washerwoman; imp does not act night one.
         assertTrue(ids.contains(NightMarkers.DUSK))
         assertTrue(ids.contains(NightMarkers.MINION_INFO))
@@ -163,8 +163,8 @@ class GameActionsTest {
         assertFalse(ids.contains("imp"))
         assertFalse(ids.contains("mayor"))
 
-        val other = data.nightOrder.otherNight(state, data::character)
-        val otherIds = other.map { it.id }
+        val other = NightPlan.build(state.copy(cycle = 2), data::character).steps
+        val otherIds = other.map { it.slotId }
         assertTrue(otherIds.contains("imp"))
         assertTrue(otherIds.indexOf("poisoner") < otherIds.indexOf("imp"))
         assertTrue(otherIds.indexOf("imp") < otherIds.indexOf("empath"))
@@ -177,7 +177,7 @@ class GameActionsTest {
             state = GameActions.assignCharacter(state, i.toLong(), id)
         }
         state = GameActions.advancePhase(state)
-        val ids = data.nightOrder.firstNight(state, data::character).map { it.id }
+        val ids = NightPlan.build(state, data::character).steps.map { it.slotId }
         assertFalse(ids.contains(NightMarkers.MINION_INFO))
         assertFalse(ids.contains(NightMarkers.DEMON_INFO))
     }
@@ -500,7 +500,7 @@ class GameActionsTest {
         assertEquals("empath", player.nightRoleId)
 
         val empathStep = assertNotNull(
-            data.nightOrder.firstNight(state, data::character).find { it.id == "empath" },
+            NightPlan.build(state, data::character).steps.find { it.slotId == "empath" },
         )
         assertEquals(listOf(0L), empathStep.playerIds)
         val result = assertNotNull(InfoCalc.compute(data, state, "empath", 0))
@@ -529,7 +529,7 @@ class GameActionsTest {
         state = GameActions.setShownCharacter(state, 2, "chef")
         state = GameActions.advancePhase(state)
 
-        val first = data.nightOrder.firstNight(state, data::character)
+        val first = NightPlan.build(state, data::character).steps
         val minionInfo = assertNotNull(first.find { it.id == NightMarkers.MINION_INFO })
         assertEquals(listOf(1L), minionInfo.playerIds)
         assertFalse("P3" in minionInfo.detail)
@@ -552,8 +552,8 @@ class GameActionsTest {
         state = GameActions.setShownCharacter(state, 2, "washerwoman")
         state = GameActions.advancePhase(state)
 
-        val first = data.nightOrder.firstNight(state, data::character)
-        assertFalse(first.any { it.id == NightMarkers.DEMON_INFO })
+        val first = NightPlan.build(state, data::character).steps
+        assertFalse(first.any { it.slotId == NightMarkers.DEMON_INFO })
         val marionetteInfo = assertNotNull(first.find { it.id == "marionette" })
         assertEquals(listOf(0L), marionetteInfo.playerIds)
         assertTrue("P3" in marionetteInfo.detail)
