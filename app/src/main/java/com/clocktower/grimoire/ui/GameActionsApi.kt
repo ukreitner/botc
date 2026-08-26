@@ -205,4 +205,11 @@ interface GameActionsApi {
     /** Records a storyteller number choice (Xaan's X, the Outsider branch). */
     fun setDecisionNumber(key: String, value: Int) =
         update { Decisions.set(it, key, value.toString()) }
+
+    /**
+     * Ticks one ACK-kind checklist row by id — `lilmonsta.noDemonSeat`,
+     * `kazali.noMinions`, `damsel.minions`. The setup wizard records the
+     * acknowledgement it took before the game existed.
+     */
+    fun applySetupRequirementAck(id: String) = update { Decisions.set(it, id, "true") }
 }

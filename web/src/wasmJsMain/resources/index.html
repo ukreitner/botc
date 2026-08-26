@@ -43,7 +43,49 @@
 <div id="boot">Opening the grimoire…<small>first load fetches the whole app; later loads are instant</small><small>build __BUILD__</small></div>
 <div id="compose"></div>
 <script>
-  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+  // The build this shell was deployed from; the app footer reads it so
+  // "did my fix ship?" is answerable at the table (setup-and-home #40).
+  window.__BUILD__ = '__BUILD__';
+
+  // ---- service worker + update prompt (setup-and-home #40, #44) ----------
+  // The worker no longer calls skipWaiting() on its own; a new version waits
+  // until the storyteller taps Reload, so a running game never has its cache
+  // swapped out from under it mid-night.
+  window.__updateReady = false;
+  window.__applyUpdate = function () {
+    try {
+      if (window.__waitingWorker) window.__waitingWorker.postMessage('SKIP_WAITING');
+      else window.location.reload();
+    } catch (e) { window.location.reload(); }
+  };
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').then(function (registration) {
+      function watch(worker) {
+        if (!worker) return;
+        worker.addEventListener('statechange', function () {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+            window.__waitingWorker = worker;
+            window.__updateReady = true;
+          }
+        });
+      }
+      if (registration.waiting && navigator.serviceWorker.controller) {
+        window.__waitingWorker = registration.waiting;
+        window.__updateReady = true;
+      }
+      watch(registration.installing);
+      registration.addEventListener('updatefound', function () {
+        watch(registration.installing);
+      });
+    }).catch(function () { /* offline first load: the app still runs */ });
+    var reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+  }
+
   // Measure the real safe-area insets (CSS px == dp for Compose) and hand
   // them to the wasm app, which pads its content accordingly.
   function computeSafeInsets() {
@@ -58,6 +100,32 @@
   }
   computeSafeInsets();
   window.addEventListener('resize', computeSafeInsets);
+
+  // ---- iOS keyboard inset (setup-and-home §S3, defect #7) ----------------
+  // iOS Safari overlays the software keyboard on the LAYOUT viewport instead
+  // of resizing it, and the Compose canvas is position:fixed;inset:0 — so the
+  // lower seat-name fields end up underneath the keyboard. visualViewport is
+  // the only thing that sees it; the app pads its root by this value.
+  function computeKeyboardInset() {
+    const vv = window.visualViewport;
+    window.__keyboardInset = vv
+      ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', computeKeyboardInset);
+    window.visualViewport.addEventListener('scroll', computeKeyboardInset);
+  }
+  computeKeyboardInset();
+
+  // ---- wake lock across tab switches (setup-and-home #41) ---------------
+  // Browsers drop the screen wake lock whenever the page is hidden, so an app
+  // switch or an auto-lock puts the grimoire back to sleep. Re-ask on every
+  // return to visibility; the Compose seam owns the first request.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    try { if (navigator.wakeLock) navigator.wakeLock.request('screen'); } catch (e) {}
+    computeKeyboardInset();
+  });
 </script>
 <script src="grimoire.js"></script>
 </body>
