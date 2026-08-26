@@ -1,12 +1,13 @@
 package com.clocktower.engine
 
 /**
- * The phase pipeline. WP0 moved `GameActions.advancePhase` and its two expiry
- * tables here verbatim; WP1 replaces the tables with [Tokens] / [Effects] and
- * adds the briefing steps of §2.15 in this exact order:
+ * The phase pipeline (ARCHITECTURE §2.15).
  *
- * NIGHT -> DAY:
- *   1. dawn = Briefings.at(state, lookup, DAWN)   // BEFORE any sweep
+ * SETUP -> NIGHT 1 -> DAY 1 -> NIGHT 2 -> ...
+ *
+ * NIGHT -> DAY, in this exact order (the ordering is the fix for "the Monk token
+ * was already gone when the dawn report was computed"):
+ *   1. dawn = Briefings.at(state, lookup, DAWN)          // BEFORE any sweep
  *   2. expire Until.DAWN effects and their tokens
  *   3. Tokens.advanceCountdowns(state, Until.DAWN)
  *   4. Effects.reconcile(...)
@@ -21,54 +22,96 @@ package com.clocktower.engine
 object Phases {
 
     /**
-     * Reminder tokens whose effect only lasts the night: removed at dawn,
-     * exactly like sweeping them off the physical grimoire.
+     * How the briefing for a boundary is computed.
+     *
+     * Injectable so a test can assert what the grimoire looked like at the moment
+     * the briefing ran — the acceptance criterion is that the Monk token is still
+     * present then. [Briefings.at] is WP6's; until it lands, a `NotImplementedError`
+     * degrades to "no briefing" instead of breaking the phase flow.
      */
-    private val EXPIRES_AT_DAWN: Set<Pair<String, String>> = setOf(
-        "monk" to "Safe",
-        "innkeeper" to "Protected",
-        "exorcist" to "Chosen",
-        "lunatic" to "Attack 1",
-        "lunatic" to "Attack 2",
-        "lunatic" to "Attack 3",
-    )
+    fun interface BriefingSource {
+        fun at(state: GameState, lookup: (String) -> Character?, slot: BriefingSlot): Briefing?
+    }
+
+    /** The production source: WP6's pure `Briefings.at`. */
+    val DEFAULT_BRIEFINGS: BriefingSource = BriefingSource { state, lookup, slot ->
+        @Suppress("SwallowedException")
+        try {
+            Briefings.at(state, lookup, slot)
+        } catch (e: NotImplementedError) {
+            null // WP6 has not landed yet.
+        }
+    }
 
     /**
-     * Reminder tokens that last "tonight and tomorrow day": removed at
-     * dusk, right before their source picks a new target.
+     * Removes every effect and every hand-placed token whose [TokenRule] retires
+     * at [at]. Countdown steps are advanced instead, never swept.
      */
-    private val EXPIRES_AT_DUSK: Set<Pair<String, String>> = setOf(
-        "poisoner" to "Poisoned",
-        "sailor" to "Drunk",
-        "innkeeper" to "Drunk",
-        "butler" to "Master",
-        "devilsadvocate" to "Survives execution",
-        "witch" to "Cursed",
-        "cerenovus" to "Mad",
-        "harpy" to "Mad",
-        "harpy" to "2nd",
-        "goblin" to "Claimed",
-    )
+    private fun sweep(state: GameState, at: Until): GameState {
+        /** A countdown step is advanced by [Tokens.advanceCountdowns], never swept. */
+        fun isCountdown(sourceId: String, label: String): Boolean =
+            label.isNotEmpty() && Tokens.rule(sourceId, label)?.let(Tokens::isCountdown) == true
 
-    private fun clearEphemeral(state: GameState, table: Set<Pair<String, String>>): GameState =
-        state.copy(
-            players = state.players.map { player ->
-                player.copy(
-                    reminders = player.reminders.filterNot { (it.sourceId to it.label) in table },
-                )
+        fun retires(r: PlacedReminder): Boolean {
+            if (r.label.isEmpty()) return false
+            val rule = Tokens.rule(r.sourceId, r.label) ?: return false
+            if (Tokens.isCountdown(rule)) return false
+            // "Until dusk N days from now": the Minstrel's centre token. Nothing
+            // else retires these — a grimoire-centre token is never projected into
+            // an effect, so the clock in StatusQuery.expired never sees it.
+            if (rule.until == Until.DUSK_AFTER_N_DAYS) {
+                return at == Until.DUSK && state.cycle >= r.placedCycle + rule.untilDays
+            }
+            return rule.until == at
+        }
+        return state.copy(
+            // Effects carry their own lifetime: an effect placed with an explicit
+            // `until` is retired even when no token rule names it.
+            effects = state.effects.filterNot {
+                it.until == at && !isCountdown(it.sourceCharacterId, it.label)
             },
+            players = state.players.map { p ->
+                p.copy(reminders = p.reminders.filterNot(::retires))
+            },
+            storytellerReminders = state.storytellerReminders.filterNot(::retires),
         )
+    }
 
     /**
      * SETUP -> NIGHT 1 -> DAY 1 -> NIGHT 2 -> DAY 2 -> ...
-     * Day- and night-scoped reminder tokens expire automatically at the
+     * Day- and night-scoped effects and their tokens expire automatically at the
      * transition (undoable, and re-placeable by hand like everything else).
      */
-    fun advancePhase(state: GameState, lookup: (String) -> Character? = { null }): GameState =
-        when (state.phase) {
-            Phase.SETUP -> state.copy(phase = Phase.NIGHT, cycle = 1, nightStepsDone = emptySet())
-            Phase.NIGHT -> clearEphemeral(state, EXPIRES_AT_DAWN).copy(phase = Phase.DAY)
-            Phase.DAY -> clearEphemeral(state, EXPIRES_AT_DUSK)
-                .copy(phase = Phase.NIGHT, cycle = state.cycle + 1, nightStepsDone = emptySet())
+    fun advancePhase(
+        state: GameState,
+        lookup: (String) -> Character? = { null },
+        briefings: BriefingSource = DEFAULT_BRIEFINGS,
+    ): GameState = when (state.phase) {
+        Phase.SETUP ->
+            Effects.reconcile(state, lookup)
+                .copy(phase = Phase.NIGHT, cycle = 1, nightStepsDone = emptySet())
+
+        Phase.NIGHT -> {
+            // 1. The dawn briefing is computed while the grimoire still holds
+            //    every token the night placed — "Bea was saved" needs the Monk's.
+            val dawn = briefings.at(state, lookup, BriefingSlot.DAWN)
+            var next = sweep(state, Until.DAWN)
+            next = Tokens.advanceCountdowns(next, Until.DAWN)
+            next = Effects.reconcile(next, lookup)
+            next.copy(phase = Phase.DAY, lastDawn = dawn ?: next.lastDawn)
         }
+
+        Phase.DAY -> {
+            val dusk = briefings.at(state, lookup, BriefingSlot.DUSK)
+            var next = sweep(state, Until.DUSK)
+            next = Tokens.advanceCountdowns(next, Until.DUSK)
+            next = Effects.reconcile(next, lookup)
+            next.copy(
+                phase = Phase.NIGHT,
+                cycle = state.cycle + 1,
+                nightStepsDone = emptySet(),
+                lastDusk = dusk ?: next.lastDusk,
+            )
+        }
+    }
 }

@@ -116,30 +116,322 @@ data class DeathAttempt(
 )
 
 /**
- * The one kill funnel (lead D24). WP0 moved the legacy `kill` / `revive` /
- * `resurrect` / `toggleGhostVote` here verbatim; WP1 implements the rest and
- * routes every caller through [attempt].
+ * The one kill funnel (lead D24). Every path that ends a life goes through
+ * [attempt]; [killOutcome] is the same decision as a pure preview, so the kill
+ * sheet renders exactly what the button will do.
  */
 object Deaths {
+
+    /** Every night cause — the set the Innkeeper's "can't die tonight" covers. */
+    private val NIGHT_CAUSES: Set<DeathCause> = setOf(
+        DeathCause.DEMON_KILL, DeathCause.EVIL_ABILITY, DeathCause.GOOD_ABILITY,
+        DeathCause.TRAVELLER_ABILITY, DeathCause.STORYTELLER,
+        @Suppress("DEPRECATION") DeathCause.DEMON,
+        @Suppress("DEPRECATION") DeathCause.OTHER_NIGHT_DEATH,
+    )
+
+    /** Causes that can only happen in daylight. */
+    private val DAY_CAUSES: Set<DeathCause> =
+        setOf(DeathCause.EXECUTION, DeathCause.EXILE, DeathCause.DAY_ABILITY)
+
+    /** A Demon's own ability, including the legacy spelling of the same thing. */
+    private val DEMON_CAUSES: Set<DeathCause> =
+        setOf(DeathCause.DEMON_KILL, @Suppress("DEPRECATION") DeathCause.DEMON)
+
+    /**
+     * Which causes each protective effect blocks (lead D29). The table, not prose.
+     *
+     * NOTE FOR THE LEAD: D29 summarises "Monk / Soldier / Innkeeper -> DEMON_KILL
+     * only", but the wiki and status-model §C are explicit that the Innkeeper's
+     * SAFE covers *every* night death ("also safe from death caused by Outsiders,
+     * Minions, Townsfolk, and Travellers"), and status-model test 23 requires it to
+     * block a Godfather kill. ARCHITECTURE §2.6 step 7 agrees — it gates on
+     * `atNight`, not on the cause. That is what is implemented here.
+     */
+    val PROTECTS: Map<EffectKind, Set<DeathCause>> = mapOf(
+        EffectKind.SAFE_FROM_DEMON to DEMON_CAUSES,
+        EffectKind.CANT_DIE_TONIGHT to NIGHT_CAUSES,
+        EffectKind.CANT_DIE to DeathCause.entries.toSet(),
+        EffectKind.ONLY_EXECUTION_KILLS to (DeathCause.entries.toSet() - DeathCause.EXECUTION),
+        EffectKind.SURVIVES_EXECUTION to setOf(DeathCause.EXECUTION),
+        EffectKind.DAY_IMMUNE to DAY_CAUSES,
+        EffectKind.DEATH_TIED_TO to DeathCause.entries.toSet(),
+        EffectKind.DEMON_CANNOT_KILL to DEMON_CAUSES,
+    )
+
+    // ---- option ids answering a KillOutcome.Choice ----
+
+    /** The target dies after all. */
+    const val OPTION_DIES: String = "dies"
+
+    /** The target lives (Pacifist, Deviant). */
+    const val OPTION_LIVES: String = "lives"
+
+    /** The Mayor bounce / Scapegoat substitution: someone else dies. */
+    const val OPTION_REDIRECT: String = "redirect"
 
     /**
      * PURE preview of what would happen. Rendered by KillSheet, the night step's
      * consequence line and the execution confirmation sheet. No state change.
+     *
+     * Implements the precedence table of ARCHITECTURE §2.6 exactly, first match
+     * wins. Every protection is only considered when its source still has their
+     * ability, which `Status.protections` gives for free.
      */
     fun killOutcome(
         state: GameState,
         lookup: (String) -> Character?,
         targetId: Long,
         cause: KillCause,
-    ): KillOutcome = TODO("WP1")
+    ): KillOutcome {
+        val target = state.player(targetId) ?: return KillOutcome.AlreadyDead
+        val name = target.name
+        val atNight = state.phase != Phase.DAY
+        val isExecution = cause.cause == DeathCause.EXECUTION
+        val isDemonKill = cause.cause in DEMON_CAUSES
+
+        // 0. A dead player cannot die again — unless they are a Zombuul who only
+        //    registers as dead, in which case a real second death is allowed.
+        if (!target.alive && !state.isTrulyAlive(targetId)) return KillOutcome.AlreadyDead
+
+        // 1. The Assassin: "even if for some reason they could not". Nothing else runs.
+        if (cause.ignoresProtection) {
+            return KillOutcome.Dies("Nothing can prevent this death.")
+        }
+
+        val protections = Status.protections(state, lookup, targetId)
+        fun protection(kind: EffectKind): Effect? = protections.firstOrNull { it.kind == kind }
+        fun blocks(kind: EffectKind): Boolean =
+            PROTECTS[kind]?.contains(cause.cause) == true
+
+        // 2. The SOURCE is silenced (Lycanthrope, Princess, Exorcised Demon,
+        //    Toymaker) — checked before any target protection so a deferred Pukka
+        //    kill obeys it too (lead D36).
+        if (isDemonKill) {
+            val sourceId = cause.sourcePlayerId
+            val silenced = sourceId?.let {
+                Status.protections(state, lookup, it)
+                    .firstOrNull { e -> e.kind == EffectKind.DEMON_CANNOT_KILL }
+            }
+            if (silenced != null) {
+                return KillOutcome.Prevented(
+                    by = silenced,
+                    reason = "The Demon cannot kill tonight.",
+                    announce = "Nobody dies — the Demon could not kill tonight.",
+                )
+            }
+        }
+
+        // 3. Lleech: "You die if & only if they are dead."
+        protection(EffectKind.DEATH_TIED_TO)?.let { tie ->
+            val host = tie.linkedPlayerId?.let { state.player(it) }
+            if (host != null && host.alive) {
+                return KillOutcome.Prevented(
+                    by = tie,
+                    reason = "$name's life is tied to ${host.name}, who is still alive.",
+                    announce = prevention(name, isExecution, "the Lleech's host is alive"),
+                )
+            }
+        }
+
+        // 4. Vizier: "You cannot die during the day."
+        if (!atNight) {
+            protection(EffectKind.DAY_IMMUNE)?.let {
+                if (blocks(EffectKind.DAY_IMMUNE)) {
+                    return KillOutcome.Prevented(
+                        by = it,
+                        reason = "$name cannot die during the day.",
+                        announce = prevention(name, isExecution, "the Vizier cannot die by day"),
+                    )
+                }
+            }
+        }
+
+        // 5. Storm Catcher: "they can only die by execution".
+        protection(EffectKind.ONLY_EXECUTION_KILLS)?.let {
+            if (blocks(EffectKind.ONLY_EXECUTION_KILLS)) {
+                return KillOutcome.Prevented(
+                    by = it,
+                    reason = "$name can only die by execution.",
+                    announce = prevention(name, isExecution, "only an execution can kill them"),
+                )
+            }
+        }
+
+        // 6. Sailor, Tea Lady: they can't die, day or night.
+        protection(EffectKind.CANT_DIE)?.let {
+            return KillOutcome.Prevented(
+                by = it,
+                reason = "$name can't die.",
+                announce = prevention(name, isExecution, byWhom(it, lookup)),
+            )
+        }
+
+        // 7. Innkeeper: safe from every death tonight, but not from an execution.
+        if (atNight) {
+            protection(EffectKind.CANT_DIE_TONIGHT)?.let {
+                if (blocks(EffectKind.CANT_DIE_TONIGHT)) {
+                    return KillOutcome.Prevented(
+                        by = it,
+                        reason = "$name can't die tonight.",
+                        announce = prevention(name, isExecution, byWhom(it, lookup)),
+                    )
+                }
+            }
+        }
+
+        // 8. Monk, Soldier: safe from the Demon's own ability.
+        if (isDemonKill) {
+            protection(EffectKind.SAFE_FROM_DEMON)?.let {
+                return KillOutcome.Prevented(
+                    by = it,
+                    reason = "$name is safe from the Demon.",
+                    announce = prevention(name, isExecution, byWhom(it, lookup)),
+                )
+            }
+        }
+
+        // 9. Devil's Advocate: "if executed tomorrow, they don't die".
+        if (isExecution) {
+            protection(EffectKind.SURVIVES_EXECUTION)?.let {
+                return KillOutcome.Prevented(
+                    by = it,
+                    reason = "$name survives execution today.",
+                    announce = prevention(name, true, byWhom(it, lookup)),
+                )
+            }
+        }
+
+        // 10. Pacifist: "Executed good players MIGHT not die." Always ask.
+        if (isExecution && !Registration.registersEvil(state, lookup, target) &&
+            holderWithAbility(state, lookup, "pacifist") != null
+        ) {
+            return KillOutcome.Choice(
+                question = "$name is good and was executed. Do they die?",
+                options = listOf(
+                    KillChoiceOption(OPTION_DIES, "They die", KillOutcome.Dies("The Pacifist did not save them.")),
+                    KillChoiceOption(
+                        OPTION_LIVES,
+                        "They survive — say nothing",
+                        KillOutcome.Prevented(
+                            by = null,
+                            reason = "The Pacifist saved $name.",
+                            announce = "Say: '$name was executed… and remains alive.' Do not say why.",
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        // 11. Deviant: "If you were funny today, you cannot die by exile."
+        if (cause.cause == DeathCause.EXILE && target.characterId?.let(Character::normalizeId) == "deviant") {
+            return KillOutcome.Choice(
+                question = "Was ${name} funny today? A funny Deviant cannot die by exile.",
+                options = listOf(
+                    KillChoiceOption(OPTION_DIES, "Not funny — they die", KillOutcome.Dies()),
+                    KillChoiceOption(
+                        OPTION_LIVES,
+                        "Funny — they survive",
+                        KillOutcome.Prevented(
+                            by = null,
+                            reason = "The Deviant was funny today.",
+                            announce = "$name is exiled but remains alive.",
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        // 12. Mayor: "If you die at night, another player MIGHT die instead."
+        //     After the blocks, so a Monk-protected Mayor gives "nobody dies".
+        if (atNight && !isExecution &&
+            target.characterId?.let(Character::normalizeId) == "mayor" &&
+            Status.hasAbility(state, lookup, targetId)
+        ) {
+            val others = state.alivePlayers.filter { it.id != targetId }.map { it.id }
+            return KillOutcome.Choice(
+                question = "The Mayor would die tonight. Who dies instead?",
+                options = listOf(
+                    KillChoiceOption(OPTION_DIES, "The Mayor dies", KillOutcome.Dies()),
+                    KillChoiceOption(
+                        OPTION_REDIRECT,
+                        "Someone else dies",
+                        KillOutcome.Redirect(others, "The Mayor's ability bounced the death.", false),
+                    ),
+                ),
+            )
+        }
+
+        // 13. Scapegoat: "If a player of your alignment is executed, you MIGHT be
+        //     executed instead."
+        if (isExecution) {
+            val targetEvil = Registration.registersEvil(state, lookup, target)
+            val scapegoat = state.alivePlayers.firstOrNull {
+                it.characterId?.let(Character::normalizeId) == "scapegoat" &&
+                    it.id != targetId &&
+                    Registration.registersEvil(state, lookup, it) == targetEvil &&
+                    Status.hasAbility(state, lookup, it.id)
+            }
+            if (scapegoat != null) {
+                return KillOutcome.Choice(
+                    question = "${scapegoat.name} is a Scapegoat of $name's alignment. " +
+                        "Who is executed?",
+                    options = listOf(
+                        KillChoiceOption(OPTION_DIES, "$name dies", KillOutcome.Dies()),
+                        KillChoiceOption(
+                            OPTION_REDIRECT,
+                            "${scapegoat.name} dies instead",
+                            KillOutcome.Redirect(
+                                listOf(scapegoat.id),
+                                "The Scapegoat was executed instead.",
+                                true,
+                            ),
+                        ),
+                    ),
+                )
+            }
+        }
+
+        // 14. Zombuul: "The 1st time you die, you live but register as dead."
+        if (target.characterId?.let(Character::normalizeId) == "zombuul" &&
+            state.deaths.none { it.playerId == targetId } &&
+            Status.hasAbility(state, lookup, targetId)
+        ) {
+            return KillOutcome.RegistersDead(
+                "Declare that the Zombuul died — but do not shroud them. " +
+                    "They register as dead from now on.",
+            )
+        }
+
+        // 15. Fool: "The 1st time you die, you don't." LAST, so other protections
+        //     take precedence and the once-per-game is not consumed.
+        if (target.characterId?.let(Character::normalizeId) == "fool" &&
+            Status.live(state, lookup, targetId, EffectKind.SPENT).isEmpty() &&
+            Status.hasAbility(state, lookup, targetId)
+        ) {
+            return KillOutcome.Spends(
+                inner = KillOutcome.Prevented(
+                    by = null,
+                    reason = "The Fool's first death does not happen.",
+                    announce = "$name doesn't die — the Fool's ability is now spent.",
+                ),
+                sourceId = "fool",
+            )
+        }
+
+        // 16. Nothing stops it.
+        return KillOutcome.Dies()
+    }
 
     /**
      * THE kill funnel. Every path that ends a life calls this — day execution,
      * dusk guard, seat sheet, night action, on-death chains. Applies the outcome,
-     * writes the DeathEvent (even for a prevented death, as a ledger RULING),
-     * runs `Effects.reconcile`, and fires every on-death trigger exactly once.
+     * records the death (or, for a prevented one, a ledger RULING), runs
+     * `Effects.reconcile`, and fires every on-death trigger exactly once.
      *
      * [optionId] answers a previous `KillOutcome.Choice`; pass "" the first time.
+     * A `Choice` returned with no [optionId] leaves the state untouched — the UI
+     * must ask, then call again.
      */
     fun attempt(
         state: GameState,
@@ -147,14 +439,219 @@ object Deaths {
         targetId: Long,
         cause: KillCause,
         optionId: String = "",
-    ): DeathAttempt = TODO("WP1")
+    ): DeathAttempt {
+        val decided = killOutcome(state, lookup, targetId, cause)
+        val outcome = if (decided is KillOutcome.Choice && optionId.isNotEmpty()) {
+            decided.options.firstOrNull { it.id == optionId }?.outcome ?: decided
+        } else {
+            decided
+        }
+        return apply(state, lookup, targetId, cause, outcome)
+    }
+
+    private fun apply(
+        state: GameState,
+        lookup: (String) -> Character?,
+        targetId: Long,
+        cause: KillCause,
+        outcome: KillOutcome,
+    ): DeathAttempt = when (outcome) {
+        is KillOutcome.Choice -> DeathAttempt(state, outcome)
+
+        KillOutcome.AlreadyDead -> DeathAttempt(state, outcome)
+
+        is KillOutcome.Prevented -> DeathAttempt(
+            state = Effects.reconcile(recordPrevented(state, targetId, cause, outcome), lookup),
+            outcome = outcome,
+        )
+
+        is KillOutcome.Spends -> {
+            val spent = Effects.place(
+                state = recordPrevented(state, targetId, cause, outcome.inner as? KillOutcome.Prevented),
+                target = targetId,
+                kind = EffectKind.SPENT,
+                sourceCharacterId = outcome.sourceId,
+                sourcePlayerId = targetId,
+                until = Until.FOREVER,
+                label = spentLabel(outcome.sourceId, lookup),
+                note = "Used to survive a death.",
+            ).state
+            DeathAttempt(Effects.reconcile(spent, lookup), outcome)
+        }
+
+        is KillOutcome.RegistersDead -> {
+            val (next, event) = record(state, lookup, targetId, cause, registeredOnly = true)
+            DeathAttempt(Effects.reconcile(next, lookup), outcome, event)
+        }
+
+        is KillOutcome.Redirect -> {
+            // `to` is a CANDIDATE list when the storyteller still has to pick: the
+            // Mayor's bounce offers every other seat, and killing all of them would
+            // end the game. Only a settled redirect — one named seat, or a mandatory
+            // substitution like the Scapegoat's — is applied here.
+            val settled = outcome.to.singleOrNull()
+                ?: outcome.to.takeIf { outcome.mandatory && it.size == 1 }?.single()
+            if (settled == null) {
+                DeathAttempt(state, outcome)
+            } else {
+                val r = attempt(state, lookup, settled, cause)
+                DeathAttempt(r.state, outcome, r.event, r.prompts)
+            }
+        }
+
+        is KillOutcome.Dies -> {
+            val (recorded, event) = record(state, lookup, targetId, cause, registeredOnly = false)
+            val triggered = fireDeathTriggers(recorded, lookup, event)
+            DeathAttempt(
+                state = Effects.reconcile(triggered.first, lookup),
+                outcome = outcome,
+                event = event,
+                prompts = triggered.second,
+            )
+        }
+    }
+
+    /** Writes the DeathEvent and shrouds the seat. */
+    private fun record(
+        state: GameState,
+        lookup: (String) -> Character?,
+        targetId: Long,
+        cause: KillCause,
+        registeredOnly: Boolean,
+    ): Pair<GameState, DeathEvent> {
+        val player = state.player(targetId)!!
+        val event = DeathEvent(
+            id = state.nextDeathId,
+            playerId = targetId,
+            day = state.cycle,
+            atNight = state.phase != Phase.DAY,
+            cause = cause.cause,
+            killerCharacterId = cause.sourceCharacterId.orEmpty(),
+            killerPlayerId = cause.sourcePlayerId,
+            characterIdAtDeath = player.characterId,
+            teamAtDeath = player.team(lookup),
+            evilAtDeath = player.isEvil(lookup),
+            abilityImpairedAtDeath = Status.isImpaired(state, lookup, targetId),
+            ghostVoteUsedBeforeDeath = player.ghostVoteUsed,
+            registeredOnly = registeredOnly,
+        )
+        val next = state
+            .updatePlayer(targetId) { it.copy(alive = false, ghostVoteUsed = false) }
+            .copy(deaths = state.deaths + event, nextDeathId = state.nextDeathId + 1)
+        return next to event
+    }
+
+    /**
+     * A death that did not happen is still a fact the Vortox, the Undertaker, the
+     * Mayor and the Leviathan need. It is recorded as a ledger RULING, never as a
+     * DeathEvent (lead D24).
+     */
+    private fun recordPrevented(
+        state: GameState,
+        targetId: Long,
+        cause: KillCause,
+        outcome: KillOutcome.Prevented?,
+    ): GameState {
+        val name = state.player(targetId)?.name ?: return state
+        val id = state.nextLedgerId
+        return state.copy(
+            ledger = state.ledger + LedgerEntry(
+                id = id,
+                cycle = state.cycle,
+                atNight = state.phase != Phase.DAY,
+                kind = LedgerKind.RULING,
+                sourceId = outcome?.by?.sourceCharacterId ?: cause.sourceCharacterId.orEmpty(),
+                actorId = targetId,
+                text = outcome?.reason ?: "$name did not die.",
+                shown = outcome?.announce.orEmpty(),
+            ),
+            nextLedgerId = id + 1,
+        )
+    }
+
+    /**
+     * Fires `CharacterRule.onDeath` for every seat that holds one (lead D35).
+     * [lookup] is unused today; it keeps the signature stable for the WP7 rows.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun fireDeathTriggers(
+        state: GameState,
+        lookup: (String) -> Character?,
+        event: DeathEvent,
+    ): Pair<GameState, List<Prompt>> {
+        var next = state
+        val queued = mutableListOf<Prompt>()
+        for (holder in state.players) {
+            val id = holder.characterId?.let(Character::normalizeId) ?: continue
+            val rule = CharacterRules.all[id] ?: continue
+            for (trigger in rule.onDeath) {
+                if (!trigger.gate(state, event, holder)) continue
+                val result = trigger.produce(state, event, holder)
+                for (p in result.prompts) {
+                    next = Prompts.queue(next, p.copy(causeEventId = event.id))
+                    queued += next.prompts.last()
+                }
+                // Stamp ids the same way Prompts.queue does: a registry row writes
+                // `Effect(id = 0, ...)` and the funnel owns the numbering. Effect.id
+                // is the resolution-order key and the identity used for removal and
+                // rollback, so two unstamped effects would be indistinguishable.
+                var nextEffectId = next.nextEffectId
+                val stamped = result.effects.map {
+                    it.copy(id = nextEffectId++, causeEventId = event.id)
+                }
+                if (stamped.isNotEmpty()) {
+                    next = next.copy(
+                        effects = next.effects + stamped,
+                        nextEffectId = nextEffectId,
+                    )
+                }
+            }
+        }
+        return next to queued
+    }
+
+    /** The official spent-mark label for [characterId], or a safe fallback. */
+    private fun spentLabel(characterId: String, lookup: (String) -> Character?): String =
+        lookup(characterId)?.spentLabel?.ifEmpty { null }
+            ?: Tokens.all.firstOrNull {
+                Character.normalizeId(it.sourceId) == Character.normalizeId(characterId) &&
+                    it.effect == EffectKind.SPENT
+            }?.label
+            ?: "No Ability"
+
+    /** The exact line to say out loud when a death is prevented (status-model §7). */
+    private fun prevention(name: String, isExecution: Boolean, by: String): String =
+        if (isExecution) {
+            "Say: '$name was executed… and remains alive.' Do not say why."
+        } else {
+            "Nobody dies — $by protected $name."
+        }
+
+    private fun byWhom(effect: Effect, lookup: (String) -> Character?): String =
+        lookup(effect.sourceCharacterId)?.name?.let { "the $it" } ?: "an ability"
+
+    /** The alive holder of [characterId] whose ability is working, if any. */
+    private fun holderWithAbility(
+        state: GameState,
+        lookup: (String) -> Character?,
+        characterId: String,
+    ): Player? = state.alivePlayers.firstOrNull {
+        it.characterId?.let(Character::normalizeId) == characterId &&
+            Status.hasAbility(state, lookup, it.id)
+    }
 
     /**
      * Kills a player, recording the cause. Dead players gain a ghost vote.
      *
-     * WP0: moved verbatim from `GameActions.kill`. WP1 replaces every caller
-     * with [attempt] and this becomes private to the funnel.
+     * Compatibility shim: it routes through [attempt] with `ignoresProtection`,
+     * so the behaviour is the legacy "this player dies, full stop" while the
+     * DeathEvent, the effect reconcile and the on-death triggers all come from
+     * the one funnel. New call sites must use [attempt] with a real [KillCause].
      */
+    @Deprecated(
+        "Use Deaths.attempt(state, lookup, targetId, KillCause(...)) — protections are skipped here.",
+        ReplaceWith("Deaths.attempt(state, lookup, playerId, KillCause(cause)).state"),
+    )
     fun kill(
         state: GameState,
         playerId: Long,
@@ -163,18 +660,12 @@ object Deaths {
     ): GameState {
         val player = state.player(playerId) ?: return state
         if (!player.alive) return state
-        return state
-            .updatePlayer(playerId) { it.copy(alive = false, ghostVoteUsed = false) }
-            .copy(
-                deaths = state.deaths + DeathEvent(
-                    playerId = playerId,
-                    day = state.cycle,
-                    atNight = state.phase == Phase.NIGHT,
-                    cause = cause,
-                    characterIdAtDeath = player.characterId,
-                    abilityImpairedAtDeath = StatusEffects.isImpaired(state, lookup, player),
-                ),
-            )
+        return attempt(
+            state = state,
+            lookup = lookup,
+            targetId = playerId,
+            cause = KillCause(cause = cause, ignoresProtection = true),
+        ).state
     }
 
     /**
@@ -182,41 +673,89 @@ object Deaths {
      * Collector...): the player lives again but the death record STAYS in
      * the log, marked resurrected — Undertaker/Cannibal history survives.
      *
-     * WP0: moved verbatim from `GameActions.resurrect`. WP1 adds the rules of
-     * §2.6 (clearing SPENT marks, the RUN_FIRST_NIGHT prompt, the dawn
-     * announcement) around this core.
+     * They regain their ability, INCLUDING a spent once-per-game (Glossary),
+     * except the Virgin's first-nomination flag, which is a historical fact
+     * (lead D7). Queues RUN_FIRST_NIGHT for tonight and an ANNOUNCE the
+     * storyteller still owes the table.
      */
     fun resurrect(
         state: GameState,
         lookup: (String) -> Character? = { null },
         playerId: Long,
     ): GameState {
+        val player = state.player(playerId) ?: return state
         val lastDeath = state.deaths.indexOfLast { it.playerId == playerId && !it.resurrected }
-        return state.updatePlayer(playerId) { it.copy(alive = true, ghostVoteUsed = false) }
+        var next = state.updatePlayer(playerId) { it.copy(alive = true, ghostVoteUsed = false) }
             .copy(
                 deaths = state.deaths.mapIndexed { i, d ->
-                    if (i == lastDeath) d.copy(resurrected = true) else d
+                    if (i == lastDeath) d.copy(resurrected = true, resurrectedAtCycle = state.cycle) else d
                 },
             )
+
+        // The ability comes back, spent once-per-game included — but the Virgin's
+        // first nomination already happened and stays spent.
+        next = next.copy(
+            effects = next.effects.filterNot {
+                it.targetId == playerId && it.kind == EffectKind.SPENT &&
+                    Character.normalizeId(it.sourceCharacterId) != "virgin"
+            },
+        )
+        next = next.updatePlayer(playerId) { p ->
+            p.copy(
+                reminders = p.reminders.filterNot { r ->
+                    val rule = Tokens.rule(r)
+                    (rule?.effect == EffectKind.SPENT || rule?.label.equals("Dead", true)) &&
+                        Character.normalizeId(r.sourceId) != "virgin"
+                },
+            )
+        }
+
+        next = Prompts.queue(
+            next,
+            Prompt(
+                id = 0,
+                at = BriefingSlot.TONIGHT,
+                kind = PromptKind.RUN_FIRST_NIGHT,
+                sourceId = player.characterId.orEmpty(),
+                subjectPlayerId = playerId,
+                title = "${player.name} is alive again — run their FIRST-NIGHT step tonight",
+                detail = "A resurrected player's \"you start knowing\" ability functions tonight.",
+                stepSlotId = player.characterId.orEmpty(),
+            ),
+        )
+        val ledgerId = next.nextLedgerId
+        next = next.copy(
+            ledger = next.ledger + LedgerEntry(
+                id = ledgerId,
+                cycle = next.cycle,
+                atNight = next.phase != Phase.DAY,
+                kind = LedgerKind.ANNOUNCE,
+                sourceId = "st",
+                actorId = playerId,
+                text = "${player.name} is alive again.",
+                textB = "Do not say why.",
+                announcePending = true,
+            ),
+            nextLedgerId = ledgerId + 1,
+        )
+        return Effects.reconcile(next, lookup)
     }
 
     /**
      * Undo a mistaken death: the most recent death record is DROPPED, as if
-     * it never happened. For in-game resurrection use [resurrect].
-     *
-     * WP0: moved verbatim from `GameActions.revive`. WP1 additionally drops
-     * every Effect and Prompt stamped with the death's `causeEventId`.
+     * it never happened, along with every Effect and Prompt it created.
+     * For in-game resurrection use [resurrect].
      */
     fun revive(state: GameState, playerId: Long): GameState {
         val lastDeath = state.deaths.indexOfLast { it.playerId == playerId }
-        return state.updatePlayer(playerId) { it.copy(alive = true, ghostVoteUsed = false) }
-            .copy(deaths = state.deaths.filterIndexed { i, _ -> i != lastDeath })
+        val event = state.deaths.getOrNull(lastDeath)
+        var next = state.updatePlayer(playerId) {
+            it.copy(alive = true, ghostVoteUsed = event?.ghostVoteUsedBeforeDeath ?: false)
+        }.copy(deaths = state.deaths.filterIndexed { i, _ -> i != lastDeath })
+        if (event != null && event.id != 0L) next = Effects.rollback(next, event.id)
+        return next
     }
 
     fun toggleGhostVote(state: GameState, playerId: Long): GameState =
         state.updatePlayer(playerId) { it.copy(ghostVoteUsed = !it.ghostVoteUsed) }
-
-    /** Which causes each protective effect blocks (lead D29). The table, not prose. */
-    val PROTECTS: Map<EffectKind, Set<DeathCause>>
-        get() = TODO("WP1")
 }

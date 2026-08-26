@@ -38,17 +38,40 @@ data class Prompt(
     val resolvedCycle: Int? = null,
 )
 
-/** The one deferred-obligation queue (WP1). */
+/**
+ * The one deferred-obligation queue (WP1).
+ *
+ * Everything the storyteller still owes lives here: re-run a first night,
+ * resolve a deferred kill, choose a Sweetheart victim, settle a paradox.
+ * Things they must *say* are ledger ANNOUNCE entries instead (lead D6).
+ */
 object Prompts {
 
-    fun queue(state: GameState, prompt: Prompt): GameState = TODO("WP1")
+    /** Appends [prompt], stamping it with the next id. */
+    fun queue(state: GameState, prompt: Prompt): GameState {
+        val id = state.nextPromptId
+        return state.copy(
+            prompts = state.prompts + prompt.copy(id = id),
+            nextPromptId = id + 1,
+        )
+    }
 
-    fun resolve(state: GameState, id: Long): GameState = TODO("WP1")
+    /** Retires a prompt as done, keeping it in the list for the log and undo. */
+    fun resolve(state: GameState, id: Long): GameState = state.copy(
+        prompts = state.prompts.map {
+            if (it.id == id) it.copy(resolved = true, resolvedCycle = state.cycle) else it
+        },
+    )
 
-    fun dismiss(state: GameState, id: Long): GameState = TODO("WP1")
+    /** Drops a prompt entirely — the storyteller decided it never applied. */
+    fun dismiss(state: GameState, id: Long): GameState =
+        state.copy(prompts = state.prompts.filterNot { it.id == id })
 
-    fun due(state: GameState, slot: BriefingSlot): List<Prompt> = TODO("WP1")
+    /** Unresolved prompts that have come due at [slot], oldest first. */
+    fun due(state: GameState, slot: BriefingSlot): List<Prompt> = state.prompts
+        .filter { !it.resolved && it.at == slot && (it.dueCycle == null || it.dueCycle <= state.cycle) }
+        .sortedBy { it.id }
 
     /** Prompts that must become night steps tonight. Consumed by NightPlan. */
-    fun forTonight(state: GameState): List<Prompt> = TODO("WP1")
+    fun forTonight(state: GameState): List<Prompt> = due(state, BriefingSlot.TONIGHT)
 }
