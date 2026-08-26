@@ -71,9 +71,14 @@ object Bluffs {
 
         val residents = seats.count { !it.isTraveller }
         val demonSeats = seats.filter { it.characterId?.let(lookup)?.team == Team.DEMON }
+        // Legion "registers as a Minion too", so a Legion seat gets a Snitch set
+        // of its own on top of the Demon set — the official "possibly 6 bluffs"
+        // case, as two independent sets on one seat. (Lead D32; this becomes
+        // `Registration.registersAs` once WP1 lands.)
         val minionSeats = seats.filter {
-            it.characterId?.let(lookup)?.team == Team.MINION &&
-                Character.normalizeId(it.characterId.orEmpty()) != MARIONETTE
+            val id = Character.normalizeId(it.characterId.orEmpty())
+            id != MARIONETTE &&
+                (it.characterId?.let(lookup)?.team == Team.MINION || id == "legion")
         }
         val poppyGrower = "poppygrower" in inPlay
         val requirements = mutableListOf<BluffRequirement>()
