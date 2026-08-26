@@ -2,25 +2,47 @@ package com.clocktower.grimoire.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,46 +50,64 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
-import com.clocktower.grimoire.ui.theme.NightSky
-import com.clocktower.grimoire.ui.theme.Parchment
-import com.clocktower.grimoire.ui.theme.Twilight
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.sp
+import com.clocktower.engine.Character
+import com.clocktower.engine.DayRules
+import com.clocktower.engine.EffectGroup
+import com.clocktower.engine.Effects
 import com.clocktower.engine.GameState
+import com.clocktower.engine.Identity
 import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
+import com.clocktower.engine.RenderedToken
+import com.clocktower.engine.Status
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.PipRow
+import com.clocktower.grimoire.ui.components.ReminderToken
+import com.clocktower.grimoire.ui.components.StatusPip
 import com.clocktower.grimoire.ui.components.ZoomControls
 import com.clocktower.grimoire.ui.components.rememberZoomState
+import com.clocktower.grimoire.ui.components.visiblePips
 import com.clocktower.grimoire.ui.components.zoomGestures
 import com.clocktower.grimoire.ui.components.zoomTransform
-import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.theme.AgedGold
-import com.clocktower.grimoire.ui.theme.BloodRed
 import com.clocktower.grimoire.ui.theme.EmberRed
+import com.clocktower.grimoire.ui.theme.MIN_TEXT_SP
+import com.clocktower.grimoire.ui.theme.NightSky
+import com.clocktower.grimoire.ui.theme.OnBlockGold
+import com.clocktower.grimoire.ui.theme.Parchment
+import com.clocktower.grimoire.ui.theme.ShroudBlack
+import com.clocktower.grimoire.ui.theme.Twilight
 import com.clocktower.grimoire.ui.theme.color
+import com.clocktower.grimoire.ui.theme.displayName
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
- * The grimoire: every seat arranged in a circle exactly like tokens laid
- * out inside the physical grimoire, with shrouds on the dead, reminder
- * tokens fanned around each seat, pinch-zoom and pan.
+ * The grimoire.
+ *
+ * Two views over one selection and one filter (grimoire-and-seats §4):
+ * **Circle** is for RECOGNITION — status pips, no micro-text — and **Board**
+ * is for READING, listing every token in full text with nothing truncated.
+ * The seat sheet is for acting.
  */
 @Composable
 fun GrimoireScreen(
@@ -77,10 +117,295 @@ fun GrimoireScreen(
     onOpenFabled: () -> Unit = {},
     onOpenSeat: (Long) -> Unit,
 ) {
+    var board by rememberSaveable { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf<String?>(null) }
+    var search by rememberSaveable { mutableStateOf("") }
+    var peekSeat by rememberSaveable { mutableStateOf<Long?>(null) }
+    var hintDismissed by rememberSaveable { mutableStateOf(false) }
+
+    // One pass over the effect model per state, shared by both views: the old
+    // screen re-derived impairment per seat on every recomposition.
+    val tokens: Map<Long, List<RenderedToken>> = remember(state) {
+        state.players.associate { it.id to Effects.rendered(state, viewModel::characterById, it.id) }
+    }
+    val onBlockId = remember(state.nominations, state.cycle) { DayRules.aboutToDie(state) }
+    val matches = remember(state, filter, search, tokens) {
+        state.players.filter { seatMatches(it, tokens[it.id].orEmpty(), viewModel.characterById(it.characterId), filter, search) }
+            .map { it.id }
+            .toSet()
+    }
+    val filtering = filter != null || search.isNotBlank()
+
+    Column(Modifier.fillMaxSize()) {
+        GrimoireHeader(
+            viewModel = viewModel,
+            state = state,
+            tokens = tokens,
+            onBlockId = onBlockId,
+            board = board,
+            onBoard = { board = it },
+            filter = filter,
+            onFilter = { filter = if (filter == it) null else it },
+            search = search,
+            onSearch = { search = it },
+            onOpenBluffs = onOpenBluffs,
+            onOpenFabled = onOpenFabled,
+        )
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            if (board) {
+                BoardView(
+                    viewModel = viewModel,
+                    state = state,
+                    tokens = tokens,
+                    onBlockId = onBlockId,
+                    matches = matches,
+                    filtering = filtering,
+                    onOpenSeat = onOpenSeat,
+                    onPeek = { peekSeat = it },
+                )
+            } else {
+                CircleView(
+                    viewModel = viewModel,
+                    state = state,
+                    tokens = tokens,
+                    onBlockId = onBlockId,
+                    matches = matches,
+                    filtering = filtering,
+                    onOpenSeat = onOpenSeat,
+                    onPeek = { peekSeat = it },
+                )
+                // The circle stops being the better instrument well before 20
+                // seats; say so once instead of letting it degrade silently.
+                if (state.players.size >= 18 && !hintDismissed) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 12.dp, start = 60.dp, end = 12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
+                            Text(
+                                "${state.players.size} seats — the Board view reads better on a phone.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { board = true; hintDismissed = true }) { Text("Switch") }
+                            TextButton(onClick = { hintDismissed = true }) { Text("No") }
+                        }
+                    }
+                }
+            }
+            if (state.players.isEmpty()) {
+                Text(
+                    text = "No seats yet — add players from setup.",
+                    modifier = Modifier.align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    peekSeat?.let { id ->
+        TokenPeek(
+            viewModel = viewModel,
+            state = state,
+            playerId = id,
+            tokens = tokens[id].orEmpty(),
+            onOpenSeat = { peekSeat = null; onOpenSeat(id) },
+            onDismiss = { peekSeat = null },
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Header: standing facts, the view switch, filter chips
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GrimoireHeader(
+    viewModel: GameViewModel,
+    state: GameState,
+    tokens: Map<Long, List<RenderedToken>>,
+    onBlockId: Long?,
+    board: Boolean,
+    onBoard: (Boolean) -> Unit,
+    filter: String?,
+    onFilter: (String) -> Unit,
+    search: String,
+    onSearch: (String) -> Unit,
+    onOpenBluffs: () -> Unit,
+    onOpenFabled: () -> Unit,
+) {
+    val ghostVotes = state.seats.count { !it.alive && !it.ghostVoteUsed }
+    val expiringAtDusk = tokens.values.sumOf { list -> list.count { it.expiryText.contains("dusk") } }
+    val cycleLabel = when (state.phase) {
+        Phase.SETUP -> "Setup"
+        Phase.NIGHT -> "Night ${state.cycle}"
+        Phase.DAY -> "Day ${state.cycle}"
+    }
+    val counts = remember(tokens, state.players) { groupCounts(state, tokens) }
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Bluffs left, Fabled right — one tap away, as before.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onOpenBluffs)
+                    .padding(2.dp),
+            ) {
+                if (state.demonBluffIds.isEmpty()) {
+                    Text("+ bluffs", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    for (id in state.demonBluffIds) CharacterToken(character = viewModel.characterById(id), size = 26.dp)
+                }
+            }
+            Text(
+                text = "$cycleLabel · ${state.alivePlayers.size} alive · ${state.executionThreshold} to execute · " +
+                    "$ghostVotes ghost vote${if (ghostVotes == 1) "" else "s"}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onOpenFabled)
+                    .padding(2.dp),
+            ) {
+                if (state.fabledIds.isEmpty()) {
+                    Text("fabled +", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    for (id in state.fabledIds) CharacterToken(character = viewModel.characterById(id), size = 26.dp)
+                }
+            }
+        }
+        // Second line: the two facts a storyteller re-derives constantly, and
+        // the Mastermind day as a LINE, not a banner drawn over everything.
+        val second = buildList {
+            onBlockId?.let { id ->
+                val votes = state.nominations.lastOrNull { it.day == state.cycle && it.nomineeId == id }?.votes
+                add("${state.player(id)?.name ?: "someone"} is on the block${votes?.let { " ($it votes)" } ?: ""}")
+            }
+            if (expiringAtDusk > 0) add("$expiringAtDusk token${if (expiringAtDusk == 1) "" else "s"} expire at dusk")
+            if (state.mastermindDayActive) add("MASTERMIND DAY — whoever is executed, their team loses")
+        }
+        if (second.isNotEmpty()) {
+            Text(
+                second.joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (state.mastermindDayActive) AgedGold else EmberRed,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SingleChoiceSegmentedButtonRow {
+                SegmentedButton(
+                    selected = !board,
+                    onClick = { onBoard(false) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                ) { Text("Circle") }
+                SegmentedButton(
+                    selected = board,
+                    onClick = { onBoard(true) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                ) { Text("Board") }
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedTextField(
+                value = search,
+                onValueChange = onSearch,
+                placeholder = { Text("Search", style = MaterialTheme.typography.bodySmall) },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+            )
+        }
+        // A chip that shows its count answers "who is poisoned?" before it is
+        // even tapped (grimoire-and-seats §4).
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for ((group, n) in counts) {
+                FilterChip(
+                    selected = filter == group.name,
+                    onClick = { onFilter(group.name) },
+                    label = { Text("${group.displayName} $n", style = MaterialTheme.typography.labelMedium) },
+                    leadingIcon = { StatusPip(group = group, size = 16.dp) },
+                )
+            }
+            val dead = state.seats.count { !it.alive }
+            if (dead > 0) {
+                FilterChip(
+                    selected = filter == FILTER_DEAD,
+                    onClick = { onFilter(FILTER_DEAD) },
+                    label = { Text("dead $dead", style = MaterialTheme.typography.labelMedium) },
+                )
+            }
+        }
+    }
+}
+
+private const val FILTER_DEAD = "__dead"
+
+/** How many seats carry at least one token of each group. Drives the chips. */
+private fun groupCounts(
+    state: GameState,
+    tokens: Map<Long, List<RenderedToken>>,
+): List<Pair<EffectGroup, Int>> {
+    val counts = LinkedHashMap<EffectGroup, Int>()
+    for (p in state.seats) {
+        for (group in tokens[p.id].orEmpty().filterNot { it.suspended }.map { it.group }.toSet()) {
+            counts[group] = (counts[group] ?: 0) + 1
+        }
+    }
+    return counts.entries.sortedBy { it.key.priority }.map { it.key to it.value }
+}
+
+/** Filter + search predicate, shared by both views so highlighting matches. */
+private fun seatMatches(
+    player: Player,
+    tokens: List<RenderedToken>,
+    character: Character?,
+    filter: String?,
+    search: String,
+): Boolean {
+    if (filter == FILTER_DEAD && player.alive) return false
+    if (filter != null && filter != FILTER_DEAD && tokens.none { !it.suspended && it.group.name == filter }) return false
+    val q = search.trim()
+    if (q.isEmpty()) return true
+    return player.name.contains(q, ignoreCase = true) ||
+        (character?.name?.contains(q, ignoreCase = true) == true) ||
+        tokens.any { it.label.contains(q, ignoreCase = true) }
+}
+
+// ---------------------------------------------------------------------------
+// Circle view
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun CircleView(
+    viewModel: GameViewModel,
+    state: GameState,
+    tokens: Map<Long, List<RenderedToken>>,
+    onBlockId: Long?,
+    matches: Set<Long>,
+    filtering: Boolean,
+    onOpenSeat: (Long) -> Unit,
+    onPeek: (Long) -> Unit,
+) {
     val zoom = rememberZoomState()
 
-    // During the night, badge each seat with its wake-order position.
-    val wakeOrder: Map<String, Int> = remember(state.players, state.phase, state.cycle, state.fabledIds) {
+    // Wake-order badges. `Player.nightRoleId` is deleted (lead D39): the seats
+    // that act tonight come from Identity.actingRoles, which is the only thing
+    // that knows about a Philosopher's borrowed ability or a Hermit's many.
+    val wakeOrder: Map<Long, Int> = remember(state.players, state.phase, state.cycle, state.fabled) {
         if (state.phase != Phase.NIGHT) {
             emptyMap()
         } else {
@@ -89,46 +414,49 @@ fun GrimoireScreen(
             } else {
                 viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
             }
-            steps.filter { it.id !in NightMarkers.all && it.playerIds.isNotEmpty() }
-                .mapIndexed { index, step -> step.id to index + 1 }
-                .toMap()
+            val acting = steps.filter { it.id !in NightMarkers.all && it.playerIds.isNotEmpty() }
+            val slotIndex = acting.mapIndexed { index, step -> step.id to index + 1 }.toMap()
+            val out = LinkedHashMap<Long, Int>()
+            for (p in state.players) {
+                val roles = Identity.actingRoles(state, viewModel::characterById, p)
+                val n = roles.mapNotNull { slotIndex[it.slotId] ?: slotIndex[it.abilityId] }.minOrNull()
+                    ?: acting.firstOrNull { p.id in it.playerIds }?.let { slotIndex[it.id] }
+                if (n != null) out[p.id] = n
+            }
+            out
         }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Candlelit table: a warm vignette pooling at the centre of the
-            // circle, and a faint gold ring the seats appear to rest on.
             .drawBehind {
-                val w = this.size.width
-                val h = this.size.height
                 drawRect(
                     Brush.radialGradient(
                         colors = listOf(Twilight, NightSky),
                         center = center,
-                        radius = kotlin.math.max(w, h) / 1.4f,
+                        radius = kotlin.math.max(size.width, size.height) / 1.4f,
                     ),
                 )
             }
             .zoomGestures(zoom),
     ) {
-        CircleLayout(
-            modifier = Modifier
+        BoxWithConstraints(
+            Modifier
                 .fillMaxSize()
-                // Keep the top seat's name clear of the status line, and the
-                // bottom seat clear of the corner controls.
-                .padding(top = 30.dp, bottom = 12.dp)
-                .zoomTransform(zoom)
-                // The decorative ring follows the SAME ellipse the seats sit
-                // on — drawn after the layer so it zooms and pans with them.
-                .drawBehind {
-                    val w = this.size.width
-                    val h = this.size.height
-                    val childMax = SeatGeometry.childMax(state.players.size.coerceAtLeast(1), w.toInt(), h.toInt())
-                    val inset = childMax / 2f + 8.dp.toPx()
-                    val rx = w / 2f - inset
-                    val ry = h / 2f - inset
+                .padding(top = 8.dp, bottom = 12.dp)
+                .zoomTransform(zoom),
+        ) {
+            // The allocation is computed HERE, at composition time, so the
+            // seat cards can size themselves to it and the Layout below can
+            // measure them against exactly the same budget.
+            val alloc = remember(state.players.size, maxWidth, maxHeight) {
+                SeatGeometry.allocate(state.players.size, maxWidth.value, maxHeight.value)
+            }
+            Box(
+                Modifier.fillMaxSize().drawBehind {
+                    val rx = alloc.radiusXDp * density
+                    val ry = alloc.radiusYDp * density
                     if (rx > 0 && ry > 0) {
                         drawOval(
                             color = AgedGold.copy(alpha = 0.12f),
@@ -136,113 +464,48 @@ fun GrimoireScreen(
                             size = androidx.compose.ui.geometry.Size(rx * 2, ry * 2),
                             style = Stroke(width = 2.dp.toPx()),
                         )
-                        drawOval(
-                            color = AgedGold.copy(alpha = 0.05f),
-                            topLeft = androidx.compose.ui.geometry.Offset(center.x - rx * 0.55f, center.y - ry * 0.55f),
-                            size = androidx.compose.ui.geometry.Size(rx * 1.1f, ry * 1.1f),
-                            style = Stroke(width = 1.dp.toPx()),
-                        )
                     }
                 },
-        ) {
-            for (player in state.players) {
-                SeatView(
-                    viewModel = viewModel,
-                    state = state,
-                    player = player,
-                    compactLevel = when {
-                        state.players.size > 16 -> 2
-                        state.players.size > 12 -> 1
-                        else -> 0
-                    },
-                    wakeNumber = player.nightRoleId?.let { wakeOrder[it] },
-                    onClick = { onOpenSeat(player.id) },
-                )
-            }
-        }
-
-        // Standing facts every storyteller keeps re-deriving.
-        val ghostVotes = state.players.count { !it.alive && !it.ghostVoteUsed }
-        Text(
-            text = "${state.alivePlayers.size} alive · ${state.executionThreshold} to execute · $ghostVotes ghost vote${if (ghostVotes == 1) "" else "s"}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 6.dp),
-        )
-        // Quick edit access: bluffs on the left, fabled on the right — both
-        // tappable, both always one gesture away.
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 20.dp, start = 8.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .clickable(onClick = onOpenBluffs)
-                .padding(2.dp),
-        ) {
-            if (state.demonBluffIds.isEmpty()) {
-                Text(
-                    "+ bluffs",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                for (id in state.demonBluffIds) {
-                    CharacterToken(character = viewModel.characterById(id), size = 30.dp)
-                }
-            }
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 20.dp, end = 8.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .clickable(onClick = onOpenFabled)
-                .padding(2.dp),
-        ) {
-            if (state.fabledIds.isEmpty()) {
-                Text(
-                    "fabled +",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                for (id in state.fabledIds) {
-                    CharacterToken(character = viewModel.characterById(id), size = 30.dp)
+            )
+            CircleLayout(allocation = alloc, modifier = Modifier.fillMaxSize()) {
+                for ((index, player) in state.players.withIndex()) {
+                    SeatView(
+                        viewModel = viewModel,
+                        state = state,
+                        player = player,
+                        seatNumber = index + 1,
+                        tokens = tokens[player.id].orEmpty(),
+                        alloc = alloc,
+                        onBlock = player.id == onBlockId,
+                        dimmed = filtering && player.id !in matches,
+                        wakeNumber = wakeOrder[player.id],
+                        onClick = { onOpenSeat(player.id) },
+                        onLongClick = { onPeek(player.id) },
+                    )
                 }
             }
         }
 
         ZoomControls(
             state = zoom,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(12.dp),
+            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
         )
-
-        if (state.players.isEmpty()) {
-            Text(
-                text = "No seats yet — add players from setup.",
-                modifier = Modifier.align(Alignment.Center),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
 /**
  * Lays children out evenly around an ellipse inscribed in the available
- * space, first child at 12 o'clock, proceeding clockwise (matching how a
- * storyteller reads the room).
+ * space, first child at 12 o'clock, proceeding clockwise.
+ *
+ * Passing an [allocation] measures each seat against [SeatGeometry.allocate]'s
+ * budget, so a seat card can never be taller than the gap to its neighbour.
+ * The player-notes circle passes none and keeps the legacy `childMax * 2`
+ * budget.
  */
 @Composable
 fun CircleLayout(
     modifier: Modifier = Modifier,
+    allocation: SeatAllocation? = null,
     content: @Composable () -> Unit,
 ) {
     Layout(content = content, modifier = modifier) { measurables, constraints ->
@@ -253,13 +516,20 @@ fun CircleLayout(
             return@Layout layout(width, height) {}
         }
 
-        val childMax = SeatGeometry.childMax(count, width, height)
-        val childConstraints = Constraints(maxWidth = childMax, maxHeight = childMax * 2)
+        val childConstraints = if (allocation != null) {
+            Constraints(
+                maxWidth = (allocation.budgetWDp * density).toInt().coerceAtLeast(1),
+                maxHeight = (allocation.budgetHDp * density).toInt().coerceAtLeast(1),
+            )
+        } else {
+            val childMax = SeatGeometry.childMax(count, width, height)
+            Constraints(maxWidth = childMax, maxHeight = childMax * 2)
+        }
         val placeables = measurables.map { it.measure(childConstraints) }
 
-        val inset = childMax / 2f + 8.dp.toPx()
-        val radiusX = width / 2f - inset
-        val radiusY = height / 2f - inset
+        val legacyInset = SeatGeometry.childMax(count, width, height) / 2f + 8.dp.toPx()
+        val radiusX = allocation?.let { it.radiusXDp * density } ?: (width / 2f - legacyInset)
+        val radiusY = allocation?.let { it.radiusYDp * density } ?: (height / 2f - legacyInset)
         val angles = SeatGeometry.equalArcAngles(count, radiusX, radiusY)
 
         layout(width, height) {
@@ -277,16 +547,159 @@ fun CircleLayout(
 }
 
 /**
- * Shared seat-ring geometry: the layout and the decorative background use
- * the SAME ellipse, and seats are spread by equal ARC LENGTH so they don't
- * bunch at the flat top and bottom of a tall screen.
+ * What one seat card is allowed to be, in dp. Every field is derived from the
+ * SPACING between neighbours, which is what makes overlap impossible.
+ *
+ * Pure data, pure arithmetic, no Compose types — `tools/uicheck`'s test source
+ * set measures this directly (grimoire-and-seats "Tests to add" 1-3).
+ */
+data class SeatAllocation(
+    val count: Int,
+    val radiusXDp: Float,
+    val radiusYDp: Float,
+    /** Distance along the ellipse between two neighbouring seats. */
+    val spacingDp: Float,
+    /** The tallest a seat card may be. Always <= [spacingDp] * 0.96. */
+    val budgetHDp: Float,
+    val budgetWDp: Float,
+    val tokenDp: Float,
+    val nameDp: Float,
+    val pipRowDp: Float,
+    val characterNameDp: Float,
+    val pipDp: Float,
+    val pips: Int,
+    val showCharacterName: Boolean,
+    /**
+     * True when the pips are drawn ON the token instead of in their own row.
+     * Above ~17 seats the 40 dp token floor plus a pip row no longer fits the
+     * gap; overlaying keeps every pip visible rather than letting the row be
+     * measured to zero and vanish (grimoire-and-seats P0-2).
+     */
+    val pipsOverlayToken: Boolean,
+) {
+    /** The height the seat card actually occupies. Never exceeds [budgetHDp]. */
+    val cardHeightDp: Float
+        get() = nameDp + tokenDp + pipRowDp + SeatGeometry.GAP_DP +
+            (if (showCharacterName) characterNameDp else 0f)
+
+    /** The width the seat card actually occupies. Never exceeds [budgetWDp]. */
+    val cardWidthDp: Float get() = maxOf(tokenDp, pipDp * pips + 2f * (pips - 1).coerceAtLeast(0))
+}
+
+/**
+ * Shared seat-ring geometry.
+ *
+ * [allocate] replaces the old fixed-divisor `childMax`, which sized the seat
+ * box from the screen and never looked at how much room a seat actually had:
+ * from 12 players up a card with a reminder row was TALLER than the gap to its
+ * neighbour, and at 13-16 seats a dead player's reminder row was measured to
+ * zero and silently disappeared.
  */
 object SeatGeometry {
 
+    /** Player name line. */
+    const val NAME_DP: Float = 16f
+
+    /** Status pip row. */
+    const val PIP_ROW_DP: Float = 18f
+
+    /** Character name line, when it fits. */
+    const val CHAR_NAME_DP: Float = 14f
+
+    /** Breathing room inside the card. */
+    const val GAP_DP: Float = 4f
+
+    /** Token art floor and cap. Below the floor the art is not recognisable. */
+    const val TOKEN_MIN_DP: Float = 40f
+    const val TOKEN_MAX_DP: Float = 96f
+
+    /**
+     * The absolute floor, used only when [TOKEN_MIN_DP] genuinely will not fit
+     * — 19 seats on a 320 x 560 dp screen, say. A small token is bad; a token
+     * measured to zero and silently clipped is the bug WP10 exists to kill, so
+     * the card always shrinks rather than overflowing.
+     */
+    const val TOKEN_HARD_MIN_DP: Float = 28f
+
+    /** Legacy fixed-divisor seat box. Still used by the player-notes circle. */
     fun childMax(count: Int, width: Int, height: Int): Int = when {
         count <= 8 -> (min(width, height) / 3.5f).toInt()
         count <= 12 -> (min(width, height) / 4.4f).toInt()
         else -> (min(width, height) / 5.4f).toInt()
+    }
+
+    private fun childMaxDp(count: Int, widthDp: Float, heightDp: Float): Float = when {
+        count <= 8 -> min(widthDp, heightDp) / 3.5f
+        count <= 12 -> min(widthDp, heightDp) / 4.4f
+        else -> min(widthDp, heightDp) / 5.4f
+    }
+
+    /** Ramanujan's approximation — exact enough to the nearest tenth of a dp. */
+    fun ellipsePerimeter(rx: Float, ry: Float): Float {
+        if (rx <= 0f || ry <= 0f) return 0f
+        val a = maxOf(rx, ry).toDouble()
+        val b = minOf(rx, ry).toDouble()
+        val h = ((a - b) * (a - b)) / ((a + b) * (a + b))
+        return (PI * (a + b) * (1 + 3 * h / (10 + sqrt(4 - 3 * h)))).toFloat()
+    }
+
+    /**
+     * The spacing-driven seat allocator.
+     *
+     * ```
+     * spacing   = perimeter(rx, ry) / n
+     * budgetH   = min(spacing * 0.96, min(w, h) / 2.2)   // never overlap
+     * budgetW   = min(childMax(w), spacing * 1.7)        // flanks are vertical
+     * token     = (budgetH - name - pipRow - gap).coerceIn(40, 96)
+     * showName  = budgetH - (name + token + pipRow + gap) >= 14
+     * ```
+     *
+     * When the token floor plus a pip row no longer fits `budgetH`, the pips
+     * move ON TO the token and the card shrinks to fit rather than overflowing.
+     */
+    fun allocate(count: Int, widthDp: Float, heightDp: Float): SeatAllocation {
+        val n = count.coerceAtLeast(1)
+        val provisional = childMaxDp(n, widthDp, heightDp)
+        val inset = provisional / 2f + 8f
+        val rx = (widthDp / 2f - inset).coerceAtLeast(1f)
+        val ry = (heightDp / 2f - inset).coerceAtLeast(1f)
+        val spacing = ellipsePerimeter(rx, ry) / n
+        val budgetH = min(spacing * 0.96f, min(widthDp, heightDp) / 2.2f).coerceAtLeast(NAME_DP + TOKEN_MIN_DP)
+        val budgetW = min(provisional, spacing * 1.7f).coerceAtLeast(TOKEN_MIN_DP)
+
+        var pipRow = PIP_ROW_DP
+        var token = (budgetH - NAME_DP - pipRow - GAP_DP).coerceIn(TOKEN_MIN_DP, TOKEN_MAX_DP)
+        var overlay = false
+        if (NAME_DP + token + pipRow + GAP_DP > budgetH) {
+            // The pip row is what used to get squeezed to zero. Give it the
+            // token's own surface instead of dropping it.
+            overlay = true
+            pipRow = 0f
+            token = (budgetH - NAME_DP - GAP_DP).coerceIn(TOKEN_HARD_MIN_DP, TOKEN_MAX_DP)
+        }
+        token = min(token, budgetW - 2f).coerceAtLeast(TOKEN_HARD_MIN_DP)
+        val slack = budgetH - (NAME_DP + token + pipRow + GAP_DP)
+        val showName = slack >= CHAR_NAME_DP
+        val pipDp = if (overlay) 16f else PIP_ROW_DP
+        // Pips must not run wider than the card: 2 dp of gap between each.
+        val pipBudget = ((budgetW + 2f) / (pipDp + 2f)).toInt().coerceIn(1, if (n <= 12) 5 else 4)
+
+        return SeatAllocation(
+            count = n,
+            radiusXDp = rx,
+            radiusYDp = ry,
+            spacingDp = spacing,
+            budgetHDp = budgetH,
+            budgetWDp = budgetW,
+            tokenDp = token,
+            nameDp = NAME_DP,
+            pipRowDp = pipRow,
+            characterNameDp = CHAR_NAME_DP,
+            pipDp = pipDp,
+            pips = pipBudget,
+            showCharacterName = showName,
+            pipsOverlayToken = overlay,
+        )
     }
 
     /**
@@ -296,14 +709,13 @@ object SeatGeometry {
     fun equalArcAngles(count: Int, radiusX: Float, radiusY: Float): List<Double> {
         if (count <= 0) return emptyList()
         val samples = 1440
-        val step = 2 * kotlin.math.PI / samples
-        // Cumulative arc length from the top of the ellipse.
+        val step = 2 * PI / samples
         val cumulative = DoubleArray(samples + 1)
         for (i in 1..samples) {
-            val t = -kotlin.math.PI / 2 + step * (i - 0.5)
+            val t = -PI / 2 + step * (i - 0.5)
             val dx = -radiusX * kotlin.math.sin(t)
             val dy = radiusY * kotlin.math.cos(t)
-            cumulative[i] = cumulative[i - 1] + kotlin.math.sqrt(dx * dx + dy * dy) * step
+            cumulative[i] = cumulative[i - 1] + sqrt(dx * dx + dy * dy) * step
         }
         val total = cumulative[samples]
         val angles = ArrayList<Double>(count)
@@ -311,68 +723,50 @@ object SeatGeometry {
         for (k in 0 until count) {
             val target = total * k / count
             while (cursor < samples && cumulative[cursor + 1] < target) cursor++
-            angles.add(-kotlin.math.PI / 2 + step * cursor)
+            angles.add(-PI / 2 + step * cursor)
         }
         return angles
     }
 }
 
-/** One seat: name, token (with shroud when dead), ghost vote, reminders. */
+/** One seat on the circle: name, token, shroud, status pips. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SeatView(
     viewModel: GameViewModel,
     state: GameState,
     player: Player,
-    compactLevel: Int,
+    seatNumber: Int,
+    tokens: List<RenderedToken>,
+    alloc: SeatAllocation,
+    onBlock: Boolean,
+    dimmed: Boolean,
     wakeNumber: Int?,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val character = viewModel.characterById(player.characterId)
     val isEvil = player.isEvil(viewModel::characterById)
-    val impaired = com.clocktower.engine.StatusEffects.isImpaired(state, viewModel::characterById, player)
-    val seatDescription = buildString {
-        append(player.name)
-        append(", ")
-        append(character?.name ?: "no character assigned")
-        player.shownCharacterId?.let { shownId ->
-            append(", shown as ")
-            append(viewModel.characterById(shownId)?.name ?: shownId)
-        }
-        append(if (player.alive) ", alive" else ", dead")
-        if (character != null) append(if (isEvil) ", evil" else ", good")
-        if (player.isTraveller) append(", traveller")
-        if (!player.alive) {
-            append(if (player.ghostVoteUsed) ", ghost vote spent" else ", ghost vote available")
-        }
-        if (impaired) append(", drunk or poisoned")
-        if (player.reminders.isNotEmpty()) {
-            append(", reminders: ")
-            append(player.reminders.joinToString { it.label })
-        }
-    }
-    // Larger faces: the art should be readable across the table.
-    val tokenSize = when (compactLevel) {
-        2 -> 56.dp
-        1 -> 62.dp
-        else -> 74.dp
-    }
-    val visibleReminders = if (compactLevel == 0) 4 else 2
-    val reminderSize = if (compactLevel == 0) 26.dp else 22.dp
+    val pips = visiblePips(tokens.map { it.group }, alloc.pips)
+    val alpha = if (dimmed) 0.28f else 1f
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .wrapContentSize()
-            .clip(RoundedCornerShape(12.dp))
+            // NO .clip(): a clipped Column is how tokens used to be cut off
+            // without so much as a "+N". The allocator guarantees the fit.
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                contentDescription = seatDescription
+                contentDescription = seatDescription(state, viewModel, player, seatNumber, character, tokens)
             }
-            .clickable(onClick = onClick)
-            .padding(2.dp),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = "Show every token on this seat",
+            ),
     ) {
         Text(
-            // The storyteller sees true alignment at a glance: evil names in
-            // ember red, good in parchment (dimmed when dead).
             text = player.name,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
@@ -380,29 +774,38 @@ private fun SeatView(
                 !player.alive -> MaterialTheme.colorScheme.onSurfaceVariant
                 isEvil && character != null -> EmberRed
                 else -> MaterialTheme.colorScheme.onBackground
-            },
+            }.copy(alpha = alpha),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = alloc.budgetWDp.dp),
         )
-        Spacer(Modifier.height(2.dp))
         Box(contentAlignment = Alignment.Center) {
-            CharacterToken(
-                character = character,
-                size = tokenSize,
-                dimmed = !player.alive,
-            )
+            Box(
+                modifier = if (onBlock) {
+                    Modifier.border(2.dp, OnBlockGold, CircleShape).padding(2.dp)
+                } else {
+                    Modifier
+                },
+            ) {
+                CharacterToken(
+                    character = character,
+                    size = alloc.tokenDp.dp,
+                    dimmed = !player.alive || dimmed,
+                )
+            }
             if (!player.alive) {
-                // The shroud: a dark drape over the top of the token.
+                val shroudW = (alloc.tokenDp * 0.46f).dp
+                val shroudH = (alloc.tokenDp * 0.62f).dp
                 Box(
                     modifier = Modifier
-                        .size(width = 34.dp, height = 46.dp)
+                        .size(width = shroudW, height = shroudH)
                         .align(Alignment.TopCenter)
-                        .clip(RoundedCornerShape(bottomStart = 17.dp, bottomEnd = 17.dp))
-                        .background(Color(0xE6151020))
+                        .clip(RoundedCornerShape(bottomStart = shroudW / 2, bottomEnd = shroudW / 2))
+                        .background(ShroudBlack)
                         .border(
                             1.dp,
                             Color.White.copy(alpha = 0.15f),
-                            RoundedCornerShape(bottomStart = 17.dp, bottomEnd = 17.dp),
+                            RoundedCornerShape(bottomStart = shroudW / 2, bottomEnd = shroudW / 2),
                         ),
                 )
             }
@@ -410,85 +813,358 @@ private fun SeatView(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .size(16.dp)
+                        .size(18.dp)
                         .clip(CircleShape)
                         .background(AgedGold),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("T", style = MaterialTheme.typography.labelSmall, color = Color.Black)
+                    Text("T", fontSize = MIN_TEXT_SP.sp, color = Color.Black, fontWeight = FontWeight.Bold)
                 }
             }
-            if (impaired) {
-                // Drawn badge, not an emoji: a small poison-green dot.
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF4C7A3D))
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text("!", style = MaterialTheme.typography.labelSmall, color = Color.White)
-                }
-            }
-            if (wakeNumber != null && player.alive) {
+            if (wakeNumber != null) {
+                // Shown for dead seats too: several characters act while dead.
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .size(18.dp)
+                        .size(20.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF2A2040)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "$wakeNumber",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = AgedGold,
-                    )
+                    Text("$wakeNumber", fontSize = MIN_TEXT_SP.sp, color = AgedGold, fontWeight = FontWeight.Bold)
                 }
             }
+            if (alloc.pipsOverlayToken) {
+                PipStrip(
+                    viewModel = viewModel,
+                    tokens = tokens,
+                    pips = pips,
+                    pipDp = alloc.pipDp,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
         }
-        // The character's full name, never truncated: two lines allowed.
-        if (character != null) {
+        if (!alloc.pipsOverlayToken) {
+            PipStrip(
+                viewModel = viewModel,
+                tokens = tokens,
+                pips = pips,
+                pipDp = alloc.pipDp,
+                modifier = Modifier.height(alloc.pipRowDp.dp),
+            )
+        }
+        if (alloc.showCharacterName && character != null) {
             Text(
                 text = character.name,
-                fontSize = (tokenSize.value / 6f).coerceIn(9f, 13f).sp,
-                lineHeight = (tokenSize.value / 5.4f).coerceIn(10f, 14f).sp,
+                fontSize = MIN_TEXT_SP.sp,
+                lineHeight = (MIN_TEXT_SP + 2f).sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
-                maxLines = 2,
-                color = Parchment.copy(alpha = if (player.alive) 0.95f else 0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = Parchment.copy(alpha = (if (player.alive) 0.95f else 0.5f) * alpha),
+                modifier = Modifier.widthIn(max = alloc.budgetWDp.dp),
             )
         }
-        if (!player.alive) {
+    }
+}
+
+/** Status pips in PRIORITY order, with a tappable overflow count. */
+@Composable
+private fun PipStrip(
+    viewModel: GameViewModel,
+    tokens: List<RenderedToken>,
+    pips: PipRow,
+    pipDp: Float,
+    modifier: Modifier = Modifier,
+) {
+    if (pips.shown.isEmpty() && pips.hidden == 0) return
+    val byGroup = tokens.groupBy { it.group }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier,
+    ) {
+        val used = LinkedHashMap<EffectGroup, Int>()
+        for (group in pips.shown) {
+            val i = used[group] ?: 0
+            used[group] = i + 1
+            val token = byGroup[group]?.getOrNull(i)
+            StatusPip(
+                group = group,
+                size = pipDp.dp,
+                ringColor = viewModel.characterById(token?.sourceId)?.team?.color ?: Color.Transparent,
+                suspended = token?.suspended == true,
+                derived = token?.derived == true,
+            )
+        }
+        if (pips.hidden > 0) {
             Text(
-                text = if (player.ghostVoteUsed) "no vote" else "ghost vote",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (player.ghostVoteUsed) MaterialTheme.colorScheme.onSurfaceVariant else AgedGold,
+                "+${pips.hidden}",
+                fontSize = MIN_TEXT_SP.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (player.reminders.isNotEmpty()) {
-            Spacer(Modifier.height(2.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                // Newly placed nightly reminders are the ones the
-                // storyteller most urgently needs to see at a glance.
-                for (reminder in player.reminders.takeLast(visibleReminders)) {
-                    val source = viewModel.characterById(reminder.sourceId)
-                    ReminderToken(
-                        label = reminder.label,
-                        color = source?.team?.color ?: BloodRed,
-                        size = reminderSize,
-                    )
-                }
-                if (player.reminders.size > visibleReminders) {
+    }
+}
+
+/** Screen-reader description: still richer than what a sighted user sees. */
+private fun seatDescription(
+    state: GameState,
+    viewModel: GameViewModel,
+    player: Player,
+    seatNumber: Int,
+    character: Character?,
+    tokens: List<RenderedToken>,
+): String = buildString {
+    append("Seat $seatNumber, ")
+    append(player.name)
+    append(", ")
+    append(character?.name ?: "no character assigned")
+    player.shownCharacterId?.let { append(", shown as ${viewModel.characterById(it)?.name ?: it}") }
+    append(if (player.alive) ", alive" else ", dead")
+    if (character != null) append(if (player.isEvil(viewModel::characterById)) ", evil" else ", good")
+    if (player.isTraveller) append(", traveller")
+    if (!player.alive) append(if (player.ghostVoteUsed) ", ghost vote spent" else ", ghost vote available")
+    if (Status.isImpaired(state, viewModel::characterById, player.id)) append(", drunk or poisoned")
+    if (tokens.isNotEmpty()) {
+        append(", tokens: ")
+        append(tokens.joinToString { "${it.label}${if (it.suspended) " (suspended)" else ""}" })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Board view — for READING. Nothing here is ever truncated.
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun BoardView(
+    viewModel: GameViewModel,
+    state: GameState,
+    tokens: Map<Long, List<RenderedToken>>,
+    onBlockId: Long?,
+    matches: Set<Long>,
+    filtering: Boolean,
+    onOpenSeat: (Long) -> Unit,
+    onPeek: (Long) -> Unit,
+) {
+    val rows = if (filtering) state.players.filter { it.id in matches } else state.players
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(rows, key = { "board-${it.id}" }) { player ->
+            val index = state.players.indexOfFirst { it.id == player.id } + 1
+            BoardRow(
+                viewModel = viewModel,
+                state = state,
+                player = player,
+                seatNumber = index,
+                tokens = tokens[player.id].orEmpty(),
+                onBlock = player.id == onBlockId,
+                onClick = { onOpenSeat(player.id) },
+                onLongClick = { onPeek(player.id) },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        if (rows.isEmpty()) {
+            item {
+                Text(
+                    "No seat matches that filter.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@Composable
+private fun BoardRow(
+    viewModel: GameViewModel,
+    state: GameState,
+    player: Player,
+    seatNumber: Int,
+    tokens: List<RenderedToken>,
+    onBlock: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val character = viewModel.characterById(player.characterId)
+    val isEvil = player.isEvil(viewModel::characterById)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = "Show every token on this seat",
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "$seatNumber",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(22.dp),
+            )
+            CharacterToken(character = character, size = 32.dp, dimmed = !player.alive)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "+${player.reminders.size - visibleReminders}",
-                        style = MaterialTheme.typography.labelSmall,
+                        player.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (isEvil && character != null) EmberRed else MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (onBlock) {
+                        Spacer(Modifier.width(6.dp))
+                        Text("on the block", style = MaterialTheme.typography.labelMedium, color = OnBlockGold)
+                    }
+                }
+                Text(
+                    buildString {
+                        append(character?.name ?: "No character")
+                        character?.team?.let { append(" · ${it.displayName}") }
+                        player.shownCharacterId?.let {
+                            append(" · shown as ${viewModel.characterById(it)?.name ?: it}")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                if (player.alive) "alive" else deathSummary(state, viewModel::characterById, player.id),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (player.alive) MaterialTheme.colorScheme.onSurfaceVariant else EmberRed,
+                textAlign = TextAlign.End,
+                modifier = Modifier.widthIn(max = 140.dp),
+            )
+        }
+        // Every token, in full text, with its source and expiry — the whole
+        // reason the Board exists.
+        if (tokens.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(start = 22.dp),
+            ) {
+                for (token in tokens) TokenLine(viewModel, token)
+            }
+        }
+        player.notes.lastOrNull()?.let {
+            Text(
+                "note: \"${it.text}\"",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 22.dp),
+            )
+        }
+    }
+}
+
+/** One token as a full-text line: glyph, label, source, expiry. */
+@Composable
+fun TokenLine(viewModel: GameViewModel, token: RenderedToken, modifier: Modifier = Modifier) {
+    val source = viewModel.characterById(token.sourceId)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        StatusPip(
+            group = token.group,
+            size = 16.dp,
+            ringColor = source?.team?.color ?: Color.Transparent,
+            suspended = token.suspended,
+            derived = token.derived,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            buildString {
+                append(token.label)
+                if (token.suspended) append(" (turned over)")
+                source?.let { append(" · ${it.name}") }
+                if (token.expiryText.isNotEmpty()) append(" · ${token.expiryText}")
+                if (token.derived) append(" · no physical token")
+                if (token.note.isNotEmpty()) append(" — ${token.note}")
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = token.group.color,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Token peek — the one-hand "move a token" gesture the physical grimoire has
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun TokenPeek(
+    viewModel: GameViewModel,
+    state: GameState,
+    playerId: Long,
+    tokens: List<RenderedToken>,
+    onOpenSeat: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val player = state.player(playerId) ?: return
+    var moving by remember { mutableStateOf<RenderedToken?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tokens on ${player.name}") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
+                val target = moving
+                if (target != null) {
+                    Text("Move \"${target.label}\" to…", style = MaterialTheme.typography.titleSmall)
+                    FlowRowSeats(state, exclude = playerId) { other ->
+                        viewModel.moveToken(playerId, other, target)
+                        moving = null
+                    }
+                } else if (tokens.isEmpty()) {
+                    Text("No tokens on this seat.", style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text(
+                        "Suspend turns a token over — the physical convention — so it stops " +
+                            "counting without being lost.",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    for (token in tokens) {
+                        Column {
+                            TokenLine(viewModel, token)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                token.effectId?.let { id ->
+                                    TextButton(onClick = { viewModel.suspendEffect(id, !token.suspended) }) {
+                                        Text(if (token.suspended) "Restore" else "Suspend")
+                                    }
+                                }
+                                TextButton(onClick = { moving = token }) { Text("Move") }
+                                TextButton(onClick = { viewModel.removeRenderedToken(playerId, token) }) {
+                                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        },
+        confirmButton = { TextButton(onClick = onOpenSeat) { Text("Open seat") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FlowRowSeats(state: GameState, exclude: Long, onPick: (Long) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (p in state.seats) {
+            if (p.id == exclude) continue
+            TextButton(onClick = { onPick(p.id) }) { Text(p.name) }
         }
     }
 }
