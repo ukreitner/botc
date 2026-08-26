@@ -242,6 +242,21 @@ object NominationModel {
         else -> "${player.name} may not vote."
     }
 
+    /**
+     * How wide one seat may be, in dp, so a twenty-seat ring does not overlap
+     * itself: the arc each seat owns, clamped so a seven-seat table does not
+     * grow absurd chips and a twenty-seat one still fits a short name.
+     */
+    fun seatWidthDp(count: Int, boxWidthDp: Float): Float {
+        if (count <= 0 || boxWidthDp <= 0f) return MAX_SEAT_DP
+        val circumference = 2f * PI.toFloat() * RADIUS * boxWidthDp
+        return (circumference / count).coerceIn(MIN_SEAT_DP, MAX_SEAT_DP)
+    }
+
     /** How far out from the centre the seats sit, as a fraction of the box. */
-    private const val RADIUS = 0.40f
+    const val RADIUS: Float = 0.40f
+
+    /** Never narrower than this: a name plus a seat number has to fit (§3.4.7). */
+    const val MIN_SEAT_DP: Float = 46f
+    const val MAX_SEAT_DP: Float = 78f
 }

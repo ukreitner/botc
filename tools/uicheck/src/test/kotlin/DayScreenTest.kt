@@ -247,6 +247,27 @@ class DayScreenTest {
     }
 
     @Test
+    fun `the ring shrinks its seats rather than overlapping them`() {
+        val phone = 360f
+        val seven = NominationModel.seatWidthDp(7, phone)
+        val twelve = NominationModel.seatWidthDp(12, phone)
+        val twenty = NominationModel.seatWidthDp(20, phone)
+
+        assertTrue("a bigger table means narrower seats", seven > twelve && twelve > twenty)
+        assertTrue("never below the text floor: $twenty", twenty >= NominationModel.MIN_SEAT_DP)
+        assertTrue("never absurd at 7: $seven", seven <= NominationModel.MAX_SEAT_DP)
+
+        // No overlap at 12 — the arc each seat owns is at least its width.
+        val circumference = 2 * Math.PI * NominationModel.RADIUS * phone
+        assertTrue(
+            "12 seats fit round the ring: $twelve vs ${circumference / 12}",
+            twelve <= circumference / 12 + 0.01,
+        )
+        // Degenerate tables must not divide by zero.
+        assertEquals(NominationModel.MAX_SEAT_DP, NominationModel.seatWidthDp(0, phone), 0.01f)
+    }
+
+    @Test
     fun `hands are counted clockwise from the nominee's left`() {
         val state = day()
         val fay = seat(state, "Fay")

@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.clocktower.engine.Briefing
@@ -175,6 +176,7 @@ private fun SeatRing(
     ) {
         val width = maxWidth
         val height = maxHeight
+        val seatWidth = NominationModel.seatWidthDp(ring.size, width.value).dp
         for (seat in ring) {
             val tint = when (seat.pick) {
                 SeatPick.NOMINATOR -> AgedGold
@@ -188,10 +190,10 @@ private fun SeatRing(
             Box(
                 Modifier
                     .offset(
-                        x = width * seat.x - SEAT_WIDTH / 2,
+                        x = width * seat.x - seatWidth / 2,
                         y = height * seat.y - SEAT_HEIGHT / 2,
                     )
-                    .size(width = SEAT_WIDTH, height = SEAT_HEIGHT),
+                    .size(width = seatWidth, height = SEAT_HEIGHT),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(
@@ -223,6 +225,7 @@ private fun SeatRing(
                             },
                             color = tint,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
                         )
                         Text(
@@ -243,10 +246,20 @@ private fun SeatRing(
                 }
             }
         }
+        // The centre carries the pair under construction, so the storyteller
+        // can read back what they are about to call without looking away.
+        val nominator = ring.firstOrNull { it.pick == SeatPick.NOMINATOR }
+        val nominee = ring.firstOrNull { it.pick == SeatPick.NOMINEE }
         Text(
-            "tap = pick · long labels are seat numbers",
-            style = MaterialTheme.typography.labelSmall,
-            color = FadedInk,
+            when {
+                nominator != null && nominee != null -> "${nominator.name} » ${nominee.name}"
+                nominator != null -> "${nominator.name} nominates…"
+                else -> "who nominates?"
+            },
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = if (nominee != null) EmberRed else FadedInk,
+            textAlign = TextAlign.Center,
             modifier = Modifier.align(Alignment.Center),
         )
     }
@@ -559,6 +572,5 @@ private fun VotePanel(
 
 /** 48 sp: readable at arm's length while counting hands (§F). */
 private const val TALLY_SP = 48f
-private val RING_HEIGHT = 260.dp
-private val SEAT_WIDTH = 74.dp
+private val RING_HEIGHT = 240.dp
 private val SEAT_HEIGHT = 40.dp

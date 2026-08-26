@@ -41,6 +41,7 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.DayRules
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
+import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Nomination
 import com.clocktower.engine.NominationResult
@@ -613,10 +614,13 @@ private fun NominationRow(
     var showVoters by rememberSaveable(index) { mutableStateOf(false) }
     val onBlockId = DayRules.aboutToDie(state)
     val passed = nomination.result == NominationResult.ABOUT_TO_DIE
+    val lookup: (String) -> Character? = viewModel::characterById
+    // The Butcher's second execution is legal, so "spent" alone must not hide
+    // the button — `nominationsClosed` already accounts for it.
     val executable = nominee?.alive == true && when {
         nomination.isExile -> passed
         else -> passed && nomination.nomineeId == onBlockId &&
-            !DayRules.executionSpent(state)
+            !DayRules.nominationsClosed(state, lookup)
     }
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -742,6 +746,16 @@ private fun DuskBody(
                 fontWeight = FontWeight.Bold,
                 color = EmberRed,
             )
+            // The preview is the funnel's own verdict, so a Devil's Advocate is
+            // visible BEFORE the button rather than after the death (finding 27).
+            val preview = viewModel.executionPreview(state, onBlock.id)
+            if (preview !is KillOutcome.Dies) {
+                Text(
+                    previewNote(preview),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PaleGold,
+                )
+            }
             Button(
                 onClick = { onExecute(onBlock.id) },
                 modifier = Modifier.fillMaxWidth(),
@@ -769,6 +783,17 @@ private fun DuskBody(
         )
     }
     Spacer(Modifier.height(2.dp))
+}
+
+/** One line of warning above the dusk card's Execute button. */
+private fun previewNote(preview: KillOutcome): String = when (preview) {
+    is KillOutcome.Dies -> preview.reason
+    is KillOutcome.Prevented -> preview.reason
+    is KillOutcome.Spends -> "They survive — the ability is spent."
+    is KillOutcome.RegistersDead -> preview.reason
+    is KillOutcome.Redirect -> preview.reason
+    is KillOutcome.Choice -> preview.question
+    KillOutcome.AlreadyDead -> "They are already dead."
 }
 
 /** The nomination that put this seat on the block today. */
