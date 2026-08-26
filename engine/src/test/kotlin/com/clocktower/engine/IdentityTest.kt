@@ -317,6 +317,45 @@ class IdentityTest {
         assertEquals(state, Identity.changeCharacter(state, lookup, 99, "empath", ChangeReason.STORYTELLER))
     }
 
+    // ---- dealing and seat editing ----
+
+    @Test
+    fun `dealing places the declared identity tokens and queues every reveal`() {
+        val state = Seats.newGame(script, (1..5).map { "P$it" })
+        val dealt = Seats.deal(
+            state,
+            listOf("imp", "poisoner", "drunk", "chef", "empath"),
+            kotlin.random.Random(4),
+            lookup,
+        )
+        val drunkSeat = assertNotNull(dealt.players.first { it.characterId == "drunk" })
+        assertTrue(
+            drunkSeat.reminders.any { Tokens.key(it) == Tokens.key("drunk", "Is The Drunk") },
+            "official Title Case, straight out of characters.json",
+        )
+        assertEquals(5, Identity.pendingReveals(dealt).size)
+        assertEquals(
+            setOf(ChangeReason.DEAL),
+            dealt.identityLog.map { it.reason }.toSet(),
+        )
+    }
+
+    @Test
+    fun `re-assigning a seat drops the old character's tokens and belief note`() {
+        var state = game("drunk", "imp", "chef")
+        state = Seats.setShownCharacter(state, 0, "monk")
+        state = Effects.addReminder(state, 0, PlacedReminder("drunk", "Is The Drunk"))
+        state = Effects.addReminder(state, 0, PlacedReminder("poisoner", "Poisoned"))
+        state = Seats.setNote(state, 0, "Believes they are the Monk")
+
+        state = Seats.assignCharacter(state, 0, "undertaker")
+        val seat = assertNotNull(state.player(0))
+        assertNull(seat.shownCharacterId)
+        assertTrue(seat.reminders.none { it.sourceId == "drunk" })
+        assertTrue(seat.reminders.any { it.sourceId == "poisoner" }, "foreign tokens stay")
+        assertTrue(seat.notes.isEmpty())
+    }
+
     @Test
     fun `swapCharacters moves characters but never the believed token`() {
         var state = game("imp", "mayor", "chef")
