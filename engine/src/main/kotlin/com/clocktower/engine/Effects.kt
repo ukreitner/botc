@@ -572,7 +572,7 @@ internal object Standing {
                 "drunk", "marionette", "lunatic" ->
                     add(innate(p, EffectKind.NO_ABILITY, id, null, state, endsWithSource = false))
                 "lleech" -> {
-                    val host = hostOf(state, p) ?: continue
+                    val host = hostOf(state) ?: continue
                     add(
                         innate(p, EffectKind.DEATH_TIED_TO, id, p.id, state)
                             .copy(linkedPlayerId = host),
@@ -747,13 +747,13 @@ internal object Standing {
     }
 
     /** The Lleech's host: the seat carrying its `Poisoned` token or effect. */
-    private fun hostOf(state: GameState, lleech: Player): Long? {
+    private fun hostOf(state: GameState): Long? {
         state.effects.firstOrNull {
             it.sourceCharacterId == "lleech" && it.kind == EffectKind.POISONED
         }?.let { return it.targetId }
         return state.players.firstOrNull { p ->
             p.reminders.any { Tokens.key(it) == Tokens.key("lleech", "Poisoned") }
-        }?.id ?: lleech.id.takeIf { false }
+        }?.id
     }
 
     /**
