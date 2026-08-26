@@ -384,7 +384,10 @@ fun SetupScreen(
                 }
                 outsiderBranch?.let { viewModel.setDecisionNumber(Decisions.OUTSIDER_BRANCH, it) }
                 if (deal) {
-                    val dealt = bagIds.filter { it !in seatlessIds }
+                    // Deal exactly the resolved, seat-filling tokens: `Seats.deal`
+                    // REQUIRES one per non-Traveller seat and throws otherwise, so
+                    // never hand it a raw id list that might not resolve.
+                    val dealt = selected.map { it.id }.filter { it !in seatlessIds }
                     viewModel.deal(dealt, Time.epochMillis())
                     handingOut = true
                 } else {
