@@ -87,3 +87,4 @@ WP7-EXP-O DONE + MERGED (11/11, 40 tests). Suite 468/0/8. Findings filed in FOLL
 W4-followups MERGED (per-seat checklist ids, tokenShownAt, label gate LIVE). WP7-TB DONE + MERGED (22/22, 30 tests). Gate "view models contain no GameActions call" still 2 hits (the tolerated newGame) — flip only when newGame is exposed through GameActionsApi (assign to WP12 pass 2 or WP8).
 WP7-FAB DONE + MERGED (25/25, 24 tests). Fabled rows are mostly inert until the engine walks state.fabled — top item for the post-W4 schema agent.
 WP7-EXP-M DONE + MERGED (15/15, 38 tests).
+WP7-TRAV DONE + MERGED (18/18, 31 tests).
