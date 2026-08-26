@@ -273,6 +273,15 @@ class DeathsTest {
         )
         assertIs<KillOutcome.Redirect>(redirect.outcome)
         assertTrue(redirect.state.players.first { it.id == state.seat("mayor") }.alive)
+        // The bounce OFFERS every other seat; it must not kill them all.
+        assertEquals(4, (redirect.outcome as KillOutcome.Redirect).to.size)
+        assertTrue(redirect.state.deaths.isEmpty(), "the storyteller still has to pick one")
+        assertEquals(state.alivePlayers.size, redirect.state.alivePlayers.size)
+
+        // Naming the seat settles it.
+        val settled = Deaths.attempt(state, lookup, 2L, demonKill)
+        assertIs<KillOutcome.Dies>(settled.outcome)
+        assertEquals(1, settled.state.deaths.size)
     }
 
     @Test

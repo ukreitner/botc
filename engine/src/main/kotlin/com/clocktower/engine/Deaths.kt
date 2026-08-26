@@ -485,14 +485,18 @@ object Deaths {
         }
 
         is KillOutcome.Redirect -> {
-            var next = state
-            var first: DeathEvent? = null
-            for (id in outcome.to) {
-                val r = attempt(next, lookup, id, cause.copy(sourcePlayerId = cause.sourcePlayerId))
-                next = r.state
-                if (first == null) first = r.event
+            // `to` is a CANDIDATE list when the storyteller still has to pick: the
+            // Mayor's bounce offers every other seat, and killing all of them would
+            // end the game. Only a settled redirect — one named seat, or a mandatory
+            // substitution like the Scapegoat's — is applied here.
+            val settled = outcome.to.singleOrNull()
+                ?: outcome.to.takeIf { outcome.mandatory && it.size == 1 }?.single()
+            if (settled == null) {
+                DeathAttempt(state, outcome)
+            } else {
+                val r = attempt(state, lookup, settled, cause)
+                DeathAttempt(r.state, outcome, r.event, r.prompts)
             }
-            DeathAttempt(next, outcome, first)
         }
 
         is KillOutcome.Dies -> {
