@@ -250,7 +250,7 @@ data class NightPlan(
             return NightPlan(
                 cycle = state.cycle,
                 isFirstNight = ctx.isFirstNight,
-                steps = (base + inserted).sortedBy { it.order },
+                steps = restamp(ctx, base, base + inserted).sortedBy { it.order },
             )
         }
 
@@ -750,11 +750,6 @@ data class NightPlan(
         private fun insertions(ctx: PlanContext, base: List<NightStep>): List<NightStep> {
             val out = mutableListOf<NightStep>()
             val taken = base.map { it.key.token }.toMutableSet()
-            // With nothing left to run, "after the cursor" means after the sheet.
-            val cursorAt = base.firstOrNull { it.required && it.key.token !in ctx.state.nightStepsDone }
-                ?.order
-                ?: ((base.lastOrNull()?.order ?: 0.0) + 1)
-
             for (prompt in Prompts.forTonight(ctx.state)) {
                 val step = promptStep(ctx, prompt, taken) ?: continue
                 out += step
@@ -769,17 +764,47 @@ data class NightPlan(
                     taken += step.key.token
                 }
             }
-            return out.mapIndexed { n, step ->
-                if (step.order >= cursorAt) {
+            return out
+        }
+
+        /**
+         * The insert-after-cursor rule (§2.10 step 5): a row that became true
+         * AFTER its own slot went by is re-stamped just after the cursor and
+         * badged — which is exactly what the Abilities page licenses. A mid-night
+         * Scarlet Woman promotion is the canonical case: the Demon's slot has
+         * already passed when the promotion happens.
+         */
+        private fun restamp(
+            ctx: PlanContext,
+            base: List<NightStep>,
+            steps: List<NightStep>,
+        ): List<NightStep> {
+            val changed = ctx.changedTonight.map { it.playerId }.toSet()
+            if (changed.isEmpty() && steps.none { it.key.variant != StepVariant.NORMAL }) {
+                return steps
+            }
+            val done = ctx.state.nightStepsDone
+            // With nothing left to run, "after the cursor" means after the sheet.
+            val cursorAt = base.firstOrNull { it.required && it.key.token !in done }?.order
+                ?: ((base.lastOrNull()?.order ?: 0.0) + 1)
+            var n = 0
+            return steps.map { step ->
+                val dynamic = step.key.variant != StepVariant.NORMAL ||
+                    step.promptId != null ||
+                    step.holderId in changed
+                if (!dynamic || step.order >= cursorAt || step.key.token in done) {
                     step
                 } else {
                     step.copy(
-                        order = cursorAt + 0.5 + n * 0.01,
-                        badges = step.badges + "out of order — this became true after their slot",
+                        order = cursorAt + 0.5 + (n++) * 0.01,
+                        badges = step.badges + OUT_OF_ORDER,
                     )
                 }
             }
         }
+
+        /** Badge on a row the night order has already walked past. */
+        const val OUT_OF_ORDER = "out of order — this became true after their slot"
 
         /** A `Prompt(at = TONIGHT)` becomes a step at its `stepSlotId` (§2.10 step 4). */
         private fun promptStep(
