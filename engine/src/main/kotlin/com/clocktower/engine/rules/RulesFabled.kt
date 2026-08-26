@@ -73,6 +73,10 @@ import com.clocktower.engine.WakePredicate
  *
  * ## Conventions
  *
+ * Every token below declares `endsWithSource = false`: a Fabled cannot die and
+ * cannot lose its ability, so nothing it places may be torn down because its
+ * "source seat" stopped working. (There is no source seat — a Fabled holds none.)
+ *
  * Official Title Case labels only, with `copies` matching `characters.json`
  * exactly (`TokensTest` fails the build otherwise). Characters whose official
  * reminder set is empty declare no tokens at all, even where the audit digest
@@ -200,8 +204,14 @@ private fun angel() = CharacterRule(
     tokens = listOf(
         // NOT SAFE_FROM_DEMON. The protectee dies normally; the Angel punishes
         // whoever caused it. Removed by hand, or in one tap on the final day.
-        TokenRule("angel", "Protected", effect = null, until = Until.FOREVER, copies = 2),
-        TokenRule("angel", "Something Bad", effect = null, until = Until.FOREVER),
+        TokenRule(
+            "angel", "Protected", effect = null, until = Until.FOREVER, copies = 2,
+            endsWithSource = false,
+        ),
+        TokenRule(
+            "angel", "Something Bad", effect = null, until = Until.FOREVER,
+            endsWithSource = false,
+        ),
     ),
     firstNight = NightRule(
         gate = fabledAlwaysFires(),
@@ -318,7 +328,7 @@ private fun deusExFiasco() = CharacterRule(
     tokens = listOf(
         TokenRule(
             "deusexfiasco", "Whoopsie", effect = null, until = Until.FOREVER,
-            grimoireCentre = true,
+            endsWithSource = false, grimoireCentre = true,
         ),
     ),
     day = referenceNote(
@@ -423,8 +433,14 @@ private fun doomsayer() = CharacterRule(
 private fun duchess() = CharacterRule(
     id = "duchess",
     tokens = listOf(
-        TokenRule("duchess", "Visitor", effect = null, until = Until.DAWN, copies = 2),
-        TokenRule("duchess", "False Info", effect = null, until = Until.DAWN),
+        TokenRule(
+            "duchess", "Visitor", effect = null, until = Until.DAWN, copies = 2,
+            endsWithSource = false,
+        ),
+        TokenRule(
+            "duchess", "False Info", effect = null, until = Until.DAWN,
+            endsWithSource = false,
+        ),
     ),
     otherNight = NightRule(
         gate = WakePredicate { ctx ->
@@ -569,7 +585,10 @@ private fun hellsLibrarian() = CharacterRule(
     id = "hellslibrarian",
     killCause = DeathCause.STORYTELLER,
     tokens = listOf(
-        TokenRule("hellslibrarian", "Something Bad", effect = null, until = Until.FOREVER),
+        TokenRule(
+            "hellslibrarian", "Something Bad", effect = null, until = Until.FOREVER,
+            endsWithSource = false,
+        ),
     ),
     day = referenceNote(
         "hellslibrarian",
@@ -597,8 +616,14 @@ private fun hellsLibrarian() = CharacterRule(
 private fun revolutionary() = CharacterRule(
     id = "revolutionary",
     tokens = listOf(
-        TokenRule("revolutionary", "Register Falsely?", EffectKind.REGISTERS_AS, Until.FOREVER),
-        TokenRule("revolutionary", "Aligned", effect = null, until = Until.FOREVER, copies = 2),
+        TokenRule(
+            "revolutionary", "Register Falsely?", EffectKind.REGISTERS_AS, Until.FOREVER,
+            endsWithSource = false,
+        ),
+        TokenRule(
+            "revolutionary", "Aligned", effect = null, until = Until.FOREVER, copies = 2,
+            endsWithSource = false,
+        ),
     ),
     day = referenceNote(
         "revolutionary",
@@ -691,7 +716,7 @@ private fun spiritOfIvory() = CharacterRule(
     tokens = listOf(
         TokenRule(
             "spiritofivory", "No More Evil", effect = null, until = Until.FOREVER,
-            grimoireCentre = true,
+            endsWithSource = false, grimoireCentre = true,
         ),
     ),
     day = referenceNote(
@@ -762,7 +787,10 @@ private fun toymaker() = CharacterRule(
     id = "toymaker",
     tokens = listOf(
         // A MARKER, not a suppression: it records that the obligation is unspent.
-        TokenRule("toymaker", "Final Night: No Attack", effect = null, until = Until.FOREVER),
+        TokenRule(
+            "toymaker", TOYMAKER_MARK, effect = null, until = Until.FOREVER,
+            endsWithSource = false,
+        ),
     ),
     firstNight = NightRule(
         gate = fabledAlwaysFires(),
@@ -794,21 +822,25 @@ private fun toymaker() = CharacterRule(
             if (!demonAttackCouldEndGame(ctx.state, ctx.lookup)) {
                 emptyList()
             } else {
-                seatsHolding(ctx.state, "toymaker", TOYMAKER_MARK).flatMap { demon ->
-                    listOf(
-                        // No label: the suppression is tonight's consequence of the
-                        // marker, not a second physical token. It expires at dawn.
-                        NightEffect.PlaceToken(
-                            sourceId = "toymaker",
-                            label = "",
-                            on = Ref.Seat(demon.id),
-                            kind = EffectKind.DEMON_CANNOT_KILL,
-                            until = Until.DAWN,
-                        ),
-                        // The obligation is spent by the forced night.
-                        NightEffect.RemoveToken("toymaker", TOYMAKER_MARK, Ref.Seat(demon.id)),
-                    )
-                }
+                seatsHolding(ctx.state, "toymaker", TOYMAKER_MARK)
+                    // An Exorcised Demon did not CHOOSE to skip, so the obligation
+                    // is not consumed and the suppression is not doubled up.
+                    .filterNot { alreadySilenced(ctx.state, ctx.lookup, it.id) }
+                    .flatMap { demon ->
+                        listOf(
+                            // No label: the suppression is tonight's consequence of the
+                            // marker, not a second physical token. It expires at dawn.
+                            NightEffect.PlaceToken(
+                                sourceId = "toymaker",
+                                label = "",
+                                on = Ref.Seat(demon.id),
+                                kind = EffectKind.DEMON_CANNOT_KILL,
+                                until = Until.DAWN,
+                            ),
+                            // The obligation is spent by the forced night.
+                            NightEffect.RemoveToken("toymaker", TOYMAKER_MARK, Ref.Seat(demon.id)),
+                        )
+                    }
             }
         },
         wakeCounts = WakeCount.NONE,
@@ -822,6 +854,18 @@ private fun toymaker() = CharacterRule(
 
 /** The official Toymaker mark: "the no-attack obligation is unspent". */
 internal const val TOYMAKER_MARK: String = "Final Night: No Attack"
+
+/**
+ * True when something ELSE already stops this Demon killing tonight — an
+ * Exorcist, a Princess, a Lycanthrope. The Toymaker must not spend its
+ * obligation on a night the Demon never had a choice about.
+ */
+internal fun alreadySilenced(
+    state: GameState,
+    lookup: (String) -> Character?,
+    demonId: Long,
+): Boolean = Status.live(state, lookup, demonId, EffectKind.DEMON_CANNOT_KILL)
+    .any { Character.normalizeId(it.sourceCharacterId) != "toymaker" }
 
 /** Demon seats that do not yet carry the Toymaker's mark. */
 internal fun unmarkedDemons(
@@ -901,7 +945,10 @@ private fun bigWig() = CharacterRule(
 private fun bootlegger() = CharacterRule(
     id = "bootlegger",
     tokens = listOf(
-        TokenRule("bootlegger", "?", effect = null, until = Until.FOREVER, copies = 2),
+        TokenRule(
+            "bootlegger", "?", effect = null, until = Until.FOREVER, copies = 2,
+            endsWithSource = false,
+        ),
     ),
     day = referenceNote(
         "bootlegger",
@@ -962,7 +1009,10 @@ private fun gardener() = CharacterRule(
 private fun godOfUg() = CharacterRule(
     id = "godofug",
     tokens = listOf(
-        TokenRule("godofug", "Hat", effect = null, until = Until.FOREVER),
+        TokenRule(
+            "godofug", "Hat", effect = null, until = Until.FOREVER,
+            endsWithSource = false,
+        ),
     ),
     day = referenceNote(
         "godofug",
@@ -1084,7 +1134,7 @@ private fun stormCatcher() = CharacterRule(
     tokens = listOf(
         TokenRule(
             "stormcatcher", "Stormcaught", EffectKind.ONLY_EXECUTION_KILLS, Until.FOREVER,
-            protects = true,
+            endsWithSource = false, protects = true,
         ),
     ),
     firstNight = NightRule(
@@ -1175,7 +1225,10 @@ private fun tor() = CharacterRule(
 private fun ventriloquist() = CharacterRule(
     id = "ventriloquist",
     tokens = listOf(
-        TokenRule("ventriloquist", "Mad", EffectKind.MAD, Until.DUSK),
+        TokenRule(
+            "ventriloquist", "Mad", EffectKind.MAD, Until.DUSK,
+            endsWithSource = false,
+        ),
     ),
     day = DayRule(
         onExecution = { ctx ->
@@ -1220,7 +1273,10 @@ private fun ventriloquist() = CharacterRule(
 private fun zenomancer() = CharacterRule(
     id = "zenomancer",
     tokens = listOf(
-        TokenRule("zenomancer", "Goal", effect = null, until = Until.FOREVER, copies = 3),
+        TokenRule(
+            "zenomancer", "Goal", effect = null, until = Until.FOREVER, copies = 3,
+            endsWithSource = false,
+        ),
     ),
     day = referenceNote(
         "zenomancer",

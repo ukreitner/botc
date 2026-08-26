@@ -447,6 +447,35 @@ class RulesFabledTest {
     }
 
     @Test
+    fun `toymaker - an exorcised demon does not spend the obligation`() {
+        // Given a forced night, but the Demon was already silenced by an Exorcist…
+        var state = night("imp", "chef", "empath", "washerwoman", "librarian").withFabled("toymaker")
+        state = NightPlan.resolve(state, lookup, StepKey("toymaker"), NightInput())
+        state = Deaths.attempt(state, lookup, state.seat("washerwoman"), KillCause(DeathCause.STORYTELLER)).state
+        state = Deaths.attempt(state, lookup, state.seat("librarian"), KillCause(DeathCause.STORYTELLER)).state
+        state = Phases.advancePhase(state, lookup) // -> DAY 1
+        state = Phases.advancePhase(state, lookup) // -> NIGHT 2
+        val imp = state.seat("imp")
+        state = Effects.place(
+            state, imp, EffectKind.DEMON_CANNOT_KILL, "exorcist", null, Until.DAWN, "Chosen",
+        ).state
+        assertTrue(demonAttackCouldEndGame(state, lookup))
+
+        // When the Toymaker's step runs…
+        val run = NightPlan.resolve(state, lookup, StepKey("toymaker"), NightInput())
+
+        // Then the obligation is NOT consumed — the Demon never had a choice —
+        // and the Exorcist alone accounts for the block.
+        assertEquals(listOf(imp), seatsHolding(run, "toymaker", TOYMAKER_MARK).map { it.id })
+        val silenced = Status.live(run, lookup, imp, EffectKind.DEMON_CANNOT_KILL)
+        assertEquals(1, silenced.size, "no double suppression")
+        assertEquals("exorcist", silenced.single().sourceCharacterId)
+        assertIs<KillOutcome.Prevented>(
+            Deaths.killOutcome(run, lookup, run.seat("chef"), KillCause(DeathCause.DEMON_KILL, "imp", imp)),
+        )
+    }
+
+    @Test
     fun `toymaker - travellers never count towards the night the game could end`() {
         // Five residents plus one live Traveller.
         var state = setup("imp", "chef", "empath", "washerwoman", "librarian")
