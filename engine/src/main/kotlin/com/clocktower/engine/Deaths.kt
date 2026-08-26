@@ -553,19 +553,13 @@ object Deaths {
         outcome: KillOutcome.Prevented?,
     ): GameState {
         val name = state.player(targetId)?.name ?: return state
-        val id = state.nextLedgerId
-        return state.copy(
-            ledger = state.ledger + LedgerEntry(
-                id = id,
-                cycle = state.cycle,
-                atNight = state.phase != Phase.DAY,
-                kind = LedgerKind.RULING,
-                sourceId = outcome?.by?.sourceCharacterId ?: cause.sourceCharacterId.orEmpty(),
-                actorId = targetId,
-                text = outcome?.reason ?: "$name did not die.",
-                shown = outcome?.announce.orEmpty(),
-            ),
-            nextLedgerId = id + 1,
+        // WP3: routed through Ledger.ruling, which owns id/cycle/atNight stamping.
+        return Ledger.ruling(
+            state = state,
+            sourceId = outcome?.by?.sourceCharacterId ?: cause.sourceCharacterId.orEmpty(),
+            playerId = targetId,
+            text = outcome?.reason ?: "$name did not die.",
+            shown = outcome?.announce.orEmpty(),
         )
     }
 
@@ -723,20 +717,12 @@ object Deaths {
                 stepSlotId = player.characterId.orEmpty(),
             ),
         )
-        val ledgerId = next.nextLedgerId
-        next = next.copy(
-            ledger = next.ledger + LedgerEntry(
-                id = ledgerId,
-                cycle = next.cycle,
-                atNight = next.phase != Phase.DAY,
-                kind = LedgerKind.ANNOUNCE,
-                sourceId = "st",
-                actorId = playerId,
-                text = "${player.name} is alive again.",
-                textB = "Do not say why.",
-                announcePending = true,
-            ),
-            nextLedgerId = ledgerId + 1,
+        // WP3: routed through Ledger.announce, which owns id/cycle/atNight stamping.
+        next = Ledger.announce(
+            state = next,
+            text = "${player.name} is alive again.",
+            actorId = playerId,
+            detail = "Do not say why.",
         )
         return Effects.reconcile(next, lookup)
     }
