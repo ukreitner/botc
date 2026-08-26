@@ -379,7 +379,7 @@ class RulesBadMoonRisingTest {
         val gossip = seat(state, "gossip")
         state = Phases.advancePhase(state, lookup) // day 1
 
-        var quiet = Phases.advancePhase(state, lookup) // night 2, nothing said
+        val quiet = Phases.advancePhase(state, lookup) // night 2, nothing said
         val skipped = assertIs<StepGate.Skip>(require(quiet, "gossip").gate)
         assertTrue("statement" in skipped.reason, skipped.reason)
 
@@ -388,8 +388,6 @@ class RulesBadMoonRisingTest {
         lied = Phases.advancePhase(lied, lookup) // night 2
         val falseGate = assertIs<StepGate.Skip>(require(lied, "gossip").gate)
         assertTrue("false" in falseGate.reason, falseGate.reason)
-        quiet = lied // silence the unused-assignment warning
-        assertTrue(quiet.ledger.isNotEmpty())
     }
 
     @Test

@@ -134,17 +134,24 @@ private fun grandmother() = CharacterRule(
         infoId = "grandmother",
     ),
     otherNight = NightRule(
-        gate = WakePredicate { ctx ->
-            val holder = ctx.holder ?: return@WakePredicate StepGate.Skip("no Grandmother in play")
-            when {
-                !holder.alive -> StepGate.Skip("the Grandmother is already dead")
-                grandchildDemonKilledTonight(ctx.state, holder.id, ctx.night) ->
-                    StepGate.Fire
-                else -> StepGate.Skip(
-                    "the grandchild was not killed by the Demon tonight — the Grandmother lives",
-                )
-            }
-        },
+        // Lead D35: the default is that the holder must be sober at the trigger.
+        // `Gates.hasAbility` skips an impaired Grandmother rather than killing her,
+        // and the row keeps its [Run anyway] override for the storyteller.
+        gate = Gates.all(
+            WakePredicate { ctx ->
+                val holder = ctx.holder ?: return@WakePredicate StepGate.Skip("no Grandmother in play")
+                when {
+                    !holder.alive -> StepGate.Skip("the Grandmother is already dead")
+                    grandchildDemonKilledTonight(ctx.state, holder.id, ctx.night) ->
+                        StepGate.Fire
+
+                    else -> StepGate.Skip(
+                        "the grandchild was not killed by the Demon tonight — the Grandmother lives",
+                    )
+                }
+            },
+            Gates.hasAbility,
+        ),
         // The Grandmother is never woken: this row is the storyteller's own.
         wakeCounts = WakeCount.NONE,
         prompt = "The Demon killed the grandchild. The Grandmother dies too — " +
@@ -394,6 +401,9 @@ private fun gossip() = CharacterRule(
     otherNight = NightRule(
         gate = Gates.all(
             Gates.aliveHolder,
+            // "Judge drunkenness and death NOW, at this step — not when the
+            // statement was made." An impaired Gossip kills nobody by default.
+            Gates.hasAbility,
             WakePredicate { ctx ->
                 when (gossipStatement(ctx.state)?.verdict) {
                     null -> StepGate.Skip(
@@ -609,7 +619,7 @@ private fun tinker() = CharacterRule(
     id = "tinker",
     killCause = DeathCause.GOOD_ABILITY,
     otherNight = NightRule(
-        gate = Gates.aliveHolder,
+        gate = Gates.all(Gates.aliveHolder, Gates.hasAbility),
         wakeCounts = WakeCount.NONE,
         prompt = "The Tinker might die tonight — your call. Never kill them when it would " +
             "end the game, and never say how they died.",
@@ -664,6 +674,12 @@ private fun moonchild() = CharacterRule(
 
                 curse == null ->
                     StepGate.Skip("the Moonchild has not publicly chosen anybody yet")
+
+                // The snapshot the ledger took WHEN THEY CHOSE, not tonight's
+                // state: "good when chosen", "sober when chosen".
+                curse.impaired -> StepGate.Skip(
+                    "the Moonchild was drunk or poisoned when they chose — nobody dies",
+                )
 
                 else -> StepGate.Fire
             }
