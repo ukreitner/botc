@@ -102,12 +102,15 @@ object Briefings {
      * not a source.
      */
     fun at(state: GameState, lookup: (String) -> Character?, slot: BriefingSlot): Briefing {
+        val pair = state.nominations.lastOrNull { it.day == state.cycle && !it.isExile }
         val items = when (slot) {
             BriefingSlot.NOW -> prompts(state, BriefingSlot.NOW)
             BriefingSlot.TONIGHT -> prompts(state, BriefingSlot.TONIGHT)
             BriefingSlot.DAWN -> dawn(state, lookup)
             BriefingSlot.DAY_START -> dayStart(state, lookup)
-            BriefingSlot.NOMINATION -> nomination(state, lookup)
+            BriefingSlot.NOMINATION ->
+                nomination(state, lookup, pair?.nominatorId, pair?.nomineeId)
+
             BriefingSlot.EXECUTION -> execution(state, lookup)
             BriefingSlot.DUSK -> dusk(state, lookup)
         }
@@ -115,6 +118,26 @@ object Briefings {
         // briefing even when two rules describe the same fact.
         return Briefing(slot = slot, cycle = state.cycle, items = items.distinctBy { it.key })
     }
+
+    /**
+     * The NOMINATION slot for a pair the storyteller has TAPPED but not yet
+     * recorded — the pinned seat ring's live pre-flight (§3.2).
+     *
+     * [at] defaults the pair to the last nomination recorded today, which is
+     * right for every standing trigger; it cannot be right for a "the 1st time
+     * you are nominated" rule, because recording the nomination is what spends
+     * it. The day screen calls this on every chip tap instead.
+     */
+    fun forNomination(
+        state: GameState,
+        lookup: (String) -> Character?,
+        nominatorId: Long?,
+        nomineeId: Long?,
+    ): Briefing = Briefing(
+        slot = BriefingSlot.NOMINATION,
+        cycle = state.cycle,
+        items = nomination(state, lookup, nominatorId, nomineeId).distinctBy { it.key },
+    )
 
     // -----------------------------------------------------------------------
     // DAWN
@@ -493,20 +516,23 @@ object Briefings {
     // -----------------------------------------------------------------------
 
     /**
-     * The `NominationTrigger` list for the pending pair. With no nomination
-     * recorded yet today the check still runs with an empty pair, so the
-     * standing warnings (Witch, Vizier, Bishop) are on the card before the
-     * first chip is tapped.
+     * The `NominationTrigger` list for one pair. With an empty pair the check
+     * still runs, so the standing blockers (a closed day, a Bishop's game) are
+     * on the card before the first chip is tapped.
      */
-    private fun nomination(state: GameState, lookup: (String) -> Character?): List<BriefingItem> {
-        val pair = state.nominations.lastOrNull { it.day == state.cycle && !it.isExile }
+    private fun nomination(
+        state: GameState,
+        lookup: (String) -> Character?,
+        nominatorId: Long?,
+        nomineeId: Long?,
+    ): List<BriefingItem> {
         val check = DayRules.checkNomination(
             state = state,
             lookup = lookup,
-            nominatorId = pair?.nominatorId,
-            nomineeId = pair?.nomineeId,
+            nominatorId = nominatorId,
+            nomineeId = nomineeId,
         )
-        val prefix = "nomination:${state.cycle}:${pair?.nomineeId ?: "none"}"
+        val prefix = "nomination:${state.cycle}:${nomineeId ?: "none"}"
         return buildList {
             check.blockers.forEachIndexed { index, blocker ->
                 add(
