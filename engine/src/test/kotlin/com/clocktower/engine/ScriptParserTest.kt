@@ -147,8 +147,21 @@ class NightGuideTest {
     fun `guide covers every night actor with valid shows`() {
         val data = GameData.loadDefault()
         kotlin.test.assertTrue(NightGuide.entries.size >= 110, "loaded ${NightGuide.entries.size} entries")
+        // Lead D23: the guide also carries marker entries (DUSK, MINION_INFO,
+        // DEMON_INFO, DAWN) that describe a step of the night with no character
+        // behind it. Every OTHER key must still resolve to a character.
+        for (marker in listOf(
+            NightMarkers.DUSK,
+            NightMarkers.MINION_INFO,
+            NightMarkers.DEMON_INFO,
+            NightMarkers.DAWN,
+        )) {
+            kotlin.test.assertTrue(marker in NightGuide.entries, "no guide entry for marker $marker")
+        }
         for ((id, entry) in NightGuide.entries) {
-            kotlin.test.assertTrue(data.character(id) != null, "unknown character $id")
+            if (id !in NightMarkers.all) {
+                kotlin.test.assertTrue(data.character(id) != null, "unknown character $id")
+            }
             for (night in listOfNotNull(entry.first, entry.other)) {
                 kotlin.test.assertTrue(night.instructions.isNotBlank(), "$id: blank instructions")
                 for (show in night.shows) {

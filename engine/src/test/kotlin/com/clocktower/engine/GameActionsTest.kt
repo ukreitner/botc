@@ -383,7 +383,7 @@ class GameActionsTest {
         fortuneState = GameActions.addReminder(
             fortuneState,
             4,
-            PlacedReminder("fortuneteller", "Red herring"),
+            PlacedReminder("fortuneteller", "Red Herring"),
         )
         assertTrue(
             GameActions.validateSetupState(fortuneState, data::character).isEmpty(),
