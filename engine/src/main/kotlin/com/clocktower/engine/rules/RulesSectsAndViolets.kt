@@ -137,7 +137,7 @@ private val demonGate: WakePredicate = Gates.all(Gates.aliveHolder, Gates.notExo
 private fun infoStep(id: String, prompt: String, gate: WakePredicate = Gates.aliveHolder) =
     NightRule(gate = gate, prompt = prompt, infoId = id)
 
-private fun seatsHolding(state: GameState, sourceId: String, label: String): List<Player> =
+private fun svSeatsHolding(state: GameState, sourceId: String, label: String): List<Player> =
     state.seats.filter { DayRules.hasToken(state, it.id, sourceId, label) }
 
 private fun aliveDemons(state: GameState, lookup: (String) -> Character?): List<Player> =
@@ -1007,7 +1007,7 @@ private fun evilTwin() = CharacterRule(
             val holder = ctx.holder ?: return@WakePredicate StepGate.Skip("no Evil Twin seat")
             when {
                 !holder.alive -> StepGate.Skip("the Evil Twin is dead")
-                seatsHolding(ctx.state, EVIL_TWIN, TWIN).isEmpty() ->
+                svSeatsHolding(ctx.state, EVIL_TWIN, TWIN).isEmpty() ->
                     StepGate.Conditional(
                         question = "No good twin has been chosen yet.",
                         yesLabel = "Choose one now",
@@ -1046,7 +1046,7 @@ private fun evilTwin() = CharacterRule(
 )
 
 private fun evilTwinCards(ctx: NightContext): List<CardOffer> {
-    val twin = seatsHolding(ctx.state, EVIL_TWIN, TWIN).firstOrNull() ?: return emptyList()
+    val twin = svSeatsHolding(ctx.state, EVIL_TWIN, TWIN).firstOrNull() ?: return emptyList()
     val believed = Identity.believedCharacterId(twin) ?: return emptyList()
     return listOf(
         CardOffer(
@@ -1340,13 +1340,13 @@ private fun vigormortis() = CharacterRule(
             gate = { state, event, holder ->
                 diedAsSelf(event, holder, VIGORMORTIS) &&
                     (
-                        seatsHolding(state, VIGORMORTIS, HAS_ABILITY).isNotEmpty() ||
-                            seatsHolding(state, VIGORMORTIS, POISONED).isNotEmpty()
+                        svSeatsHolding(state, VIGORMORTIS, HAS_ABILITY).isNotEmpty() ||
+                            svSeatsHolding(state, VIGORMORTIS, POISONED).isNotEmpty()
                         )
             },
             produce = { state, _, holder ->
-                val kept = seatsHolding(state, VIGORMORTIS, HAS_ABILITY)
-                val poisoned = seatsHolding(state, VIGORMORTIS, POISONED)
+                val kept = svSeatsHolding(state, VIGORMORTIS, HAS_ABILITY)
+                val poisoned = svSeatsHolding(state, VIGORMORTIS, POISONED)
                 TriggerResult(
                     prompts = listOf(
                         prompt(
