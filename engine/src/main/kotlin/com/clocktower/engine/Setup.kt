@@ -344,13 +344,15 @@ object Setup {
                 }
                 val shapes = shapesFor(bag, playerCount)
                 val forbidden = forbiddenIds(shapes)
-                val target = adjustedDistribution(playerCount, bag)
+                val target = shapeTarget(
+                    shapes.values,
+                    adjustedDistribution(playerCount, bag.filterNot { it.id in forbidden }),
+                    playerCount,
+                )
                 for (team in teamsInOrder) {
                     // A shape-forbidden character (Lil' Monsta) fills no seat.
                     val members = bag.filter { it.team == team && it.id !in forbidden }
-                    val pinned = shapes.values.mapNotNull { it.range(team) }
-                    val want = pinned.fold(target.count(team)) { acc, r -> acc.coerceIn(r) }
-                    var excess = members.size - want
+                    var excess = members.size - target.count(team)
                     if (excess > 0) {
                         // Never trim characters that modify setup or are
                         // required companions — trim plain members instead.
@@ -387,6 +389,48 @@ object Setup {
         return null
     }
 
+    /**
+     * The distribution [randomBag] aims at: [base] clamped into every shape's
+     * ranges, then rebalanced so the seats still add up to [playerCount] — the
+     * slack goes to the Townsfolk first, then the Outsiders, exactly as the
+     * physical game trades a Demon slot for a Minion.
+     */
+    private fun shapeTarget(
+        shapes: Collection<BagShape>,
+        base: Distribution,
+        playerCount: Int,
+    ): Distribution {
+        fun rangeOf(team: Team): IntRange? {
+            val ranges = shapes.mapNotNull { it.range(team) }
+            if (ranges.isEmpty()) return null
+            return ranges.maxOf { it.first }..ranges.minOf { it.last }
+        }
+
+        val counts = mutableMapOf(
+            Team.TOWNSFOLK to base.townsfolk,
+            Team.OUTSIDER to base.outsiders,
+            Team.MINION to base.minions,
+            Team.DEMON to base.demons,
+        )
+        for (team in counts.keys.toList()) {
+            rangeOf(team)?.let { counts[team] = counts.getValue(team).coerceIn(it) }
+        }
+        var drift = playerCount - counts.values.sum()
+        for (team in listOf(Team.TOWNSFOLK, Team.OUTSIDER)) {
+            if (drift == 0) break
+            val range = rangeOf(team) ?: 0..playerCount
+            val want = (counts.getValue(team) + drift).coerceIn(range)
+            drift -= want - counts.getValue(team)
+            counts[team] = want
+        }
+        return Distribution(
+            townsfolk = counts.getValue(Team.TOWNSFOLK),
+            outsiders = counts.getValue(Team.OUTSIDER),
+            minions = counts.getValue(Team.MINION),
+            demons = counts.getValue(Team.DEMON),
+        )
+    }
+
     private fun Distribution.count(team: Team): Int = when (team) {
         Team.TOWNSFOLK -> townsfolk
         Team.OUTSIDER -> outsiders
@@ -420,9 +464,15 @@ object Setup {
         allowAnyDuplicates: Boolean = false,
         inPlayIds: Collection<String> = emptyList(),
         state: GameState? = null,
+        /**
+         * Characters whose setup bracket applies although they hold no bag
+         * token: a Boffin or Alchemist grant, the Marionette's believed
+         * character. See [virtualSetupCharacters].
+         */
+        virtual: List<Character> = emptyList(),
     ): List<String> {
         val issues = mutableListOf<String>()
-        val shapes = shapesFor(bag, playerCount, inPlayIds, state)
+        val shapes = shapesFor(bag, playerCount, inPlayIds + virtual.map { it.id }, state)
         val forbidden = forbiddenIds(shapes)
         val (seatless, seatFilling) = bag.partition { Character.normalizeId(it.id) in forbidden }
         if (seatFilling.size != playerCount) {
@@ -434,7 +484,7 @@ object Setup {
                 issues += "Bag has ${bag.size} characters for $playerCount players"
             }
         }
-        val modifiers = seatFilling.mapNotNull { modifierFor(it) }
+        val modifiers = (seatFilling + virtual).mapNotNull { modifierFor(it) }
         val unboundedChoiceTeams = modifiers
             .flatMap { it.choiceTeams - it.choiceDeltas.keys }
             .toSet()
@@ -446,7 +496,7 @@ object Setup {
                 add(Team.TOWNSFOLK)
             }
         }
-        var allowed = allowedDistributions(playerCount, seatFilling)
+        var allowed = allowedDistributions(playerCount, seatFilling + virtual)
         if ("sentinel" in fabledIds.map { Character.normalizeId(it) }) {
             allowed = allowed
                 .flatMap { d ->
@@ -583,6 +633,25 @@ object Setup {
         } else {
             emptyList()
         }
+
+    /**
+     * Characters whose setup bracket applies even though they are not tokens in
+     * the bag — "these changes are made during setup, as normal": the Boffin's
+     * gift and the Alchemist's Minion ability, plus the character a Marionette
+     * believes they are (mandated by the Huntsman and Balloonist jinxes).
+     *
+     * The Drunk's believed Townsfolk is deliberately NOT here: no jinx rules
+     * either way, so it stays an advisory question.
+     */
+    fun virtualSetupCharacters(
+        state: GameState,
+        lookup: (String) -> Character?,
+    ): List<Character> = listOfNotNull(
+        state.decisions[Decisions.BOFFIN_GRANT]?.takeIf { it.isNotBlank() }?.let(lookup),
+        state.decisions[Decisions.ALCHEMIST_GRANT]?.takeIf { it.isNotBlank() }?.let(lookup),
+        state.seats.firstOrNull { it.characterId == "marionette" }
+            ?.shownCharacterId?.let(lookup),
+    ).filter { it.setup }
 
     /**
      * Bag override for one character, replacing the old `TEAM_WARPING_IDS`

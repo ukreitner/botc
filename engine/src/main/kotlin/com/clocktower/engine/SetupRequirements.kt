@@ -133,6 +133,7 @@ object SetupRequirements {
             fabledIds = state.fabledIds,
             inPlayIds = Setup.seatlessInPlayIds(state),
             state = state,
+            virtual = Setup.virtualSetupCharacters(state, lookup),
         )
         return issues.mapIndexed { index, issue ->
             SetupRequirement(

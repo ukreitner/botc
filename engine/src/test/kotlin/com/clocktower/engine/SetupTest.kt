@@ -244,6 +244,29 @@ class SetupTest {
     }
 
     @Test
+    fun `randomBag draws from the shape, not the base distribution`() {
+        val pool = data.resolve(data.builtInScripts().first { it.id == "tb" })
+            .filter { it.team != Team.DEMON } + chars("kazali")
+        val bag = assertNotNull(Setup.randomBag(pool, 10, kotlin.random.Random(5)))
+        assertEquals(10, bag.size)
+        assertEquals(0, bag.count { it.team == Team.MINION }, "the Kazali makes them on night 1")
+        assertEquals(1, bag.count { it.id == "kazali" })
+        assertEquals(emptyList(), Setup.validateBag(bag, 10))
+    }
+
+    @Test
+    fun `randomBag still fills ordinary scripts at every player count`() {
+        for (script in data.builtInScripts()) {
+            val pool = data.resolve(script)
+            for (n in listOf(5, 7, 10, 12, 15)) {
+                val bag = assertNotNull(Setup.randomBag(pool, n, kotlin.random.Random(n.toLong())), "${script.id} $n")
+                assertEquals(n, bag.size, "${script.id} $n")
+                assertEquals(emptyList(), Setup.validateBag(bag, n), "${script.id} $n")
+            }
+        }
+    }
+
+    @Test
     fun `xaan pins the outsider count once X is chosen`() {
         val base = Setup.distributionFor(12)
         assertNull(Setup.bagShapeFor("xaan", base, 12))

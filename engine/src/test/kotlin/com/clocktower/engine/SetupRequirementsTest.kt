@@ -238,6 +238,32 @@ class SetupRequirementsTest {
         assertEquals(emptyList(), problems(lilMonsta), problems(lilMonsta).toString())
     }
 
+    @Test
+    fun `a granted setup bracket folds into the bag even with no token for it`() {
+        // 9 players, base 5 / 2 / 1 / 1. The Alchemist has the Baron's ability,
+        // so the legal bag is 3 / 4 / 1 / 1 — "made during setup, as normal".
+        var state = Seats.newGame(script, (1..9).map { "P$it" })
+        listOf(
+            "alchemist", "washerwoman", "librarian", "butler", "drunk",
+            "recluse", "saint", "poisoner", "imp",
+        ).forEachIndexed { index, id -> state = Seats.assignCharacter(state, index.toLong(), id) }
+        state = Seats.setShownCharacter(state, 4, "chef")
+        assertTrue(problems(state).any { "Outsider" in it }, "5/2/1/1 is expected without the grant")
+
+        state = Decisions.set(state, Decisions.ALCHEMIST_GRANT, "baron")
+        assertTrue(problems(state).none { "Outsider" in it }, problems(state).toString())
+    }
+
+    @Test
+    fun `a Boffin's Choirboy grant requires the King in the bag`() {
+        var state = game("imp", "boffin", "chef", "empath", "mayor")
+        state = Decisions.set(state, Decisions.BOFFIN_GRANT, "choirboy")
+        assertTrue(
+            problems(state).any { "king" in it },
+            problems(state).toString(),
+        )
+    }
+
     // ---- re-checkable mid-game ----
 
     @Test
