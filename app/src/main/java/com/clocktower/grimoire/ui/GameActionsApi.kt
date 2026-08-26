@@ -2,9 +2,11 @@ package com.clocktower.grimoire.ui
 
 import com.clocktower.engine.Alignment
 import com.clocktower.engine.Bluffs
+import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.Character
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.Deaths
+import com.clocktower.engine.Decisions
 import com.clocktower.engine.Effects
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
@@ -14,7 +16,10 @@ import com.clocktower.engine.Nomination
 import com.clocktower.engine.Phases
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Seats
+import com.clocktower.engine.Selection
+import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.DayRules
+import kotlin.random.Random
 
 /**
  * Every engine verb the UI can call, wired ONCE for both platforms.
@@ -110,6 +115,56 @@ interface GameActionsApi {
     // ---- WP3: day, ledger, execution ----
 
     // ---- WP4: setup, identity, bluffs ----
+
+    /** THE single funnel for every character change (lead D17). */
+    fun changeCharacter(
+        playerId: Long,
+        newCharacterId: String?,
+        reason: ChangeReason,
+        newEvil: Boolean? = null,
+        shownCharacterId: String? = null,
+        suppressReveal: Boolean = false,
+    ) = update {
+        Identity.changeCharacter(
+            state = it,
+            lookup = lookup,
+            playerId = playerId,
+            newCharacterId = newCharacterId,
+            reason = reason,
+            newEvil = newEvil,
+            shownCharacterId = shownCharacterId,
+            suppressReveal = suppressReveal,
+        )
+    }
+
+    fun swapCharacters(a: Long, b: Long) = update { Identity.swapCharacters(it, lookup, a, b) }
+
+    /** The Lunatic draws the Demon's token and the Demon draws the Lunatic's. */
+    fun applyLunaticTokenSwap() = update { Identity.applyLunaticTokenSwap(it, lookup) }
+
+    /** Restores a seat's true token — the Demon's, at DEMON_INFO. */
+    fun revealTrueIdentity(playerId: Long) = update { Identity.revealTrueIdentity(it, playerId) }
+
+    fun markRevealed(playerId: Long) = update { Identity.markRevealed(it, playerId) }
+
+    fun markRerunDone(playerId: Long) = update { Identity.markRerunDone(it, playerId) }
+
+    /** Deals the bag and places the identity tokens the characters declare. */
+    fun deal(bagIds: List<String>, seed: Long) =
+        update { Seats.deal(it, bagIds, Random(seed), lookup) }
+
+    /** Stores one bluff set under its [BluffRequirement.key]. */
+    fun setBluffSet(key: String, ids: List<String>) = update { Bluffs.set(it, key, ids) }
+
+    fun clearBluffSet(key: String) = update { Bluffs.clear(it, key) }
+
+    /** Answers one setup-checklist row through its own `apply`. */
+    fun applySetupRequirement(requirement: SetupRequirement, selection: Selection) =
+        update { requirement.apply(it, selection) }
+
+    fun setDecision(key: String, value: String) = update { Decisions.set(it, key, value) }
+
+    fun clearDecision(key: String) = update { Decisions.clear(it, key) }
 
     // ---- WP6: prompts and briefings ----
 
