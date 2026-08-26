@@ -109,7 +109,7 @@ fun SetupScreen(
     var showImport by rememberSaveable { mutableStateOf(false) }
     var showPaste by rememberSaveable { mutableStateOf(false) }
     var allowDuplicates by rememberSaveable { mutableStateOf(false) }
-    var lilMonstaAck by rememberSaveable { mutableStateOf(false) }
+    var seatlessAck by rememberSaveable { mutableStateOf(false) }
     var outsiderBranch by rememberSaveable { mutableStateOf<Int?>(null) }
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
@@ -149,7 +149,22 @@ fun SetupScreen(
     val byId = remember(characters) { characters.associateBy { it.id } }
     val selected = bagIds.mapNotNull { byId[it] }
     val validCount = residentCount in Setup.MIN_PLAYERS..Setup.MAX_PLAYERS
-    val seatlessIds = if (lilMonstaAck) listOf("lilmonsta") else emptyList()
+    // A character the rules put in play WITHOUT a bag token — today only Lil'
+    // Monsta's centre token. Derived from the engine's own BagShape
+    // (`forbidInBag`), so a future one needs no change here.
+    val seatlessCandidates = remember(characters, residentCount, validCount) {
+        if (!validCount) {
+            emptyList()
+        } else {
+            val base = Setup.distributionFor(residentCount)
+            characters.mapNotNull { c ->
+                Setup.bagShapeFor(c.id, base, residentCount)
+                    ?.takeIf { it.forbidInBag.isNotEmpty() }
+                    ?.let { c to it }
+            }
+        }
+    }
+    val seatlessIds = if (seatlessAck) seatlessCandidates.map { it.first.id } else emptyList()
     val issues = if (script == null || !validCount) {
         emptyList()
     } else {
@@ -293,9 +308,9 @@ fun SetupScreen(
                             warnings = warnings,
                             allowDuplicates = allowDuplicates,
                             onAllowDuplicates = { allowDuplicates = it },
-                            lilMonstaOffered = characters.any { it.id == "lilmonsta" },
-                            lilMonstaAck = lilMonstaAck,
-                            onLilMonstaAck = { lilMonstaAck = it },
+                            seatlessNote = seatlessCandidates.firstOrNull()?.second?.note.orEmpty(),
+                            seatlessAck = seatlessAck,
+                            onSeatlessAck = { seatlessAck = it },
                             message = bagMessage,
                             onRandomize = { keep ->
                                 val required = if (keep) bagIds else pinnedIds
@@ -379,7 +394,8 @@ fun SetupScreen(
                 viewModel.game.value?.players?.forEachIndexed { index, seat ->
                     if (index in travellerSeats) viewModel.setTraveller(seat.id, true)
                 }
-                if (lilMonstaAck) {
+                if (seatlessAck) {
+                    // `Setup.seatlessInPlayIds` reads exactly this decision.
                     viewModel.applySetupRequirementAck(SetupRequirements.LILMONSTA_NO_DEMON_SEAT)
                 }
                 outsiderBranch?.let { viewModel.setDecisionNumber(Decisions.OUTSIDER_BRANCH, it) }
@@ -711,9 +727,10 @@ private fun BagHeader(
     warnings: List<String>,
     allowDuplicates: Boolean,
     onAllowDuplicates: (Boolean) -> Unit,
-    lilMonstaOffered: Boolean,
-    lilMonstaAck: Boolean,
-    onLilMonstaAck: (Boolean) -> Unit,
+    /** The BagShape note for a character in play with no bag token; "" for none. */
+    seatlessNote: String,
+    seatlessAck: Boolean,
+    onSeatlessAck: (Boolean) -> Unit,
     message: String?,
     onRandomize: (keepCurrent: Boolean) -> Unit,
     onClear: () -> Unit,
@@ -789,13 +806,10 @@ private fun BagHeader(
             }
         }
 
-        if (lilMonstaOffered) {
+        if (seatlessNote.isNotBlank()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = lilMonstaAck, onCheckedChange = onLilMonstaAck)
-                Text(
-                    "Lil' Monsta is a token, not a seat. Deal 1 extra Minion and no Demon.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Checkbox(checked = seatlessAck, onCheckedChange = onSeatlessAck)
+                Text(seatlessNote, style = MaterialTheme.typography.bodySmall)
             }
         }
 
