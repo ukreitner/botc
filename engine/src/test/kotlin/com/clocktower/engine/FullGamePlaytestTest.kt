@@ -1142,8 +1142,8 @@ class FullGamePlaytestTest {
             2,
             listOf(
                 action(NightMarkers.DUSK, "Storyteller", "Night 2 began with Mina dead."),
-                action("innkeeper", "Inez", "Inez protected Greta and Olive; Greta was made drunk.", targets = listOf("Greta", "Olive"), changes = listOf(add("Greta", "innkeeper", "Protected"), add("Olive", "innkeeper", "Protected"), add("Greta", "innkeeper", "Drunk"))),
                 action("courtier", "Felix", "Assassin drunkenness ticked from 3 to 2.", changes = listOf(remove("Elena", "courtier", "Drunk 3"), add("Elena", "courtier", "Drunk 2"))),
+                action("innkeeper", "Inez", "Inez protected Greta and Olive; Greta was made drunk.", targets = listOf("Greta", "Olive"), changes = listOf(add("Greta", "innkeeper", "Protected"), add("Olive", "innkeeper", "Protected"), add("Greta", "innkeeper", "Drunk"))),
                 action("gambler", "Mina", "Mina was dead at her row; skipped."),
                 action("devilsadvocate", "Cora", "Cora moved protection to Aurora.", targets = listOf("Aurora"), changes = listOf(move("Aurora", "devilsadvocate", "Survives execution"))),
                 action("lunatic", "Blake", "Blake, believing Po, chose nobody and believed he charged.", changes = listOf(add("Blake", "lunatic", "3 attacks"))),
@@ -1176,8 +1176,8 @@ class FullGamePlaytestTest {
             3,
             listOf(
                 action(NightMarkers.DUSK, "Storyteller", "Night 3 began; Po had a charge and Moonchild had selected Leo."),
-                action("innkeeper", "Inez", "Old protection cleared; Kendra and Olive became protected, Olive drunk.", targets = listOf("Kendra", "Olive"), changes = listOf(remove("Greta", "innkeeper", "Protected"), remove("Olive", "innkeeper", "Protected"), remove("Greta", "innkeeper", "Drunk"), add("Kendra", "innkeeper", "Protected"), add("Olive", "innkeeper", "Protected"), add("Olive", "innkeeper", "Drunk"))),
                 action("courtier", "Felix", "Assassin drunkenness ticked from 2 to 1.", changes = listOf(remove("Elena", "courtier", "Drunk 2"), add("Elena", "courtier", "Drunk 1"))),
+                action("innkeeper", "Inez", "Old protection cleared; Kendra and Olive became protected, Olive drunk.", targets = listOf("Kendra", "Olive"), changes = listOf(remove("Greta", "innkeeper", "Protected"), remove("Olive", "innkeeper", "Protected"), remove("Greta", "innkeeper", "Drunk"), add("Kendra", "innkeeper", "Protected"), add("Olive", "innkeeper", "Protected"), add("Olive", "innkeeper", "Drunk"))),
                 action("gambler", "Mina", "Mina guessed Greta as Grandmother correctly and survived.", targets = listOf("Greta")),
                 action("devilsadvocate", "Cora", "Cora protected Aurora again for the coming day.", targets = listOf("Aurora"), changes = listOf(move("Aurora", "devilsadvocate", "Survives execution"))),
                 action("lunatic", "Blake", "Blake spent his supposed Po charge on Cora, Greta and Nate.", targets = listOf("Cora", "Greta", "Nate"), changes = listOf(remove("Blake", "lunatic", "3 attacks"))),
@@ -1225,8 +1225,8 @@ class FullGamePlaytestTest {
             4,
             listOf(
                 action(NightMarkers.DUSK, "Storyteller", "Night 4 began with ten alive; dead Devil's Advocate protection expired.", changes = listOf(remove("Aurora", "devilsadvocate", "Survives execution"))),
-                action("innkeeper", "Inez", "Inez moved protection to Blake and Leo, making Blake drunk.", targets = listOf("Blake", "Leo"), changes = listOf(remove("Kendra", "innkeeper", "Protected"), remove("Olive", "innkeeper", "Protected"), remove("Olive", "innkeeper", "Drunk"), add("Blake", "innkeeper", "Protected"), add("Leo", "innkeeper", "Protected"), add("Blake", "innkeeper", "Drunk"))),
                 action("courtier", "Felix", "Courtier's third night expired; Assassin became sober.", changes = listOf(remove("Elena", "courtier", "Drunk 1"), add("Felix", "courtier", "No ability"))),
+                action("innkeeper", "Inez", "Inez moved protection to Blake and Leo, making Blake drunk.", targets = listOf("Blake", "Leo"), changes = listOf(remove("Kendra", "innkeeper", "Protected"), remove("Olive", "innkeeper", "Protected"), remove("Olive", "innkeeper", "Drunk"), add("Blake", "innkeeper", "Protected"), add("Leo", "innkeeper", "Protected"), add("Blake", "innkeeper", "Drunk"))),
                 action("gambler", "Mina", "Mina guessed Inez as Innkeeper correctly and survived.", targets = listOf("Inez")),
                 action("devilsadvocate", "Cora", "Cora was dead; skipped."),
                 action("lunatic", "Blake", "Drunk Blake selected Olive as a supposed Po target.", targets = listOf("Olive")),
@@ -1258,8 +1258,8 @@ class FullGamePlaytestTest {
             5,
             listOf(
                 action(NightMarkers.DUSK, "Storyteller", "Mastermind continuation night began; engine still displayed a good-win advisory with a caution."),
-                action("innkeeper", "Inez", "Inez protected Mina and Kendra, making Kendra drunk.", targets = listOf("Mina", "Kendra"), changes = listOf(remove("Blake", "innkeeper", "Protected"), remove("Leo", "innkeeper", "Protected"), remove("Blake", "innkeeper", "Drunk"), add("Mina", "innkeeper", "Protected"), add("Kendra", "innkeeper", "Protected"), add("Kendra", "innkeeper", "Drunk"))),
                 action("courtier", "Felix", "Courtier spent; skipped."),
+                action("innkeeper", "Inez", "Inez protected Mina and Kendra, making Kendra drunk.", targets = listOf("Mina", "Kendra"), changes = listOf(remove("Blake", "innkeeper", "Protected"), remove("Leo", "innkeeper", "Protected"), remove("Blake", "innkeeper", "Drunk"), add("Mina", "innkeeper", "Protected"), add("Kendra", "innkeeper", "Protected"), add("Kendra", "innkeeper", "Drunk"))),
                 action("gambler", "Mina", "Mina guessed Hector as Mastermind correctly and survived.", targets = listOf("Hector")),
                 action("devilsadvocate", "Cora", "Cora was dead; skipped."),
                 action("lunatic", "Blake", "Blake selected Elena as a supposed Po target; there was no living Demon to receive it.", targets = listOf("Elena")),
