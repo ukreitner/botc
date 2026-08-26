@@ -379,7 +379,7 @@ fun RevealSheet(
  * character is a table row rather than 35 more lines of UI.
  *
  * It is deliberately NOT gated on `phase == SETUP` (defect #5): a Pit-Hag
- * creating a Drunk on night 3 raises `drunk.token` and the sheet re-opens.
+ * creating a Drunk on night 3 raises `drunk.token:<seat>` and the sheet re-opens.
  */
 @Composable
 fun SetupIdentityPrompts(
@@ -433,15 +433,23 @@ fun SetupChecklistSheet(
 ) {
     val lookup = viewModel::characterById
     val rows = remember(state) { SetupRequirements.all(state, lookup) }
-    // By INDEX, not by id: two Lunatics (or two Village Idiots) legally raise
-    // two rows with the same id, and each carries its own seat in its `apply`.
-    val satisfied = remember(state, rows) { rows.map { it.satisfied(state, lookup) } }
-    val doneCount = satisfied.count { it }
-    var openRow by rememberSaveable { mutableStateOf(-1) }
+    // Row ids carry their seat now ("drunk.token:3"), so they are unique inside
+    // one checklist: they key the list and identify the open dialog directly.
+    val satisfied = remember(state, rows) {
+        rows.associate { it.id to it.satisfied(state, lookup) }
+    }
+    val doneCount = satisfied.count { it.value }
+    var openRowId by rememberSaveable { mutableStateOf<String?>(null) }
     var bluffKey by rememberSaveable { mutableStateOf<String?>(null) }
     // `SetupRequirements` builds its BLUFFS rows straight from this list, in
-    // this order, so the Nth bluff row is the Nth requirement.
-    val bluffKeys = remember(state) { Bluffs.requirements(state, lookup).map { it.key } }
+    // this order, so pairing them off maps "snitch.bluffs:7" onto "snitch:7"
+    // without this screen ever parsing a row id or naming a character.
+    val bluffKeyOf = remember(state, rows) {
+        rows.filter { it.kind == RequirementKind.BLUFFS }
+            .map { it.id }
+            .zip(Bluffs.requirements(state, lookup).map { it.key })
+            .toMap()
+    }
 
     // The bluff picker is itself a bottom sheet, so it REPLACES the checklist
     // rather than stacking on it; closing it comes back here.
@@ -472,21 +480,17 @@ fun SetupChecklistSheet(
                 )
                 Spacer(Modifier.height(6.dp))
             }
-            items(rows.size, key = { "req-$it" }) { index ->
-                val row = rows[index]
-                val ok = satisfied.getOrElse(index) { false }
+            items(rows, key = { "req-" + it.id }) { row ->
+                val ok = satisfied[row.id] == true
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
                             if (row.kind == RequirementKind.BLUFFS) {
-                                val ordinal = rows.take(index)
-                                    .count { it.kind == RequirementKind.BLUFFS }
-                                bluffKey = bluffKeys.getOrNull(ordinal)
-                                    ?: bluffKeys.firstOrNull()
+                                bluffKey = bluffKeyOf[row.id] ?: bluffKeyOf.values.firstOrNull()
                             } else {
-                                openRow = index
+                                openRowId = row.id
                             }
                         }
                         .padding(vertical = 6.dp),
@@ -539,13 +543,12 @@ fun SetupChecklistSheet(
         }
     }
 
-    rows.getOrNull(openRow)?.let { row ->
+    rows.firstOrNull { it.id == openRowId }?.let { row ->
         SetupRequirementDialog(
             viewModel = viewModel,
             state = state,
             requirement = row,
-            rowIndex = openRow,
-            onDismiss = { openRow = -1 },
+            onDismiss = { openRowId = null },
         )
     }
 }
@@ -560,19 +563,24 @@ private fun SetupRequirementDialog(
     viewModel: GameViewModel,
     state: GameState,
     requirement: SetupRequirement,
-    /** Position in the checklist — the row's identity, since ids can repeat. */
-    rowIndex: Int,
     onDismiss: () -> Unit,
 ) {
     val lookup = viewModel::characterById
-    val candidates = remember(state, rowIndex) { requirement.candidates(state, lookup) }
+    val rowId = requirement.id
+    val candidates = remember(state, rowId) { requirement.candidates(state, lookup) }
     // Rows that place a token on SEVERAL seats at once. Advisory rows that name
     // no single holder are the only ones this applies to today (the Lunatic's
     // fake Minions); everything else takes exactly one answer.
     val multi = requirement.kind == RequirementKind.REMINDER &&
         !requirement.blocking && candidates.size > 1
-    var chosen by rememberSaveable(rowIndex) { mutableStateOf(ArrayList<String>() as List<String>) }
-    var freeText by rememberSaveable(rowIndex) { mutableStateOf("") }
+    // Rows that also (or only) take something typed: any number, and a secret
+    // the engine offers no list for (the Mezepheles' word). A GRANT that DOES
+    // offer characters must be answered from that list — its stored value is a
+    // character id, not prose.
+    val typed = requirement.kind == RequirementKind.NUMBER ||
+        (requirement.kind == RequirementKind.GRANT && candidates.isEmpty())
+    var chosen by rememberSaveable(rowId) { mutableStateOf(ArrayList<String>() as List<String>) }
+    var freeText by rememberSaveable(rowId) { mutableStateOf("") }
 
     val apply: (Selection) -> Unit = { selection ->
         viewModel.applySetupRequirement(requirement, selection)
@@ -592,8 +600,8 @@ private fun SetupRequirementDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                when {
-                    candidates.isNotEmpty() -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                if (candidates.isNotEmpty()) {
+                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
                         // Index keys: a script may legally list one id twice.
                         items(candidates.size, key = { "cand-$it" }) { i ->
                             val candidate = candidates[i]
@@ -630,11 +638,13 @@ private fun SetupRequirementDialog(
                             }
                         }
                     }
+                }
 
-                    // A free-text secret (the Mezepheles' word) or a bare
-                    // number (the Outsider branch) — rows that offer no list.
-                    requirement.kind == RequirementKind.GRANT ||
-                        requirement.kind == RequirementKind.NUMBER -> OutlinedTextField(
+                // A free-text secret (the Mezepheles' word), or a number — kept
+                // alongside the chips for the count a jinx or a ruling puts
+                // outside the bracket's own list.
+                if (typed) {
+                    OutlinedTextField(
                         value = freeText,
                         onValueChange = { entered ->
                             freeText = if (requirement.kind == RequirementKind.NUMBER) {
@@ -643,11 +653,22 @@ private fun SetupRequirementDialog(
                                 entered
                             }
                         },
+                        label = {
+                            Text(
+                                when {
+                                    requirement.kind != RequirementKind.NUMBER -> "Write it down"
+                                    candidates.isEmpty() -> "Number"
+                                    else -> "Or type another number"
+                                },
+                            )
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                }
 
-                    else -> Text(
+                if (candidates.isEmpty() && !typed) {
+                    Text(
                         "Nothing to pick — confirm when you have done it at the table.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -662,14 +683,16 @@ private fun SetupRequirementDialog(
                     onClick = { apply(Selection(playerIds = chosen.mapNotNull { it.toLongOrNull() })) },
                 ) { Text("Place ${chosen.size}") }
 
-                candidates.isEmpty() && requirement.kind == RequirementKind.NUMBER -> FilledTonalButton(
+                // A typed answer wins over the chips whenever there is one, so
+                // the number field still works now that the chips exist.
+                typed && requirement.kind == RequirementKind.NUMBER -> FilledTonalButton(
                     enabled = freeText.toIntOrNull() != null,
                     onClick = {
                         apply(Selection(number = freeText.toIntOrNull(), text = freeText))
                     },
                 ) { Text("Save") }
 
-                candidates.isEmpty() && requirement.kind == RequirementKind.GRANT -> FilledTonalButton(
+                typed -> FilledTonalButton(
                     enabled = freeText.isNotBlank(),
                     onClick = { apply(Selection(text = freeText)) },
                 ) { Text("Save") }

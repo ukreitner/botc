@@ -169,7 +169,6 @@ class SourceGatesTest {
     }
 
     @Test
-    @Ignore("WP2 + WP11 — 3 label literals are still compared with ==: InfoCalc.kt:147 \"no ability\" (WP2), GameExtras.kt:430 \"Is the Drunk\" and :496 \"Is the Marionette\" (WP11, and both are the pre-WP5 spelling); enable when they use Tokens.key")
     fun `no reminder label literal outside engine rules is compared with equals`() {
         val hits = labelEqualityHits()
         assertTrue(

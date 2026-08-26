@@ -36,12 +36,12 @@ class SetupRequirementsTest {
     @Test
     fun `the Drunk must believe a not-in-play Townsfolk`() {
         var state = game("imp", "baron", "drunk", "recluse", "chef")
-        assertTrue("drunk.token" in ids(state))
+        assertTrue("drunk.token:2" in ids(state))
         assertTrue(problems(state).any { "show the Drunk" in it })
 
         // An IN-play Townsfolk is not a legal token.
         state = Seats.setShownCharacter(state, 2, "chef")
-        assertTrue("drunk.token" in ids(state))
+        assertTrue("drunk.token:2" in ids(state))
 
         state = Seats.setShownCharacter(state, 2, "washerwoman")
         assertEquals(emptyList(), problems(state), problems(state).toString())
@@ -65,7 +65,7 @@ class SetupRequirementsTest {
         val onTheDemon = Effects.placeExclusiveReminder(
             state, 0, PlacedReminder("fortuneteller", "Red Herring"),
         )
-        assertTrue("fortuneteller.herring" in ids(onTheDemon))
+        assertTrue("fortuneteller.herring:2" in ids(onTheDemon))
     }
 
     @Test
@@ -99,11 +99,11 @@ class SetupRequirementsTest {
     @Test
     fun `the Lunatic must be shown a Demon token`() {
         var state = game("imp", "poisoner", "lunatic", "chef", "mayor")
-        assertTrue("lunatic.token" in ids(state))
+        assertTrue("lunatic.token:2" in ids(state))
         state = Seats.setShownCharacter(state, 2, "chef")
-        assertTrue("lunatic.token" in ids(state), "a Townsfolk token is not a Demon token")
+        assertTrue("lunatic.token:2" in ids(state), "a Townsfolk token is not a Demon token")
         state = Seats.setShownCharacter(state, 2, "imp")
-        assertTrue("lunatic.token" !in ids(state))
+        assertTrue("lunatic.token:2" !in ids(state))
     }
 
     @Test
@@ -136,20 +136,20 @@ class SetupRequirementsTest {
     @Test
     fun `the Bounty Hunter turns exactly one Townsfolk evil and marks one evil player`() {
         var state = game("imp", "poisoner", "bountyhunter", "chef", "empath")
-        assertTrue("bountyhunter.evil" in ids(state))
-        assertTrue("bountyhunter.know" in ids(state))
+        assertTrue("bountyhunter.evil:2" in ids(state))
+        assertTrue("bountyhunter.know:2" in ids(state))
 
         state = Seats.setAlignment(state, 3, Alignment.EVIL)
-        assertTrue("bountyhunter.evil" !in ids(state))
+        assertTrue("bountyhunter.evil:2" !in ids(state))
 
         state = Effects.placeExclusiveReminder(state, 1, PlacedReminder("bountyhunter", "Know"))
-        assertTrue("bountyhunter.know" !in ids(state))
+        assertTrue("bountyhunter.know:2" !in ids(state))
 
         // The Know token has to sit on an EVIL seat.
         val misplaced = Effects.placeExclusiveReminder(
             state, 4, PlacedReminder("bountyhunter", "Know"),
         )
-        assertTrue("bountyhunter.know" in ids(misplaced))
+        assertTrue("bountyhunter.know:2" in ids(misplaced))
     }
 
     @Test
@@ -166,31 +166,31 @@ class SetupRequirementsTest {
     @Test
     fun `the Evil Twin's twin must be a good seat`() {
         var state = game("imp", "eviltwin", "chef", "empath", "mayor")
-        assertTrue("eviltwin.twin" in ids(state))
+        assertTrue("eviltwin.twin:1" in ids(state))
         state = Effects.placeExclusiveReminder(state, 2, PlacedReminder("eviltwin", "Twin"))
-        assertTrue("eviltwin.twin" !in ids(state))
+        assertTrue("eviltwin.twin:1" !in ids(state))
 
         val onTheDemon = Effects.placeExclusiveReminder(state, 0, PlacedReminder("eviltwin", "Twin"))
-        assertTrue("eviltwin.twin" in ids(onTheDemon))
+        assertTrue("eviltwin.twin:1" in ids(onTheDemon))
     }
 
     @Test
     fun `stored choices block until they are made`() {
         var state = game("imp", "boffin", "chef", "empath", "mayor")
-        assertTrue("boffin.grant" in ids(state))
+        assertTrue("boffin.grant:1" in ids(state))
         state = Decisions.set(state, Decisions.BOFFIN_GRANT, "chambermaid")
-        assertTrue("boffin.grant" !in ids(state))
+        assertTrue("boffin.grant:1" !in ids(state))
 
         var mez = game("imp", "mezepheles", "chef", "empath", "mayor")
-        assertTrue("mezepheles.word" in ids(mez))
+        assertTrue("mezepheles.word:1" in ids(mez))
         mez = Decisions.set(mez, Decisions.MEZEPHELES_WORD, "clocktower")
-        assertTrue("mezepheles.word" !in ids(mez))
+        assertTrue("mezepheles.word:1" !in ids(mez))
 
         var xaan = game("imp", "xaan", "chef", "empath", "mayor")
-        assertTrue("xaan.X" in ids(xaan))
+        assertTrue("xaan.X:1" in ids(xaan))
         assertTrue(problems(xaan).any { "choose X" in it })
         xaan = Decisions.set(xaan, Decisions.XAAN_X, "1")
-        assertTrue("xaan.X" !in ids(xaan))
+        assertTrue("xaan.X:1" !in ids(xaan))
     }
 
     @Test
@@ -270,15 +270,15 @@ class SetupRequirementsTest {
     fun `a Pit-Hag-created Fortune Teller needs a red herring on night three`() {
         var state = game("imp", "poisoner", "chef", "empath", "mayor")
         state = state.copy(phase = Phase.NIGHT, cycle = 3)
-        assertTrue("fortuneteller.herring" !in ids(state))
+        assertTrue("fortuneteller.herring:2" !in ids(state))
 
         state = Identity.changeCharacter(state, lookup, 2, "fortuneteller", ChangeReason.PIT_HAG)
         assertTrue(
-            "fortuneteller.herring" in ids(state),
+            "fortuneteller.herring:2" in ids(state),
             "the checklist is not a SETUP-only screen",
         )
         state = Effects.placeExclusiveReminder(state, 4, PlacedReminder("fortuneteller", "Red Herring"))
-        assertTrue("fortuneteller.herring" !in ids(state))
+        assertTrue("fortuneteller.herring:2" !in ids(state))
     }
 
     @Test
@@ -302,10 +302,90 @@ class SetupRequirementsTest {
     fun `advisory rows never block`() {
         val state = game("imp", "poisoner", "lunatic", "chef", "empath")
         val lunaticMinions = assertNotNull(
-            SetupRequirements.all(state, lookup).firstOrNull { it.id == "lunatic.minions" },
+            SetupRequirements.all(state, lookup).firstOrNull { it.id == "lunatic.minions:2" },
         )
         assertEquals(false, lunaticMinions.blocking)
         assertTrue(problems(state).none { "fake Minions" in it })
+    }
+
+    // ---- per-seat row ids ----
+
+    @Test
+    fun `a row that belongs to one seat carries that seat's id`() {
+        var state = Seats.newGame(script, (1..10).map { "P$it" })
+        listOf(
+            "imp", "poisoner", "drunk", "drunk", "lunatic",
+            "lunatic", "villageidiot", "villageidiot", "chef", "empath",
+        ).forEachIndexed { index, id -> state = Seats.assignCharacter(state, index.toLong(), id) }
+
+        val rowIds = SetupRequirements.all(state, lookup).map { it.id }
+        assertEquals(
+            rowIds.distinct(),
+            rowIds,
+            "checklist row ids must be unique — the UI keys a list by them",
+        )
+        // One row per SEAT, not one per character.
+        assertTrue(listOf("drunk.token:2", "drunk.token:3").all { it in rowIds }, rowIds.toString())
+        assertTrue(listOf("lunatic.token:4", "lunatic.token:5").all { it in rowIds }, rowIds.toString())
+        assertTrue(
+            listOf("lunatic.minions:4", "lunatic.minions:5").all { it in rowIds },
+            rowIds.toString(),
+        )
+        assertTrue(
+            listOf("lunatic.bluffs:4", "lunatic.bluffs:5").all { it in rowIds },
+            rowIds.toString(),
+        )
+        // …but a whole-game row stays unsuffixed, however many seats raise it.
+        assertEquals(listOf("villageidiot.drunk"), rowIds.filter { it.startsWith("villageidiot") })
+        assertEquals(listOf("demon.bluffs"), rowIds.filter { it.startsWith("demon.") })
+    }
+
+    @Test
+    fun `each seat's row answers for that seat alone`() {
+        var state = game("imp", "poisoner", "drunk", "drunk", "empath")
+        val rows = SetupRequirements.all(state, lookup).associateBy { it.id }
+        val second = assertNotNull(rows["drunk.token:3"])
+
+        state = second.apply(state, Selection(characterIds = listOf("washerwoman")))
+        assertEquals("washerwoman", state.player(3)?.shownCharacterId)
+        assertEquals(null, state.player(2)?.shownCharacterId, "the other Drunk was untouched")
+        assertTrue("drunk.token:2" in ids(state))
+        assertTrue("drunk.token:3" !in ids(state))
+    }
+
+    @Test
+    fun `the Outsider branch offers the bracket's legal counts as chips`() {
+        // 9 players: base 5 / 2 / 1 / 1, and the Godfather is "-1 or +1 Outsider".
+        var state = Seats.newGame(script, (1..9).map { "P$it" })
+        listOf(
+            "godfather", "washerwoman", "librarian", "butler", "saint",
+            "recluse", "chef", "empath", "imp",
+        ).forEachIndexed { index, id -> state = Seats.assignCharacter(state, index.toLong(), id) }
+
+        val row = assertNotNull(
+            SetupRequirements.all(state, lookup).firstOrNull { it.id == "setup.outsiderBranch" },
+        )
+        assertEquals(RequirementKind.NUMBER, row.kind)
+        assertEquals(listOf("1", "3"), row.candidates(state, lookup).map { it.id })
+        assertEquals(
+            listOf("1 Outsider", "3 Outsiders"),
+            row.candidates(state, lookup).map { it.label },
+        )
+
+        // Answering a chip stores the branch and satisfies the row.
+        assertTrue(row.id in ids(state))
+        val answered = row.apply(state, Selection(number = 3, text = "3"))
+        assertEquals(3, Decisions.int(answered, Decisions.OUTSIDER_BRANCH))
+        assertTrue(row.satisfied(answered, lookup))
+    }
+
+    @Test
+    fun `an open-ended bracket offers every count`() {
+        val state = game("kazali", "chef", "empath", "mayor", "monk")
+        val row = assertNotNull(
+            SetupRequirements.all(state, lookup).firstOrNull { it.id == "setup.outsiderBranch" },
+        )
+        assertEquals(listOf("0", "1", "2", "3", "4", "5"), row.candidates(state, lookup).map { it.id })
     }
 
     @Test
