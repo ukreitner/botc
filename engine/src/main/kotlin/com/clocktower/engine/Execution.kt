@@ -336,8 +336,9 @@ object Execution {
         // sheet is where "why is nobody dying?" gets answered. The one already
         // credited above is not repeated.
         if (executed != null) {
-            for (kind in PROTECTION_ROWS) {
-                val effect = Status.live(state, lookup, executed.id, kind).firstOrNull() ?: continue
+            for (effect in Status.protections(state, lookup, executed.id)) {
+                val kind = effect.kind
+                if (kind !in PROTECTION_ROWS) continue
                 if (Character.normalizeId(effect.sourceCharacterId) ==
                     Character.normalizeId(record.preventedBy)
                 ) {
