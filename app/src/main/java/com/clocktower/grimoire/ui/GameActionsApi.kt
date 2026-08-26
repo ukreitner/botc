@@ -36,7 +36,6 @@ import com.clocktower.engine.Selection
 import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.Tokens
 import com.clocktower.engine.Verdict
-import com.clocktower.engine.DayRules
 import com.clocktower.engine.StepKey
 import kotlin.random.Random
 
