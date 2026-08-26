@@ -13,6 +13,10 @@ import com.clocktower.engine.Script
 import com.clocktower.engine.ScriptLink
 import com.clocktower.engine.ScriptParser
 import com.clocktower.grimoire.GrimoireApp
+import com.clocktower.grimoire.data.Roster
+import com.clocktower.grimoire.data.archiving
+import com.clocktower.grimoire.data.discardingArchived
+import com.clocktower.grimoire.data.remembering
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +48,16 @@ class GameViewModel(application: Application) :
 
     val importedScripts: StateFlow<List<Script>> = app.dataStore.data
         .map { it.importedScripts }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Past games, newest first — WP11 archives instead of destroying. */
+    val archivedGames: StateFlow<List<GameState>> = app.dataStore.data
+        .map { it.archivedGames }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Remembered tables, newest first — WP11's roster memory. */
+    val recentRosters: StateFlow<List<Roster>> = app.dataStore.data
+        .map { it.recentRosters }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** False until the initial DataStore read completes (splash gate). */
@@ -79,20 +93,58 @@ class GameViewModel(application: Application) :
 
     // ---- Game lifecycle -------------------------------------------------
 
+    /**
+     * WP11: the game in progress is ARCHIVED, never destroyed, and the roster
+     * is remembered. One `updateData` call does all three so the archive can
+     * never race the first save of the new game.
+     */
     fun startGame(script: Script, playerNames: List<String>) {
         undoStack.clear()
         redoStack.clear()
-        setGame(GameActions.newGame(script, playerNames))
+        val previous = _game.value
+        val fresh = GameActions.newGame(script, playerNames)
+            .copy(updatedAt = System.currentTimeMillis())
+        _game.value = fresh
+        _canUndo.value = false
+        _canRedo.value = false
+        viewModelScope.launch {
+            app.dataStore.updateData {
+                it.archiving(previous).remembering(playerNames).copy(game = fresh)
+            }
+        }
     }
 
+    /** WP11: ending a game files it in the archive instead of deleting it. */
     fun endGame() {
         undoStack.clear()
         redoStack.clear()
+        val finished = _game.value
         _game.value = null
         _canUndo.value = false
         _canRedo.value = false
         viewModelScope.launch {
-            app.dataStore.updateData { it.copy(game = null) }
+            app.dataStore.updateData { it.archiving(finished).copy(game = null) }
+        }
+    }
+
+    /** Re-opens an archived game as the live one, archiving whatever is current. */
+    fun resumeArchived(archived: GameState) {
+        undoStack.clear()
+        redoStack.clear()
+        val previous = _game.value
+        _game.value = archived
+        _canUndo.value = false
+        _canRedo.value = false
+        viewModelScope.launch {
+            app.dataStore.updateData {
+                it.archiving(previous).discardingArchived(archived).copy(game = archived)
+            }
+        }
+    }
+
+    fun discardArchived(archived: GameState) {
+        viewModelScope.launch {
+            app.dataStore.updateData { it.discardingArchived(archived) }
         }
     }
 

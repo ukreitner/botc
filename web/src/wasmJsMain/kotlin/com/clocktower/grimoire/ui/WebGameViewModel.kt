@@ -12,6 +12,9 @@ import com.clocktower.engine.ScriptParser
 import com.clocktower.engine.Time
 import com.clocktower.grimoire.WebApp
 import com.clocktower.grimoire.WebStore
+import com.clocktower.grimoire.data.archiving
+import com.clocktower.grimoire.data.discardingArchived
+import com.clocktower.grimoire.data.remembering
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -39,6 +42,14 @@ class GameViewModel : GameActionsApi {
     private val _importedScripts = MutableStateFlow(saved.importedScripts)
     val importedScripts: StateFlow<List<Script>> = _importedScripts
 
+    /** Past games, newest first — WP11 archives instead of destroying. */
+    private val _archivedGames = MutableStateFlow(saved.archivedGames)
+    val archivedGames: StateFlow<List<GameState>> = _archivedGames
+
+    /** Remembered tables, newest first — WP11's roster memory. */
+    private val _recentRosters = MutableStateFlow(saved.recentRosters)
+    val recentRosters: StateFlow<List<com.clocktower.grimoire.data.Roster>> = _recentRosters
+
     /** Data is loaded before the UI starts on web. */
     val ready: StateFlow<Boolean> = MutableStateFlow(true)
 
@@ -56,24 +67,51 @@ class GameViewModel : GameActionsApi {
 
     private fun persist(mutate: (com.clocktower.grimoire.data.SavedData) -> com.clocktower.grimoire.data.SavedData) {
         saved = mutate(saved)
-        WebStore.save(saved)
+        // Quota failures raise WebStore.saveFailed, which the shell renders as
+        // a persistent banner — never swallowed (ARCHITECTURE §5.4).
+        WebStore.saveShedding(saved)
+        _archivedGames.value = saved.archivedGames
+        _recentRosters.value = saved.recentRosters
     }
 
     // ---- Game lifecycle -------------------------------------------------
 
+    /** WP11: the game in progress is ARCHIVED, never destroyed. */
     fun startGame(script: Script, playerNames: List<String>) {
         undoStack.clear()
         redoStack.clear()
-        setGame(GameActions.newGame(script, playerNames))
+        val previous = _game.value
+        val fresh = GameActions.newGame(script, playerNames).copy(updatedAt = Time.epochMillis())
+        _game.value = fresh
+        _canUndo.value = false
+        _canRedo.value = false
+        persist { it.archiving(previous).remembering(playerNames).copy(game = fresh) }
     }
 
+    /** WP11: ending a game files it in the archive instead of deleting it. */
     fun endGame() {
         undoStack.clear()
         redoStack.clear()
+        val finished = _game.value
         _game.value = null
         _canUndo.value = false
         _canRedo.value = false
-        persist { it.copy(game = null) }
+        persist { it.archiving(finished).copy(game = null) }
+    }
+
+    /** Re-opens an archived game as the live one, archiving whatever is current. */
+    fun resumeArchived(archived: GameState) {
+        undoStack.clear()
+        redoStack.clear()
+        val previous = _game.value
+        _game.value = archived
+        _canUndo.value = false
+        _canRedo.value = false
+        persist { it.archiving(previous).discardingArchived(archived).copy(game = archived) }
+    }
+
+    fun discardArchived(archived: GameState) {
+        persist { it.discardingArchived(archived) }
     }
 
     /** Applies a transition, recording history and persisting. */
