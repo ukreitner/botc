@@ -63,7 +63,7 @@ internal val TB_RULES: List<CharacterRule> = listOf(
     /** "You start knowing that 1 of 2 players is a particular Townsfolk." */
     CharacterRule(
         id = "washerwoman",
-        firstNight = startKnowing(
+        firstNight = info(
             "washerwoman",
             "Show the character token of a Townsfolk in play, then point at two players — " +
                 "one of them is that character.",
@@ -79,7 +79,7 @@ internal val TB_RULES: List<CharacterRule> = listOf(
     /** "…a particular Outsider. (Or that zero are in play.)" */
     CharacterRule(
         id = "librarian",
-        firstNight = startKnowing(
+        firstNight = info(
             "librarian",
             "Show the character token of an Outsider in play, then point at two players — " +
                 "one of them is that character. With no Outsider in play, show a 0.",
@@ -93,7 +93,7 @@ internal val TB_RULES: List<CharacterRule> = listOf(
     /** "…a particular Minion." No zero clause — this one always names a character. */
     CharacterRule(
         id = "investigator",
-        firstNight = startKnowing(
+        firstNight = info(
             "investigator",
             "Show the character token of a Minion in play, then point at two players — " +
                 "one of them is that character.",
@@ -346,7 +346,6 @@ internal val TB_RULES: List<CharacterRule> = listOf(
      */
     CharacterRule(
         id = "poisoner",
-        killCause = DeathCause.EVIL_ABILITY,
         firstNight = poisoner(),
         otherNight = poisoner(),
         tokens = listOf(
@@ -439,6 +438,10 @@ internal val TB_RULES: List<CharacterRule> = listOf(
             },
         ),
         onDeath = listOf(DeathTrigger(gate = ::impKilledItself, produce = ::impStarPass)),
+        // The kill funnel shrouds the seat itself, so the "Dead" mark is the
+        // storyteller's own bookkeeping. It is declared, not placed: an attack
+        // that a Monk or a Soldier stopped must not leave a "Dead" token on a
+        // living player. The rule gives a hand-placed one its dawn sweep.
         tokens = listOf(TokenRule("imp", "Dead", until = Until.DAWN)),
     ),
 )
@@ -447,19 +450,17 @@ internal val TB_RULES: List<CharacterRule> = listOf(
 // Night-rule shapes
 // =========================================================================
 
-/** A zero-target information step: the answer is computed, never picked. */
+/**
+ * A zero-target information step: the answer is computed, never picked. The
+ * three "you start knowing" steps are this shape too — the pair of players and
+ * the character shown are prepared before the first night and replayed here.
+ */
 private fun info(id: String, prompt: String): NightRule = NightRule(
     gate = Gates.aliveHolder,
     prompt = prompt,
     action = { ShowInfo(id, "SHOW THEM", targetsNeeded = 0) },
     infoId = id,
 )
-
-/**
- * The three "you start knowing" steps. Identical in shape; the pair of players
- * and the character shown are prepared before the first night and replayed here.
- */
-private fun startKnowing(id: String, prompt: String): NightRule = info(id, prompt)
 
 private fun fortuneTeller(): NightRule = NightRule(
     gate = Gates.aliveHolder,
@@ -621,7 +622,13 @@ private fun scarletWomanPromotion(
     )
 }
 
-/** "If you kill yourself this way, a Minion becomes the Imp." */
+/**
+ * "If you kill yourself this way, a Minion becomes the Imp."
+ *
+ * Whether an heir exists is asked as "is anybody else left", not "is a Minion
+ * left": the trigger has no character lookup to read a team with (filed for
+ * WP2), and the storyteller picks the heir from the prompt either way.
+ */
 private fun impKilledItself(state: GameState, event: DeathEvent, holder: Player): Boolean {
     if (event.playerId != holder.id) return false
     if (event.killerPlayerId != holder.id) return false
