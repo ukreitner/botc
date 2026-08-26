@@ -114,7 +114,6 @@ private val DEMON_DEATHS: Set<DeathCause> = setOf(DeathCause.DEMON_KILL, DeathCa
 private fun demonAttack(
     sourceId: String,
     noneLabel: String = "No kill (impaired, protected, or the storyteller's choice)",
-    perTargetExtra: List<NightEffect> = emptyList(),
     onResolve: List<NightEffect> = emptyList(),
     onNone: List<NightEffect> = emptyList(),
 ) = ChoosePlayers(
@@ -126,7 +125,7 @@ private fun demonAttack(
     sort = TargetSort.ALIVE_FIRST,
     allowNone = true,
     noneLabel = noneLabel,
-    perTarget = listOf(NightEffect.Attack(Ref.Target, DeathCause.DEMON_KILL)) + perTargetExtra,
+    perTarget = listOf(NightEffect.Attack(Ref.Target, DeathCause.DEMON_KILL)),
     onResolve = onResolve,
     onNone = onNone,
 )
@@ -184,7 +183,6 @@ private fun prompt(
     subject: Long,
     title: String,
     detail: String = "",
-    stepSlotId: String = "",
 ) = Prompt(
     id = 0,
     at = at,
@@ -193,7 +191,6 @@ private fun prompt(
     subjectPlayerId = subject,
     title = title,
     detail = detail,
-    stepSlotId = stepSlotId,
 )
 
 /** A token placed by an on-death trigger. The funnel stamps `id` (lead D64). */
