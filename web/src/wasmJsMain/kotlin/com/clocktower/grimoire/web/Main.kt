@@ -407,7 +407,11 @@ private fun Home(
         onLibrary = { onRoute("library") },
         onEndGame = { viewModel.endGame() },
         onEndNotes = { viewModel.endNotes() },
-        buildLabel = remember { runCatching { jsBuildLabel().take(7) }.getOrDefault("") },
+        // An unreplaced CI placeholder is worse than no footer at all.
+        buildLabel = remember {
+            runCatching { jsBuildLabel() }.getOrDefault("")
+                .takeUnless { it.startsWith("__") }.orEmpty().take(7)
+        },
         archivedGames = archived,
         onOpenArchived = {
             viewModel.resumeArchived(it)
