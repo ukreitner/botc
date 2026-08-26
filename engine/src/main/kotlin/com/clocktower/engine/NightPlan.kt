@@ -227,7 +227,11 @@ data class NightPlan(
                 // A bluff set owed TO this slot's own holder is handed out on
                 // their row; one owed to somebody else (the Snitch's Minions)
                 // becomes a row of its own.
-                val owed = ctx.bluffs.filter { it.stepSlotId == slot && it.recipientId != null }
+                val owed = if (!ctx.isFirstNight) {
+                    emptyList()
+                } else {
+                    ctx.bluffs.filter { it.stepSlotId == slot && it.recipientId != null }
+                }
                 val holders = slotRoles.map { it.playerId }.toSet()
                 val (folded, separate) = owed.partition { it.recipientId in holders }
                 if (rule.groupStep) {
@@ -278,7 +282,14 @@ data class NightPlan(
             val nightRule = rule.nightRule(step.style == WakeStyle.FIRST_NIGHT)
             val action = step.action
             val holderId = step.holderId
-            val impaired = holderId != null && !Status.hasAbility(state, lookup, holderId)
+            // "Malfunctioning" is about the ABILITY, not about being dead: a
+            // Ravenkeeper acts *because* they died, and a Boffin-granted row works
+            // through poison. Only a live holder whose role does not work counts.
+            val holder = holderId?.let { state.player(it) }
+            val impaired = holder != null && holder.alive && !(
+                nightCtx.role?.let { Status.roleWorks(state, lookup, it) }
+                    ?: Status.hasAbility(state, lookup, holder.id)
+                )
 
             // The deferred half is computed from the state BEFORE the choice lands,
             // and applied after it, so "poison the new target, then the old one
