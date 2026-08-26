@@ -328,7 +328,7 @@ private fun balloonist(): CharacterRule {
         gate = Gates.aliveHolder,
         prompt = "Point at a player of a DIFFERENT character type to the one shown last " +
             "night. Move the Know token to them. They do not learn the type.",
-        action = {
+        action = { ctx ->
             ChoosePlayers(
                 sourceId = "balloonist",
                 prompt = "WHO DID THEY LEARN?",
@@ -336,7 +336,9 @@ private fun balloonist(): CharacterRule {
                 max = 1,
                 constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED),
                 sort = TargetSort.SEAT_ORDER,
-                perTarget = listOf(
+                // The token MOVES: the setup one is a hand-placed reminder, which
+                // `Effects.place` cannot displace on its own.
+                perTarget = clearToken(ctx.state, "balloonist", "Know") +
                     NightEffect.PlaceToken(
                         sourceId = "balloonist",
                         label = "Know",
@@ -344,7 +346,6 @@ private fun balloonist(): CharacterRule {
                         kind = EffectKind.MARKER,
                         until = Until.FOREVER,
                     ),
-                ),
             )
         },
     )
@@ -468,7 +469,7 @@ private fun bountyHunter() = CharacterRule(
     otherNight = NightRule(
         gate = knownPlayerDied(),
         prompt = "Point at a new evil player and move the Know token to them.",
-        action = {
+        action = { ctx ->
             ChoosePlayers(
                 sourceId = "bountyhunter",
                 prompt = "WHICH EVIL PLAYER DID THEY LEARN?",
@@ -482,7 +483,7 @@ private fun bountyHunter() = CharacterRule(
                 sort = TargetSort.SEAT_ORDER,
                 allowNone = true,
                 noneLabel = "Every evil player has already been learned",
-                perTarget = listOf(
+                perTarget = clearToken(ctx.state, "bountyhunter", "Know") +
                     NightEffect.PlaceToken(
                         sourceId = "bountyhunter",
                         label = "Know",
@@ -490,7 +491,6 @@ private fun bountyHunter() = CharacterRule(
                         kind = EffectKind.MARKER,
                         until = Until.FOREVER,
                     ),
-                ),
             )
         },
     ),
@@ -1464,4 +1464,24 @@ private fun isDemonKill(event: DeathEvent): Boolean =
 private fun holdsToken(player: Player, sourceId: String, label: String): Boolean {
     val key = Tokens.key(sourceId, label)
     return player.reminders.any { Tokens.key(it) == key }
+}
+
+/**
+ * `RemoveToken` for every seat currently carrying `(sourceId, label)`.
+ *
+ * A "the token moves" rule cannot rely on `TokenRule.copies` alone: `Effects.place`
+ * displaces an older EFFECT, but the setup checklist places the first copy as a
+ * hand-placed `PlacedReminder`, which nothing displaces. Prepending these keeps
+ * exactly one on the board however it got there.
+ */
+private fun clearToken(state: GameState, sourceId: String, label: String): List<NightEffect> {
+    val key = Tokens.key(sourceId, label)
+    return state.seats
+        .filter { seat ->
+            seat.reminders.any { Tokens.key(it) == key } ||
+                state.effects.any {
+                    it.targetId == seat.id && Tokens.key(it.sourceCharacterId, it.label) == key
+                }
+        }
+        .map { NightEffect.RemoveToken(sourceId, label, Ref.Seat(it.id)) }
 }
