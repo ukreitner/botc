@@ -426,9 +426,11 @@ fun SetupChecklistSheet(
 ) {
     val lookup = viewModel::characterById
     val rows = remember(state) { SetupRequirements.all(state, lookup) }
-    val satisfied = remember(state, rows) { rows.associate { it.id to it.satisfied(state, lookup) } }
-    val doneCount = satisfied.values.count { it }
-    var openRowId by rememberSaveable { mutableStateOf<String?>(null) }
+    // By INDEX, not by id: two Lunatics (or two Village Idiots) legally raise
+    // two rows with the same id, and each carries its own seat in its `apply`.
+    val satisfied = remember(state, rows) { rows.map { it.satisfied(state, lookup) } }
+    val doneCount = satisfied.count { it }
+    var openRow by rememberSaveable { mutableStateOf(-1) }
     var showBluffs by rememberSaveable { mutableStateOf(false) }
 
     // The bluff picker is itself a bottom sheet, so it REPLACES the checklist
@@ -460,8 +462,9 @@ fun SetupChecklistSheet(
                 )
                 Spacer(Modifier.height(6.dp))
             }
-            items(rows, key = { "req-" + it.id }) { row ->
-                val ok = satisfied[row.id] == true
+            items(rows.size, key = { "req-$it" }) { index ->
+                val row = rows[index]
+                val ok = satisfied.getOrElse(index) { false }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -470,7 +473,7 @@ fun SetupChecklistSheet(
                             if (row.kind == RequirementKind.BLUFFS) {
                                 showBluffs = true
                             } else {
-                                openRowId = row.id
+                                openRow = index
                             }
                         }
                         .padding(vertical = 6.dp),
@@ -523,15 +526,14 @@ fun SetupChecklistSheet(
         }
     }
 
-    openRowId?.let { id ->
-        rows.firstOrNull { it.id == id }?.let { row ->
-            SetupRequirementDialog(
-                viewModel = viewModel,
-                state = state,
-                requirement = row,
-                onDismiss = { openRowId = null },
-            )
-        } ?: run { openRowId = null }
+    rows.getOrNull(openRow)?.let { row ->
+        SetupRequirementDialog(
+            viewModel = viewModel,
+            state = state,
+            requirement = row,
+            rowIndex = openRow,
+            onDismiss = { openRow = -1 },
+        )
     }
 }
 
@@ -545,14 +547,19 @@ private fun SetupRequirementDialog(
     viewModel: GameViewModel,
     state: GameState,
     requirement: SetupRequirement,
+    /** Position in the checklist — the row's identity, since ids can repeat. */
+    rowIndex: Int,
     onDismiss: () -> Unit,
 ) {
     val lookup = viewModel::characterById
-    val candidates = remember(state, requirement.id) { requirement.candidates(state, lookup) }
-    val multi = requirement.kind == RequirementKind.REMINDER && candidates.size > 1 &&
-        requirement.id == "lunatic.minions"
-    var chosen by rememberSaveable(requirement.id) { mutableStateOf(ArrayList<String>() as List<String>) }
-    var freeText by rememberSaveable(requirement.id) { mutableStateOf("") }
+    val candidates = remember(state, rowIndex) { requirement.candidates(state, lookup) }
+    // Rows that place a token on SEVERAL seats at once. Advisory rows that name
+    // no single holder are the only ones this applies to today (the Lunatic's
+    // fake Minions); everything else takes exactly one answer.
+    val multi = requirement.kind == RequirementKind.REMINDER &&
+        !requirement.blocking && candidates.size > 1
+    var chosen by rememberSaveable(rowIndex) { mutableStateOf(ArrayList<String>() as List<String>) }
+    var freeText by rememberSaveable(rowIndex) { mutableStateOf("") }
 
     val apply: (Selection) -> Unit = { selection ->
         viewModel.applySetupRequirement(requirement, selection)
@@ -574,7 +581,9 @@ private fun SetupRequirementDialog(
                 }
                 when {
                     candidates.isNotEmpty() -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                        items(candidates, key = { "cand-" + it.id }) { candidate ->
+                        // Index keys: a script may legally list one id twice.
+                        items(candidates.size, key = { "cand-$it" }) { i ->
+                            val candidate = candidates[i]
                             val picked = candidate.id in chosen
                             TextButton(
                                 enabled = candidate.enabled,

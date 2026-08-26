@@ -143,8 +143,11 @@ fun SetupScreen(
 
     val residentCount = names.indices.count { it !in travellerSeats }
     val characters = remember(script) {
-        script?.let { viewModel.gameData.resolve(it).filter { c -> c.team.isTownResident } }
-            .orEmpty()
+        // distinctBy: a hand-written script may list one id twice, and a
+        // duplicate LazyColumn key throws.
+        script?.let {
+            viewModel.gameData.resolve(it).filter { c -> c.team.isTownResident }.distinctBy { c -> c.id }
+        }.orEmpty()
     }
     val byId = remember(characters) { characters.associateBy { it.id } }
     val selected = bagIds.mapNotNull { byId[it] }
