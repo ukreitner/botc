@@ -15,12 +15,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,37 +29,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
-import com.clocktower.grimoire.ui.theme.NightSky
-import com.clocktower.grimoire.ui.theme.Parchment
-import com.clocktower.grimoire.ui.theme.Twilight
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.sp
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NightMarkers
+import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.components.ZoomControls
 import com.clocktower.grimoire.ui.components.rememberZoomState
 import com.clocktower.grimoire.ui.components.zoomGestures
 import com.clocktower.grimoire.ui.components.zoomTransform
-import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.BloodRed
 import com.clocktower.grimoire.ui.theme.EmberRed
+import com.clocktower.grimoire.ui.theme.NightSky
+import com.clocktower.grimoire.ui.theme.Parchment
+import com.clocktower.grimoire.ui.theme.Twilight
 import com.clocktower.grimoire.ui.theme.color
 import kotlin.math.cos
 import kotlin.math.min
@@ -84,13 +85,10 @@ fun GrimoireScreen(
         if (state.phase != Phase.NIGHT) {
             emptyMap()
         } else {
-            val steps = if (state.cycle == 1) {
-                viewModel.gameData.nightOrder.firstNight(state, viewModel::characterById)
-            } else {
-                viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
-            }
-            steps.filter { it.id !in NightMarkers.all && it.playerIds.isNotEmpty() }
-                .mapIndexed { index, step -> step.id to index + 1 }
+            // WP2 redirect: NightPlan.build replaces the deleted NightOrder.
+            NightPlan.build(state, viewModel::characterById).steps
+                .filter { it.slotId !in NightMarkers.all && it.playerIds.isNotEmpty() }
+                .mapIndexed { index, step -> step.slotId to index + 1 }
                 .toMap()
         }
     }

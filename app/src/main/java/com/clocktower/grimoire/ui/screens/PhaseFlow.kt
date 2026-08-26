@@ -26,6 +26,7 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
+import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Phase
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
@@ -108,13 +109,10 @@ internal fun requestPhaseAdvance(
         return null
     }
     if (state.phase == Phase.NIGHT) {
-        val nightSteps = if (state.cycle == 1) {
-            viewModel.gameData.nightOrder.firstNight(state, viewModel::characterById)
-        } else {
-            viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
-        }
-        val unfinished = nightSteps
-            .filterNot { it.id in state.nightStepsDone }
+        // WP2 redirect: gated-off steps are auto-ticked by the planner, so the
+        // dawn guard only ever names rows that really still owe something.
+        val unfinished = NightPlan.build(state, viewModel::characterById)
+            .unfinished(state.nightStepsDone)
             .map { it.title }
         if (unfinished.isNotEmpty()) {
             guards.unfinishedNightSteps = unfinished
