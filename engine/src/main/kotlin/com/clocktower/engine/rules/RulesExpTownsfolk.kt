@@ -913,10 +913,21 @@ private fun knight() = CharacterRule(
  * kill tonight. One good player registers as evil."
  *
  * The Demon's suppression is a real `DEMON_CANNOT_KILL` effect on every Demon
- * seat, so `Deaths.killOutcome` blocks tonight's kill AND a deferred one (lead
- * D36/D63: the wiki's own example is a Pukka's standing victim). The Faux Paw
- * misregistration is a [StandingRule] (lead D58) so it lapses the moment the
- * Lycanthrope dies or is impaired, with no extra code.
+ * seat, so `Deaths.killOutcome` blocks the kill wherever it comes from rather
+ * than by hiding a button (lead D36) — the Demon still wakes, still chooses, and
+ * must never learn it failed.
+ *
+ * OPEN, FOR THE LEAD: the wiki's Lycanthrope example is a Pukka's DEFERRED kill
+ * failing, but lead D63 makes `NightEffect.Attack(deferred = true)` drop the
+ * silenced source seat so a standing Pukka victim dies anyway. D63 is written
+ * for the Exorcist ("does not wake to attack tonight"); the Lycanthrope's clause
+ * is "the Demon doesn't kill tonight". `Attack.deferred` carries no record of
+ * WHICH suppression is present, so `NightPlan.applyEffect` cannot tell the two
+ * apart. Filed to WP2 with a suggested fix: give the suppression a scope
+ * (`exorcised` vs `noKillTonight`) rather than keying off `deferred`.
+ *
+ * The Faux Paw misregistration is a [StandingRule] (lead D58) so it lapses the
+ * moment the Lycanthrope dies or is impaired, with no extra code.
  */
 private fun lycanthrope() = CharacterRule(
     id = "lycanthrope",

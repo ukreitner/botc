@@ -106,9 +106,14 @@ class RulesExpTownsfolkTest {
             scope.map { Character.normalizeId(it.id) }.sorted(),
             ids.map(Character::normalizeId).sorted(),
         )
-        // `CharacterRules.of` must find each one rather than falling back.
+        // `CharacterRules.of` must find each one rather than falling back to the
+        // generic row built from `characters.json`.
         for (id in ids) {
-            assertNotNull(CharacterRules.of(id, lookup(id)).firstNight ?: CharacterRules.of(id, lookup(id)))
+            assertEquals(
+                CharacterRules.all[id],
+                CharacterRules.of(id, lookup(id)),
+                "$id fell through to the generic rule",
+            )
         }
     }
 
@@ -573,8 +578,9 @@ class RulesExpTownsfolkTest {
 
     @Test
     fun `a Lycanthrope kill also silences the Demon for the rest of the night`() {
-        // Given a sober Lycanthrope on night 2
-        var state = atNight(game("lycanthrope", "imp", "poisoner", "chef", "mayor", "monk"), 2)
+        // Given a sober Lycanthrope on night 2 (no Mayor: a bounce is a Redirect,
+        // which would hide whether the kill was blocked)
+        var state = atNight(game("lycanthrope", "imp", "poisoner", "chef", "butler", "monk"), 2)
 
         // When they choose a good player
         state = run(state, "lycanthrope", NightInput(playerIds = listOf(3L)))
@@ -586,15 +592,21 @@ class RulesExpTownsfolkTest {
         assertEquals("lycanthrope", event.killerCharacterId)
         assertTrue(has(state, 3L, "lycanthrope", "Dead"))
 
-        // And the Demon's own kill is blocked — tonight's and a deferred one.
-        for (deferred in listOf(false, true)) {
-            val outcome = Deaths.killOutcome(
+        // And the Demon's own kill is blocked through the ordinary funnel — the
+        // Demon still wakes and still chooses, and must never learn it failed.
+        val outcome = Deaths.killOutcome(
+            state, lookup, 4L,
+            KillCause(DeathCause.DEMON_KILL, "imp", 1L),
+        )
+        assertTrue(outcome is KillOutcome.Prevented, "$outcome")
+        assertEquals(EffectKind.DEMON_CANNOT_KILL, (outcome as KillOutcome.Prevented).by?.kind)
+        // A non-Demon night kill is untouched.
+        assertTrue(
+            Deaths.killOutcome(
                 state, lookup, 4L,
-                KillCause(DeathCause.DEMON_KILL, "imp", 1L),
-            )
-            assertTrue(outcome is KillOutcome.Prevented, "deferred=$deferred gave $outcome")
-            assertEquals(EffectKind.DEMON_CANNOT_KILL, (outcome as KillOutcome.Prevented).by?.kind)
-        }
+                KillCause(DeathCause.EVIL_ABILITY, "poisoner", 2L),
+            ) is KillOutcome.Dies,
+        )
     }
 
     @Test
