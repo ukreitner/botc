@@ -69,9 +69,6 @@ object Setup {
     const val MIN_PLAYERS = 5
     const val MAX_PLAYERS = 20
 
-    /** Characters whose bracket rewrites the whole team structure. */
-    private val TEAM_WARPING_IDS = setOf("atheist", "legion", "riot")
-
     /** Bracket-mandated companions: this character forces another into play. */
     val COMPANIONS: Map<String, String> = mapOf(
         "huntsman" to "damsel",
@@ -124,10 +121,10 @@ object Setup {
         val bracket = bracketRegex.find(character.ability)?.groupValues?.get(1)
             ?: return SetupModifier(character.id, "Modifies setup")
 
-        // Characters that rewrite the whole structure: relax every count.
-        if (character.id in TEAM_WARPING_IDS) {
-            return SetupModifier(character.id, bracket, choiceTeams = Team.entries.toSet())
-        }
+        // Characters that rewrite the whole team structure (Atheist, Legion,
+        // Lil' Monsta, Kazali, Lord of Typhon, Summoner) declare a BagShape
+        // instead — see [bagShapeFor] (lead D28). `TEAM_WARPING_IDS` is gone.
+
         // Summoner: the game starts with no Demon in the bag.
         if (bracket.contains("No Demon", ignoreCase = true)) {
             return SetupModifier(character.id, bracket, demonDelta = -1)
@@ -336,7 +333,7 @@ object Setup {
             }
 
             // Reconcile: force required companions in, then trim/fill drift
-            // caused by modifiers of later-drawn characters.
+            // caused by modifiers of later-drawn characters and by BagShapes.
             var bag = picked.values.flatten().toMutableList()
             repeat(4) {
                 for (c in bag.toList()) {
@@ -345,10 +342,15 @@ object Setup {
                         available.find { it.id == companionId }?.let { bag.add(it) }
                     }
                 }
+                val shapes = shapesFor(bag, playerCount)
+                val forbidden = forbiddenIds(shapes)
                 val target = adjustedDistribution(playerCount, bag)
                 for (team in teamsInOrder) {
-                    val members = bag.filter { it.team == team }
-                    var excess = members.size - target.count(team)
+                    // A shape-forbidden character (Lil' Monsta) fills no seat.
+                    val members = bag.filter { it.team == team && it.id !in forbidden }
+                    val pinned = shapes.values.mapNotNull { it.range(team) }
+                    val want = pinned.fold(target.count(team)) { acc, r -> acc.coerceIn(r) }
+                    var excess = members.size - want
                     if (excess > 0) {
                         // Never trim characters that modify setup or are
                         // required companions — trim plain members instead.
@@ -358,8 +360,17 @@ object Setup {
                             if (m.setup || m.id in required) continue
                             bag.remove(m); excess--
                         }
+                        // A shape may forbid a whole team the bag still holds
+                        // (Summoner's Demon, Kazali's Minions): trim those too.
+                        for (m in bag.filter { it.team == team && it.id !in forbidden }.shuffled(random)) {
+                            if (excess == 0) break
+                            if (m.id in required || bagShapeFor(m.id, distributionFor(playerCount), playerCount) != null) continue
+                            bag.remove(m); excess--
+                        }
                     } else if (excess < 0) {
-                        val unused = byTeam[team].orEmpty().filter { c -> bag.none { it.id == c.id } }
+                        val unused = byTeam[team].orEmpty().filter { c ->
+                            c.id !in forbidden && bag.none { it.id == c.id }
+                        }
                         for (m in unused.shuffled(random)) {
                             if (excess == 0) break
                             bag.add(m); excess++
@@ -368,7 +379,8 @@ object Setup {
                 }
             }
 
-            if (bag.size == playerCount && validateBag(bag, playerCount).isEmpty()) {
+            val seatFilling = bag.count { it.id !in forbiddenIds(shapesFor(bag, playerCount)) }
+            if (seatFilling == playerCount && validateBag(bag, playerCount).isEmpty()) {
                 return bag
             }
         }
@@ -383,13 +395,22 @@ object Setup {
         else -> 0
     }
 
-    /** Ids that may legally appear multiple times in a bag. */
-    val DUPLICABLE = setOf("villageidiot", "legion", "riot")
+    /**
+     * Ids that may legally appear multiple times in a bag.
+     *
+     * `riot` is NOT one of them (lead D28): a Riot game deals ordinary Minions,
+     * which become Riot on day 3.
+     */
+    val DUPLICABLE = setOf("villageidiot", "legion")
 
     /**
      * Human-readable problems with a proposed bag, empty when legal.
+     *
      * Active Fabled ([fabledIds]) that legally bend the distribution are
      * honoured — the Sentinel allows one extra or one fewer Outsider.
+     * [inPlayIds] names characters that are in play WITHOUT a bag token
+     * (Lil' Monsta's centre token, a Boffin or Alchemist grant): their
+     * [BagShape] applies even though they never fill a seat.
      */
     fun validateBag(
         bag: List<Character>,
@@ -397,12 +418,23 @@ object Setup {
         fabledIds: Collection<String> = emptyList(),
         /** House rule: any character may appear multiple times. */
         allowAnyDuplicates: Boolean = false,
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
     ): List<String> {
         val issues = mutableListOf<String>()
-        if (bag.size != playerCount) {
-            issues += "Bag has ${bag.size} characters for $playerCount players"
+        val shapes = shapesFor(bag, playerCount, inPlayIds, state)
+        val forbidden = forbiddenIds(shapes)
+        val (seatless, seatFilling) = bag.partition { Character.normalizeId(it.id) in forbidden }
+        if (seatFilling.size != playerCount) {
+            if (seatless.isNotEmpty()) {
+                for (token in seatless.distinctBy { it.id }) {
+                    issues += "${token.name} is a token, not a seat — it fills no seat in the bag"
+                }
+            } else {
+                issues += "Bag has ${bag.size} characters for $playerCount players"
+            }
         }
-        val modifiers = bag.mapNotNull { modifierFor(it) }
+        val modifiers = seatFilling.mapNotNull { modifierFor(it) }
         val unboundedChoiceTeams = modifiers
             .flatMap { it.choiceTeams - it.choiceDeltas.keys }
             .toSet()
@@ -414,7 +446,7 @@ object Setup {
                 add(Team.TOWNSFOLK)
             }
         }
-        var allowed = allowedDistributions(playerCount, bag)
+        var allowed = allowedDistributions(playerCount, seatFilling)
         if ("sentinel" in fabledIds.map { Character.normalizeId(it) }) {
             allowed = allowed
                 .flatMap { d ->
@@ -427,15 +459,31 @@ object Setup {
                 .filter { it.outsiders >= 0 && it.townsfolk >= 0 }
                 .toSet()
         }
-        val counts = bag.groupingBy { it.team }.eachCount()
-        val checkedTeams = listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)
-            .filterNot { it in relaxedTeams }
+        val counts = seatFilling.groupingBy { it.team }.eachCount()
+        val allTeams = listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)
+
+        // A BagShape REPLACES the distribution check for the teams it pins.
+        val pinned = mutableSetOf<Team>()
+        for (team in allTeams) {
+            val ranges = shapes.values.mapNotNull { it.range(team) }
+            if (ranges.isEmpty()) continue
+            pinned += team
+            val actual = counts[team] ?: 0
+            val low = ranges.maxOf { it.first }
+            val high = ranges.minOf { it.last }
+            if (actual < low || actual > high) {
+                val expectedText = if (low == high) "$low" else "$low to $high"
+                issues += "${team.displayName}: $actual in bag, expected $expectedText"
+            }
+        }
+
+        val checkedTeams = allTeams.filterNot { it in relaxedTeams || it in pinned }
         val matchesAllowedDistribution = allowed.any { distribution ->
             checkedTeams.all { team ->
                 (counts[team] ?: 0) == distribution.count(team)
             }
         }
-        if (!matchesAllowedDistribution) {
+        if (checkedTeams.isNotEmpty() && !matchesAllowedDistribution) {
             var explained = false
             for (team in checkedTeams) {
                 val actual = counts[team] ?: 0
@@ -457,6 +505,13 @@ object Setup {
                 issues += "${mod.characterId} requires the $companion in the bag [${mod.text}]"
             }
         }
+        for ((id, shape) in shapes) {
+            for (required in shape.requireInBag) {
+                if (bag.none { Character.normalizeId(it.id) == Character.normalizeId(required) }) {
+                    issues += "$id requires the $required in the bag"
+                }
+            }
+        }
 
         val dupes = if (allowAnyDuplicates) {
             emptyMap()
@@ -464,13 +519,44 @@ object Setup {
             bag.groupingBy { it.id }.eachCount().filterValues { it > 1 }
         }
         for ((id, n) in dupes) {
-            if (id !in DUPLICABLE) {
-                issues += "$id appears $n times"
-            } else if (id == "villageidiot" && n > 3) {
-                issues += "villageidiot appears $n times, maximum 3"
+            val copies = shapes.values.firstNotNullOfOrNull { shape ->
+                shape.copies[id]?.takeUnless { shape.advisory }
+            }
+            when {
+                copies != null -> if (n !in copies) {
+                    issues += "$id appears $n times, maximum ${copies.last}"
+                }
+                id in DUPLICABLE -> Unit
+                else -> issues += "$id appears $n times"
             }
         }
-        return issues
+        return issues.distinct()
+    }
+
+    /**
+     * Bag notes that WARN but never block: the Legion ratio, and every
+     * [BagShape.note]. Rendered under the bag stage (lead D28 / D18).
+     */
+    fun bagWarnings(
+        bag: List<Character>,
+        playerCount: Int,
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
+    ): List<String> {
+        val shapes = shapesFor(bag, playerCount, inPlayIds, state)
+        val warnings = mutableListOf<String>()
+        for ((id, shape) in shapes) {
+            if (shape.note.isNotBlank()) warnings += shape.note
+            if (!shape.advisory) continue
+            for ((copyId, range) in shape.copies) {
+                val n = bag.count { Character.normalizeId(it.id) == Character.normalizeId(copyId) }
+                if (n !in range) {
+                    warnings += "$id: $copyId appears $n times — most players should be $copyId " +
+                        "(about ${range.first} at $playerCount players)"
+                }
+            }
+        }
+        return warnings.distinct()
     }
 
     /**
@@ -478,74 +564,153 @@ object Setup {
      * used again at the phase boundary so manually assigned games cannot
      * bypass setup requirements.
      *
-     * WP4 replaces this with `SetupRequirements.blockingProblems`.
+     * WP4: now one line over the declarative table (lead D30/D48). Every check
+     * the old `when` block did survives as a [SetupRequirement] row.
      */
     fun validateSetupState(
         state: GameState,
         lookup: (String) -> Character?,
-    ): List<String> {
-        val residents = state.players.filterNot { it.isTraveller }
-        val characters = residents.mapNotNull { player ->
-            player.characterId?.let(lookup)
-        }
-        val issues = validateBag(characters, residents.size, state.fabledIds).toMutableList()
-        val inPlayIds = residents.mapNotNull { it.characterId }.toSet()
+    ): List<String> = SetupRequirements.blockingProblems(state, lookup)
 
-        for (player in residents) {
-            val shown = player.shownCharacterId?.let(lookup)
-            when (player.characterId) {
-                "drunk" -> if (shown == null || shown.team != Team.TOWNSFOLK ||
-                    shown.id in inPlayIds
-                ) {
-                    issues += "${player.name}: choose a not-in-play Townsfolk token to show the Drunk"
-                }
-                "lunatic" -> if (shown?.team != Team.DEMON) {
-                    issues += "${player.name}: choose the Demon token shown to the Lunatic"
-                }
-                "marionette" -> {
-                    if (shown == null || shown.team.isEvil || !shown.team.isTownResident ||
-                        shown.id in inPlayIds
-                    ) {
-                        issues += "${player.name}: choose a not-in-play good token to show the Marionette"
-                    }
-                    val index = state.players.indexOfFirst { it.id == player.id }
-                    val neighbours = if (index >= 0 && state.players.size > 1) {
-                        listOf(
-                            state.players[(index - 1 + state.players.size) % state.players.size],
-                            state.players[(index + 1) % state.players.size],
-                        )
-                    } else {
-                        emptyList()
-                    }
-                    if (neighbours.none { it.characterId?.let(lookup)?.team == Team.DEMON }) {
-                        issues += "${player.name}: the Marionette must neighbor the Demon"
-                    }
-                }
-            }
+    /**
+     * Characters in play that hold no seat, so their [BagShape] applies while
+     * they never fill a seat. Today: Lil' Monsta's centre token, once the
+     * storyteller has acknowledged the `lilmonsta.noDemonSeat` requirement.
+     */
+    fun seatlessInPlayIds(state: GameState): List<String> =
+        if (Decisions.bool(state, SetupRequirements.LILMONSTA_NO_DEMON_SEAT)) {
+            listOf("lilmonsta")
+        } else {
+            emptyList()
         }
 
-        if (residents.any { it.characterId == "fortuneteller" }) {
-            val herringSeats = state.players.filter { player ->
-                player.reminders.any {
-                    it.sourceId == "fortuneteller" && it.label.equals("Red herring", true)
-                }
-            }
-            when {
-                herringSeats.size != 1 ->
-                    issues += "Fortune Teller: choose exactly one good red herring"
-                herringSeats.single().isEvil(lookup) ->
-                    issues += "Fortune Teller: the red herring must be a good player"
-            }
-        }
-        return issues.distinct()
-    }
-
-    /** Bag override for one character, replacing [TEAM_WARPING_IDS] (lead D28). WP4 fills it in. */
+    /**
+     * Bag override for one character, replacing the old `TEAM_WARPING_IDS`
+     * relax-everything hack (lead D28). One table row per character instead of
+     * a `when` (lead D34); `null` means "an ordinary character in an ordinary bag".
+     *
+     * [base] is `distributionFor(playerCount)`, unadjusted.
+     */
     fun bagShapeFor(
         characterId: String,
         base: Distribution,
         playerCount: Int,
-    ): BagShape? = TODO("WP4")
+        state: GameState? = null,
+    ): BagShape? = when (Character.normalizeId(characterId)) {
+        // "You choose which players are which Minions" — created on the first night.
+        "kazali" -> BagShape(
+            minions = 0..0,
+            demons = 1..1,
+            outsiders = 0..(base.outsiders + base.minions),
+            townsfolk = (playerCount - 1 - base.outsiders - base.minions)..(playerCount - 1),
+            note = "Minions are created on the first night.",
+        )
+
+        // "The 3 Minions and the evil line are created on the first night."
+        "lordoftyphon" -> BagShape(
+            minions = 0..0,
+            demons = 1..1,
+            outsiders = 0..(base.outsiders + base.minions),
+            townsfolk = (playerCount - 1 - base.outsiders - base.minions)..(playerCount - 1),
+            note = "The Minions and the evil line are created on the first night.",
+        )
+
+        // A token in the centre, not a seat: swap the Demon slot for a Minion
+        // (10 players -> 7 / 0 / 3 / 0, lead D18).
+        "lilmonsta" -> BagShape(
+            townsfolk = base.townsfolk..base.townsfolk,
+            outsiders = base.outsiders..base.outsiders,
+            minions = (base.minions + 1)..(base.minions + 1),
+            demons = 0..0,
+            forbidInBag = setOf("lilmonsta"),
+            note = "Lil' Monsta is a token, not a seat. " +
+                "Put ${base.minions + 1} Minions and no Demon in the bag.",
+        )
+
+        // "[No Demon]" — the Summoner makes one on the third night.
+        "summoner" -> BagShape(
+            townsfolk = (base.townsfolk + 1)..(base.townsfolk + 1),
+            minions = base.minions..base.minions,
+            demons = 0..0,
+            note = "No Demon in the bag: the Summoner creates one on the 3rd night.",
+        )
+
+        // "[No evil characters]" — every seat is a Townsfolk or Outsider.
+        "atheist" -> BagShape(
+            townsfolk = 0..playerCount,
+            outsiders = 0..playerCount,
+            minions = 0..0,
+            demons = 0..0,
+            note = "No evil characters. The Storyteller may break the rules.",
+        )
+
+        // "[Most players are Legion]" — the ratio is advisory, `minions = 0` is firm.
+        "legion" -> BagShape(
+            townsfolk = 0..playerCount,
+            outsiders = 0..playerCount,
+            minions = 0..0,
+            demons = 1..(playerCount - 1),
+            copies = mapOf("legion" to (playerCount / 2 + 1)..(playerCount - 1)),
+            advisory = true,
+            note = "About ${playerCount / 2 + 2} Legion to " +
+                "${playerCount - playerCount / 2 - 2} good at $playerCount players.",
+        )
+
+        // "This ensures that only one Minion token is in the bag."
+        "marionette" -> if (base.minions >= 3) {
+            BagShape(
+                minions = (base.minions - 1)..(base.minions - 1),
+                note = "One Minion token fewer: the Marionette is the missing Minion.",
+            )
+        } else {
+            null
+        }
+
+        "villageidiot" -> BagShape(copies = mapOf("villageidiot" to 1..3))
+
+        // "[X Outsiders]" — X is frozen at setup and never recomputed.
+        "xaan" -> state?.let { Decisions.int(it, Decisions.XAAN_X) }
+            ?.takeIf { it >= 0 }
+            ?.let { x -> BagShape(outsiders = x..x, note = "Xaan: X = $x Outsiders.") }
+
+        // Riot is an ORDINARY Demon in an ORDINARY bag (lead D28). No shape.
+        else -> null
+    }
+
+    /** The range this shape pins for one team, or null when it leaves the team free. */
+    private fun BagShape.range(team: Team): IntRange? = when (team) {
+        Team.TOWNSFOLK -> townsfolk
+        Team.OUTSIDER -> outsiders
+        Team.MINION -> minions
+        Team.DEMON -> demons
+        else -> null
+    }
+
+    /**
+     * Every bag shape this game raises: one per character in the bag, plus one
+     * per character that is in play without a bag token (Lil' Monsta's centre
+     * token, a Boffin or Alchemist grant).
+     */
+    fun shapesFor(
+        bag: List<Character>,
+        playerCount: Int,
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
+    ): Map<String, BagShape> {
+        val base = distributionFor(playerCount)
+        val ids = (bag.map { it.id } + inPlayIds).map(Character::normalizeId).distinct()
+        return ids.mapNotNull { id ->
+            bagShapeFor(id, base, playerCount, state)?.let { id to it }
+        }.toMap()
+    }
+
+    /**
+     * Ids the shapes say must NOT sit in the bag even though they are in play
+     * (Lil' Monsta). They occupy no seat, so they never count toward
+     * [playerCount].
+     */
+    private fun forbiddenIds(shapes: Map<String, BagShape>): Set<String> =
+        shapes.values.flatMap { it.forbidInBag }.map(Character::normalizeId).toSet()
 }
 
 /** Bag override for one character, replacing `Setup.TEAM_WARPING_IDS` (lead D28). */
