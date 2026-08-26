@@ -207,6 +207,25 @@ class RulesTravellersTest {
     }
 
     @Test
+    fun `the vote mark stops working the moment the Bureaucrat is exiled`() {
+        var state = game(tb, "imp", "poisoner", "monk", "washerwoman", "bureaucrat")
+        val bureaucrat = seatOf(state, "bureaucrat").id
+        val target = seatOf(state, "washerwoman").id
+        state = resolve(state, "bureaucrat", NightInput(playerIds = listOf(target)))
+        state = GameActions.advancePhase(state, lookup)
+
+        fun liveMark(s: GameState) = Status.live(s, lookup, target)
+            .any { Tokens.key(it.sourceCharacterId, it.label) == Tokens.key("bureaucrat", "3 Votes") }
+        assertTrue(liveMark(state))
+
+        val exiled = GameActions.kill(state, bureaucrat, DeathCause.EXILE, lookup)
+        assertFalse(liveMark(exiled), "the triple vote ends immediately with its source")
+
+        val poisoned = mark(state, bureaucrat, "poisoner", "Poisoned")
+        assertFalse(liveMark(poisoned), "and while the Bureaucrat's ability is not working")
+    }
+
+    @Test
     fun `the Gunslinger's window opens on the day's first execution vote, never on an exile`() {
         var state = game(tb, "imp", "poisoner", "monk", "washerwoman", "gunslinger")
         val gunslinger = seatOf(state, "gunslinger")
@@ -430,6 +449,24 @@ class RulesTravellersTest {
     }
 
     @Test
+    fun `a dead Barista stops sobering their target and stops waking`() {
+        var state = game(sv, "vortox", "pithag", "saint", "chef", "barista")
+        val chef = seatOf(state, "chef").id
+        val barista = seatOf(state, "barista").id
+        state = mark(state, chef, "poisoner", "Poisoned")
+        state = resolve(state, "barista", NightInput(playerIds = listOf(chef), yes = true))
+        assertTrue(Status.impairment(state, lookup, chef).isEmpty())
+
+        state = GameActions.kill(state, barista, DeathCause.EXILE, lookup)
+        assertFalse(
+            Status.impairment(state, lookup, chef).isEmpty(),
+            "SOBER & HEALTHY ends with its source",
+        )
+        state = toNight(state, 2)
+        assertTrue(assertNotNull(step(state, "barista")).gate is StepGate.Skip)
+    }
+
+    @Test
     fun `only one Barista token exists at a time`() {
         var state = game(sv, "vortox", "pithag", "saint", "chef", "barista")
         val chef = seatOf(state, "chef").id
@@ -481,6 +518,23 @@ class RulesTravellersTest {
         assertFalse(
             DayRules.hasToken(state, chef, "bonecollector", "Has Ability"),
             "Has Ability retires at dusk",
+        )
+    }
+
+    @Test
+    fun `a restored ability ends the moment the Bone Collector dies`() {
+        var state = game(sv, "vortox", "pithag", "saint", "chef", "bonecollector")
+        state = toNight(state, 2)
+        val chef = seatOf(state, "chef").id
+        val collector = seatOf(state, "bonecollector").id
+        state = GameActions.kill(state, chef, DeathCause.DEMON_KILL, lookup)
+        state = resolve(state, "bonecollector", NightInput(playerIds = listOf(chef)))
+
+        assertTrue(Status.hasAbility(state, lookup, chef), "dead, but their ability is back")
+        val ended = GameActions.kill(state, collector, DeathCause.EXILE, lookup)
+        assertFalse(
+            Status.hasAbility(ended, lookup, chef),
+            "the restored ability ends with the Bone Collector",
         )
     }
 
