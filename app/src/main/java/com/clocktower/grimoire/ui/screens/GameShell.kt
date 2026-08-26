@@ -252,7 +252,9 @@ fun GameShell(
                         onOpenShowTool = { showCardTool = true },
                     )
                     GameTab.DAY -> DayScreen(viewModel, state)
-                    GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script)
+                    // WP11: passing the live state marks what is in play and
+                    // in which seat on the Script tab.
+                    GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script, state)
                 }
             }
             if (tab == GameTab.GRIMOIRE || tab == GameTab.DAY) {
