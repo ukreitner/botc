@@ -307,7 +307,11 @@ fun GameShell(
             // night sheet's primary button rather than being destroyed.
             DiscussionTimer(
                 modifier = Modifier
-                    .align(if (tab == GameTab.NIGHT) Alignment.TopEnd else Alignment.BottomEnd)
+                    .align(
+                        // Away from the night sheet's primary button and its
+                        // dim control, which both live on the right.
+                        if (tab == GameTab.NIGHT) Alignment.BottomStart else Alignment.BottomEnd,
+                    )
                     .padding(12.dp),
             )
         }

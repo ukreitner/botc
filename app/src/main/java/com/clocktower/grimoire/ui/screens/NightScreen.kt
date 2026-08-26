@@ -98,13 +98,16 @@ fun NightScreen(
 
     // The button that finished a step also advances to the next one: ticking is
     // a consequence of doing, never a separate act (defect #7).
-    LaunchedEffect(done, plan.steps.size) {
+    LaunchedEffect(done, plan.steps.size, pendingDawn) {
         val token = activeToken
         if (token == null || token in done || plan.steps.none { it.key.token == token }) {
             activeToken = plan.steps.firstOrNull { it.required && it.key.token !in done }?.key?.token
                 ?: plan.steps.lastOrNull()?.key?.token
         }
-        if (pendingDawn && plan.unfinished(done).isEmpty()) {
+        // The dawn card's button ticked its own row a frame ago; the phase
+        // button now sees a finished sheet and raises the dawn briefing. If
+        // something IS still outstanding, its own guard says so — actionably.
+        if (pendingDawn) {
             pendingDawn = false
             onDawn()
         }
@@ -141,7 +144,9 @@ fun NightScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(12.dp),
+            // Room at the foot for the docked timer, so the last card's
+            // primary button is never underneath it.
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 72.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             itemsIndexedRows(rows, window) { index, row ->
