@@ -17,6 +17,8 @@ import com.clocktower.engine.Decisions
 import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
 import com.clocktower.engine.ExecutionConsequence
+import com.clocktower.engine.ExecutionOutcome
+import com.clocktower.engine.ExecutionRecord
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
 import com.clocktower.engine.NightAction
@@ -326,27 +328,10 @@ private fun leviathan() = CharacterRule(
         wakeCounts = WakeCount.NONE,
     ),
     day = DayRule(
-        onNomination = { ctx -> leviathanNomination(ctx.state, ctx.lookup, ctx.nominatorId, ctx.nomineeId, ctx.holder) },
-        onExecution = { ctx ->
-            val executed = ctx.record.playerId?.let { ctx.state.player(it) }
-            val wasGood = ctx.record.wasEvilAtExecution?.let { !it }
-                ?: (executed != null && !Registration.registersEvil(ctx.state, ctx.lookup, executed))
-            if (executed == null || !wasGood) {
-                emptyList()
-            } else {
-                val marks = goodExecutedMarks(ctx.state) + 1
-                listOf(
-                    ExecutionConsequence(
-                        sourceId = "leviathan",
-                        headline = "${executed.name} was good — place a 'Good Player Executed' " +
-                            "token. That is $marks of 2.",
-                        detail = "EVERY execution counts, including one nobody died from " +
-                            "(a Virgin's nominator, a Pacifist save, a storyteller execution). " +
-                            "Alignment is judged at the moment of execution. At 2, EVIL WINS.",
-                    ),
-                )
-            }
+        onNomination = { ctx ->
+            leviathanNomination(ctx.state, ctx.lookup, ctx.nominatorId, ctx.nomineeId, ctx.holder)
         },
+        onExecution = { ctx -> leviathanExecution(ctx.state, ctx.lookup, ctx.record) },
     ),
     // Lead D19: only active when the jinxed character is on the script. Each
     // gives the Leviathan a nightly choice its own ability text never mentions.
@@ -379,6 +364,42 @@ private fun leviathanJinxChoice(effect: String) = NightRule(
     },
     wakeCounts = WakeCount.NONE,
 )
+
+/**
+ * The counter row. It always emits while a Leviathan is in play, evil executions
+ * included: a registry row only wins over the built-in of the same id when it
+ * actually produces one (lead D61), and the built-in's advice is wrong about
+ * SURVIVED executions.
+ */
+private fun leviathanExecution(
+    state: GameState,
+    lookup: (String) -> Character?,
+    record: ExecutionRecord,
+): List<ExecutionConsequence> {
+    if (record.outcome == ExecutionOutcome.NO_EXECUTION) return emptyList()
+    val executed = record.playerId?.let { state.player(it) } ?: return emptyList()
+    val wasGood = record.wasEvilAtExecution?.let { !it }
+        ?: !Registration.registersEvil(state, lookup, executed)
+    if (!wasGood) {
+        return listOf(
+            ExecutionConsequence(
+                sourceId = "leviathan",
+                headline = "${executed.name} was evil — no 'Good Player Executed' token. " +
+                    "The count stays at ${goodExecutedMarks(state)} of 2.",
+            ),
+        )
+    }
+    return listOf(
+        ExecutionConsequence(
+            sourceId = "leviathan",
+            headline = "${executed.name} was good — place a 'Good Player Executed' token. " +
+                "That is ${goodExecutedMarks(state) + 1} of 2.",
+            detail = "EVERY execution counts, including one nobody died from (a Virgin's " +
+                "nominator, a Pacifist save, a storyteller execution). Alignment is judged at " +
+                "the moment of execution. At 2, EVIL WINS.",
+        ),
+    )
+}
 
 private fun leviathanNomination(
     state: GameState,
