@@ -50,8 +50,12 @@ object Tokens {
     /** Canonical key for a placed token. */
     fun key(reminder: PlacedReminder): String = key(reminder.sourceId, reminder.label)
 
-    /** The sourceId every storyteller-placed generic token carries. Never "". */
-    const val STORYTELLER_SOURCE: String = "st"
+    /**
+     * The sourceId every storyteller-placed generic token carries. Never "".
+     * Aliases WP0's [STORYTELLER_SOURCE_ID] so the load migration and the
+     * registry can never drift apart.
+     */
+    const val STORYTELLER_SOURCE: String = STORYTELLER_SOURCE_ID
 
     // ---------------------------------------------------------------- registry
 
