@@ -931,12 +931,16 @@ object Effects {
      */
     fun reconcile(state: GameState, lookup: (String) -> Character?): GameState {
         val seats = state.players.map { it.id }.toSet()
-        val q = StatusQuery(state, lookup)
-        val kept = state.effects.filterNot { q.expired(it) || it.targetId !in seats }
-        var next = if (kept.size == state.effects.size) state else state.copy(effects = kept)
-        next = recordImpairmentSpans(next, lookup)
-        next = raiseParadoxPrompt(next, lookup)
-        return next
+        val kept = StatusQuery(state, lookup).let { q ->
+            state.effects.filterNot { q.expired(it) || it.targetId !in seats }
+        }
+        val swept = if (kept.size == state.effects.size) state else state.copy(effects = kept)
+
+        // One query for both passes: the impairment of every seat is what the span
+        // history needs and what reveals a paradox, so it is computed exactly once.
+        val q = StatusQuery(swept, lookup)
+        val impairedNow = swept.seats.associate { it.id to q.impairment(it.id) }
+        return raiseParadoxPrompt(recordImpairmentSpans(swept, impairedNow), q.detectParadox())
     }
 
     /**
@@ -945,9 +949,8 @@ object Effects {
      */
     private fun recordImpairmentSpans(
         state: GameState,
-        lookup: (String) -> Character?,
+        impairedNow: Map<Long, List<Reason>>,
     ): GameState {
-        val q = StatusQuery(state, lookup)
         val open = state.ledger
             .filter { it.kind == LedgerKind.IMPAIRMENT_SPAN && it.resolvedCycle == null }
             .associateBy { it.actorId }
@@ -955,9 +958,9 @@ object Effects {
         var nextId = state.nextLedgerId
         var changed = false
         for (p in state.seats) {
-            val impaired = q.impairment(p.id).isNotEmpty()
+            val reasons = impairedNow[p.id].orEmpty()
             val span = open[p.id]
-            if (impaired && span == null) {
+            if (reasons.isNotEmpty() && span == null) {
                 ledger = ledger + LedgerEntry(
                     id = nextId++,
                     cycle = state.cycle,
@@ -965,11 +968,11 @@ object Effects {
                     kind = LedgerKind.IMPAIRMENT_SPAN,
                     sourceId = "status",
                     actorId = p.id,
-                    text = q.impairment(p.id).joinToString("; ") { it.text },
+                    text = reasons.joinToString("; ") { it.text },
                     impaired = true,
                 )
                 changed = true
-            } else if (!impaired && span != null) {
+            } else if (reasons.isEmpty() && span != null) {
                 ledger = ledger.map {
                     if (it.id == span.id) it.copy(resolvedCycle = state.cycle) else it
                 }
@@ -980,8 +983,7 @@ object Effects {
     }
 
     /** One DECIDE prompt per live paradox, never duplicated. */
-    private fun raiseParadoxPrompt(state: GameState, lookup: (String) -> Character?): GameState {
-        val seats = Status.paradoxSeats(state, lookup)
+    private fun raiseParadoxPrompt(state: GameState, seats: Set<Long>): GameState {
         if (seats.size < 2) return state
         val names = seats.mapNotNull { state.player(it)?.name }
         if (names.size < 2) return state
