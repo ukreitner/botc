@@ -610,6 +610,14 @@ object SeatGeometry {
     const val TOKEN_MIN_DP: Float = 40f
     const val TOKEN_MAX_DP: Float = 96f
 
+    /**
+     * The absolute floor, used only when [TOKEN_MIN_DP] genuinely will not fit
+     * — 19 seats on a 320 x 560 dp screen, say. A small token is bad; a token
+     * measured to zero and silently clipped is the bug WP10 exists to kill, so
+     * the card always shrinks rather than overflowing.
+     */
+    const val TOKEN_HARD_MIN_DP: Float = 28f
+
     /** Legacy fixed-divisor seat box. Still used by the player-notes circle. */
     fun childMax(count: Int, width: Int, height: Int): Int = when {
         count <= 8 -> (min(width, height) / 3.5f).toInt()
@@ -664,9 +672,9 @@ object SeatGeometry {
             // token's own surface instead of dropping it.
             overlay = true
             pipRow = 0f
-            token = (budgetH - NAME_DP - GAP_DP).coerceIn(TOKEN_MIN_DP, TOKEN_MAX_DP)
+            token = (budgetH - NAME_DP - GAP_DP).coerceIn(TOKEN_HARD_MIN_DP, TOKEN_MAX_DP)
         }
-        token = min(token, budgetW - 2f).coerceAtLeast(TOKEN_MIN_DP)
+        token = min(token, budgetW - 2f).coerceAtLeast(TOKEN_HARD_MIN_DP)
         val slack = budgetH - (NAME_DP + token + pipRow + GAP_DP)
         val showName = slack >= CHAR_NAME_DP
         val pipDp = if (overlay) 16f else PIP_ROW_DP

@@ -58,4 +58,18 @@ dependencies {
     implementation("org.jetbrains.compose.material:material-icons-extended-desktop:$compose")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+
+    // WP10 added `src/test/kotlin`: the seat allocator and the text-size
+    // floors are pure functions living in `app/`, so they cannot be tested
+    // from `:engine` (which does not see app sources). `./gradlew -p
+    // tools/uicheck test` measures them here.
+    testImplementation("junit:junit:4.13.2")
+}
+
+tasks.test {
+    useJUnit()
+    testLogging {
+        events("failed", "skipped")
+        showStandardStreams = false
+    }
 }

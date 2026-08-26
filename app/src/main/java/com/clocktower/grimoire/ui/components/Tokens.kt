@@ -192,8 +192,8 @@ fun visiblePips(groups: List<EffectGroup>, budget: Int): PipRow {
     if (budget <= 0) return PipRow(emptyList(), groups.size)
     val ordered = groups.sortedBy { it.priority }
     if (ordered.size <= budget) return PipRow(ordered, 0)
-    // Keep budget - 1 slots for real pips so the "+N" itself has room.
-    val shown = ordered.take(budget - 1)
+    // The "+N" needs a slot of its own, unless there is only one to give.
+    val shown = ordered.take((budget - 1).coerceAtLeast(1))
     return PipRow(shown, ordered.size - shown.size)
 }
 
