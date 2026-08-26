@@ -78,8 +78,13 @@ class InfoCalcTest {
         assertEquals("YES", result.headline)
         result = assertNotNull(InfoCalc.compute(data, state, "fortuneteller", 3, targets = listOf(2, 7)))
         assertEquals("NO", result.headline)
-        assertTrue(result.caveats.any { "Red herring" in it }, "warns when no herring assigned")
-        state = GameActions.addReminder(state, 7, PlacedReminder("fortuneteller", "Red herring"))
+        // Label comparisons are case-insensitive everywhere (lead D5), so the
+        // caveat is matched case-insensitively too.
+        assertTrue(
+            result.caveats.any { "red herring" in it.lowercase() },
+            "warns when no herring assigned",
+        )
+        state = GameActions.addReminder(state, 7, PlacedReminder("fortuneteller", "Red Herring"))
         result = assertNotNull(InfoCalc.compute(data, state, "fortuneteller", 3, targets = listOf(2, 7)))
         assertEquals("YES", result.headline)
     }

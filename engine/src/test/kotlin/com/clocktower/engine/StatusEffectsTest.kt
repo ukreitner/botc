@@ -50,7 +50,7 @@ class StatusEffectsTest {
         assertTrue(notes.any { "Witch-cursed" in it })
         assertTrue(notes.any { "Virgin" in it })
         // Spent virgin no longer warns.
-        val spent = GameActions.addReminder(state, 2, PlacedReminder("virgin", "No ability"))
+        val spent = GameActions.addReminder(state, 2, PlacedReminder("virgin", "No Ability"))
         assertTrue(StatusEffects.nominationWarnings(spent, data::character, 3, 2).none { "Virgin" in it })
     }
 
