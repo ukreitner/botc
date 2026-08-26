@@ -1,6 +1,7 @@
 package com.clocktower.engine
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /** What a rule-bearing effect does. The rules classifier — see [EffectGroup] for display. */
 @Serializable
@@ -163,19 +164,15 @@ data class Effect(
     val causeEventId: Long? = null,
     /** Storyteller override: keep the token, suppress the rule (the physical "turn it over"). */
     val suspended: Boolean = false,
-) {
-    /** True when this effect has no physical token and is redrawn from the board each query. */
-    val derived: Boolean get() = id <= DERIVED_ID_CEILING
-
-    internal companion object {
-        /**
-         * Derived (standing-rule) effects are stamped with `Player.standingSince`,
-         * which is 0 at setup and always below [GameState.nextEffectId]. Anything at
-         * or below this ceiling was re-derived rather than placed.
-         */
-        const val DERIVED_ID_CEILING: Long = 0L
-    }
-}
+    /**
+     * True for a standing-rule effect: no physical token exists for it, and it is
+     * re-derived from the board on every query rather than stored. The grimoire
+     * draws these with a dotted ring.
+     *
+     * Never serialised — nothing derived is ever in `GameState.effects`.
+     */
+    @Transient val derived: Boolean = false,
+)
 
 /** One innate rule a character's mere presence creates. Evaluated on every query, never stored. */
 class StandingRule(
@@ -615,6 +612,7 @@ internal object Standing {
                     note = "Storm Catcher: can only die by execution.",
                     createdCycle = state.cycle,
                     createdAtNight = state.phase != Phase.DAY,
+                    derived = true,
                 ),
             )
         }
@@ -640,6 +638,7 @@ internal object Standing {
                 note = "Tea Lady (${tea.name}): both alive neighbours are good.",
                 createdCycle = q.state.cycle,
                 createdAtNight = q.state.phase != Phase.DAY,
+                derived = true,
             )
         }
     }
@@ -675,6 +674,7 @@ internal object Standing {
                 note = "Poisoned by the No Dashii (${demon.name}'s nearest Townsfolk neighbour)",
                 createdCycle = q.state.cycle,
                 createdAtNight = q.state.phase != Phase.DAY,
+                derived = true,
             )
         }
     }
@@ -699,6 +699,7 @@ internal object Standing {
                     note = "Xaan: night $x poisons every Townsfolk until dusk.",
                     createdCycle = q.state.cycle,
                     createdAtNight = true,
+                    derived = true,
                 )
             }
     }
@@ -796,6 +797,7 @@ internal object Standing {
         label = "",
         createdCycle = state.cycle,
         createdAtNight = state.phase != Phase.DAY,
+        derived = true,
     )
 }
 
