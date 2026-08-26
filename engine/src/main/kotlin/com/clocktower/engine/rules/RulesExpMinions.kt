@@ -4,10 +4,10 @@ import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.CardOffer
 import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterRule
+import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
-import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.DayAbility
 import com.clocktower.engine.DayRule
 import com.clocktower.engine.DayRules
@@ -55,8 +55,8 @@ import com.clocktower.engine.YesNo
  * mezepheles, organgrinder, psychopath, summoner, vizier, widow, wizard, wraith,
  * xaan.
  *
- * Three characters are deliberately thin rows because the behaviour already
- * lives where the architecture put it and a registry row would only duplicate it:
+ * Some rows are deliberately thin, because the behaviour already lives where the
+ * architecture put it and a registry row would only duplicate — or displace — it:
  *  - **marionette** — the night-1 step is `NightInfo`'s (it owns the `marionette`
  *    slot outright), the NO_ABILITY standing rule is WP1's `Standing.emitSelf`,
  *    the believed-character grant is WP4's `Identity.derivedGrants`, and the bag
@@ -288,14 +288,21 @@ private fun fearmonger(): CharacterRule {
 }
 
 private fun announceLine(ctx: NightContext, firstNight: Boolean): String {
-    if (firstNight) return "Announce: 'The Fearmonger has chosen a player.'"
-    val previous = Memory.lastChoice(ctx.state, "fearmonger", ctx.holder?.id)
-        ?.targetIds
-        ?.firstOrNull()
-        ?.let { ctx.state.player(it)?.name }
-        ?: return "Announce: 'The Fearmonger has chosen a player.'"
-    return "If the Fearmonger chose someone NEW tonight, announce: 'The Fearmonger has chosen " +
-        "a player.' Last night they chose $previous — the same player again means say nothing."
+    val say = "'The Fearmonger has chosen a player.'"
+    val previous = if (firstNight) {
+        null
+    } else {
+        Memory.lastChoice(ctx.state, "fearmonger", ctx.holder?.id)
+            ?.targetIds
+            ?.firstOrNull()
+            ?.let { ctx.state.player(it)?.name }
+    }
+    // Night 1 is always a new player, and so is the first night after a night the
+    // step never ran — there is nothing to compare against.
+    return previous?.let {
+        "If the Fearmonger chose someone NEW tonight, announce $say Last night they chose $it " +
+            "— the same player again means say nothing."
+    } ?: "Announce $say"
 }
 
 // ---------------------------------------------------------------------------
@@ -317,9 +324,10 @@ private fun goblin() = CharacterRule(
     day = DayRule(
         onNomination = { ctx ->
             val nominee = ctx.nomineeId?.let { ctx.state.player(it) }
-            // One row per nomination, not one per Goblin seat.
-            val first = ctx.state.seats.firstOrNull { isCharacter(it, "goblin") }?.id == ctx.holder.id
-            if (nominee == null || nominee.characterId == null || !first) {
+            // One set of rows per nomination, not one per Goblin seat.
+            val firstGoblinSeat =
+                ctx.state.seats.firstOrNull { isCharacter(it, "goblin") }?.id == ctx.holder.id
+            if (nominee == null || nominee.characterId == null || !firstGoblinSeat) {
                 emptyList()
             } else {
                 buildList {
