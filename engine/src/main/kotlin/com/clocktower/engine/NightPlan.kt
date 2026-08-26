@@ -784,15 +784,19 @@ data class NightPlan(
                 return steps
             }
             val done = ctx.state.nightStepsDone
+            fun dynamic(step: NightStep): Boolean = step.key.variant != StepVariant.NORMAL ||
+                step.promptId != null ||
+                step.holderId in changed
+            // The cursor is where the STORYTELLER is, so a row that only exists
+            // because of tonight's events never counts as the cursor itself.
             // With nothing left to run, "after the cursor" means after the sheet.
-            val cursorAt = base.firstOrNull { it.required && it.key.token !in done }?.order
+            val cursorAt = base
+                .firstOrNull { it.required && it.key.token !in done && !dynamic(it) }
+                ?.order
                 ?: ((base.lastOrNull()?.order ?: 0.0) + 1)
             var n = 0
             return steps.map { step ->
-                val dynamic = step.key.variant != StepVariant.NORMAL ||
-                    step.promptId != null ||
-                    step.holderId in changed
-                if (!dynamic || step.order >= cursorAt || step.key.token in done) {
+                if (!dynamic(step) || step.order >= cursorAt || step.key.token in done) {
                     step
                 } else {
                     step.copy(
@@ -1084,6 +1088,14 @@ data class NightPlan(
                 }
 
                 is NightEffect.Attack -> {
+                    // A deferred death resolves an attack made on an EARLIER night,
+                    // so a suppression placed TONIGHT must not veto it (wiki: an
+                    // Exorcised Pukka's standing victim still dies). Attribution
+                    // stays on the character; only the seat is dropped, and only
+                    // when it would otherwise cancel its own past attack.
+                    val silencedNow = effect.deferred && scope.sourceId != null &&
+                        Status.live(next, lookup, scope.sourceId, EffectKind.DEMON_CANNOT_KILL)
+                            .isNotEmpty()
                     for (target in seats(next, lookup, effect.on, scope)) {
                         next = Deaths.attempt(
                             state = next,
@@ -1092,7 +1104,7 @@ data class NightPlan(
                             cause = KillCause(
                                 cause = effect.cause,
                                 sourceCharacterId = scope.sourceCharacterId,
-                                sourcePlayerId = scope.sourceId,
+                                sourcePlayerId = if (silencedNow) null else scope.sourceId,
                                 ignoresProtection = !effect.respectProtection,
                             ),
                         ).state

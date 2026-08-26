@@ -302,7 +302,11 @@ object CharacterRules {
                 }
                 .flatMap { victim ->
                     listOf(
-                        NightEffect.Attack(Ref.Seat(victim.id), DeathCause.DEMON_KILL),
+                        NightEffect.Attack(
+                            on = Ref.Seat(victim.id),
+                            cause = DeathCause.DEMON_KILL,
+                            deferred = true,
+                        ),
                         NightEffect.RemoveToken("pukka", "Poisoned", Ref.Seat(victim.id)),
                     )
                 }
@@ -592,6 +596,11 @@ internal object NightInfo {
         gate = gate,
         prompt = NightGuide.forStep(slotId, ctx.style)?.instructions.orEmpty(),
         cards = cards,
-        badges = if (wakeCounts == WakeCount.INFORMED) listOf("does not count for the Chambermaid") else emptyList(),
+        badges = if (wakeCounts == WakeCount.INFORMED) {
+            listOf("does not count for the Chambermaid")
+        } else {
+            emptyList()
+        },
+        wakeCounts = wakeCounts,
     )
 }

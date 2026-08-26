@@ -69,9 +69,10 @@ object InfoCalc {
     }
 
     /** Whether we can compute anything useful for this character. */
-    fun supports(characterId: String): Boolean = Character.normalizeId(characterId) in SUPPORTED
+    fun supports(characterId: String): Boolean = Character.normalizeId(characterId) in supportedIds
 
-    private val SUPPORTED = setOf(
+    /** Every id this calculator knows. WP7 files new ones to WP2, in one batch per wave. */
+    val supportedIds: Set<String> = setOf(
         "chef", "empath", "clockmaker", "shugenja", "oracle", "undertaker",
         "towncrier", "flowergirl", "fortuneteller", "dreamer", "seamstress",
         "villageidiot", "cultleader", "king", "washerwoman", "librarian",
@@ -820,7 +821,7 @@ object InfoCalc {
         val holder = ctx.holder
         val inPlay = ctx.state.seats.filter { it.characterId != null }
         return InfoResult(
-            answer = Answer.Players(inPlay.map { it.id }),
+            answer = Answer.Characters(inPlay.mapNotNull { it.characterId }),
             headline = "Whoever they name: these seats hold the characters in play",
             detail = inPlay.joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" },
             caveats = buildList {

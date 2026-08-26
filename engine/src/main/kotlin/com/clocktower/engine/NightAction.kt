@@ -147,6 +147,14 @@ sealed interface NightEffect {
         val cause: DeathCause = DeathCause.DEMON_KILL,
         /** false => unstoppable (the Pukka's poisoning itself, Fabled effects). */
         val respectProtection: Boolean = true,
+        /**
+         * This death resolves an attack made on an EARLIER night (the Pukka's
+         * standing victim), so tonight's "the Demon cannot kill" suppression does
+         * not reach it: *"the Pukka does not wake to attack tonight, but a player
+         * still dies because of the Pukka's attack during the previous night"*.
+         * Everything else — protection, triggers, attribution — is unchanged.
+         */
+        val deferred: Boolean = false,
     ) : NightEffect
 
     @Serializable
