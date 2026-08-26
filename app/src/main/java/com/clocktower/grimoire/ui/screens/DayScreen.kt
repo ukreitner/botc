@@ -1,23 +1,20 @@
 package com.clocktower.grimoire.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,280 +25,554 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.clocktower.engine.DeathCause
-import com.clocktower.engine.GameActions
+import com.clocktower.engine.Briefing
+import com.clocktower.engine.BriefingItem
+import com.clocktower.engine.BriefingKind
+import com.clocktower.engine.BriefingSlot
+import com.clocktower.engine.Briefings
+import com.clocktower.engine.Character
+import com.clocktower.engine.DayRules
+import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
+import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Nomination
 import com.clocktower.engine.NominationResult
-import com.clocktower.engine.Player
-import com.clocktower.engine.Voting
+import com.clocktower.engine.Verdict
 import com.clocktower.grimoire.ui.GameViewModel
+import com.clocktower.grimoire.ui.components.DayTimer
+import com.clocktower.grimoire.ui.components.HostTimerInBar
+import com.clocktower.grimoire.ui.components.TimerControls
+import com.clocktower.grimoire.ui.components.TimerFormat
+import com.clocktower.grimoire.ui.components.rememberTimerNow
+import com.clocktower.grimoire.ui.screens.day.BRIEFING_SECTIONS
+import com.clocktower.grimoire.ui.screens.day.BriefingRow
+import com.clocktower.grimoire.ui.screens.day.DayModel
+import com.clocktower.grimoire.ui.screens.day.DayStage
+import com.clocktower.grimoire.ui.screens.day.ExecutionSheet
+import com.clocktower.grimoire.ui.screens.day.NominationPanel
+import com.clocktower.grimoire.ui.screens.day.SaidModel
+import com.clocktower.grimoire.ui.screens.day.SaidRow
+import com.clocktower.grimoire.ui.screens.day.SaidSheet
+import com.clocktower.grimoire.ui.screens.day.StageCard
+import com.clocktower.grimoire.ui.screens.day.sectionHeading
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
+import com.clocktower.grimoire.ui.theme.FadedInk
+import com.clocktower.grimoire.ui.theme.PaleGold
 
 /**
- * Day tools: nomination flow with tap-to-vote tally, execution threshold,
- * the day's nomination record, and executions.
+ * The **day timeline**: one screen, one stage, one primary action
+ * (ux/day-screen §0–§K, ARCHITECTURE §3.2).
+ *
+ * Stages appear in the order the storyteller lives them — Dawn · Morning
+ * briefing · What was said · Nominations · Dusk — each collapsing to a single
+ * summary line once done, over a **fixed bottom bar** (`⏱ timer`, `+ Say`,
+ * `Nominate`) that is the only thing the thumb ever has to find.
+ *
+ * What this screen consumes and nothing else: `Briefings.at(..., DAY_START)`,
+ * `DayRules`, `Execution` and the ledger — every one of them through
+ * [GameViewModel]'s `GameActionsApi` (§3.3). There is no character id anywhere
+ * in this file: the Virgin's interceptor, the Witch's death and the Goblin's
+ * claim all arrive as `NominationTrigger`s the engine built (I1).
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DayScreen(
     viewModel: GameViewModel,
     state: GameState,
+    /**
+     * Closes the day through the shell's phase flow, so the storyteller lands
+     * on WP6's dusk sheet — which is where "No execution today", the blocking
+     * win advisories and the execution-on-the-block hand-off already live. The
+     * Day tab must hand off to it, never duplicate it.
+     */
+    onDusk: (() -> Unit)? = null,
+    /** Opens a seat's sheet on the Grimoire tab, when the shell wires it. */
+    onOpenSeat: ((Long) -> Unit)? = null,
 ) {
+    val lookup: (String) -> Character? = viewModel::characterById
+
+    // ---- draft nomination, kept across tab switches by the shell's holder ----
     var nominatorId by rememberSaveable { mutableStateOf<Long?>(null) }
     var nomineeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var voters by rememberSaveable { mutableStateOf(setOf<Long>()) }
-    val currentPlayerIds = state.players.map { it.id }.toSet()
+    var forceNomination by rememberSaveable { mutableStateOf(false) }
 
-    // Draft votes survive tab switches. Reconcile them when a Traveller
-    // leaves or another seat edit removes one of the selected players.
+    var openStage by rememberSaveable { mutableStateOf<DayStage?>(null) }
+    var ticked by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var sayFor by rememberSaveable { mutableStateOf<Long?>(null) }
+    var saySource by rememberSaveable { mutableStateOf<String?>(null) }
+    var sayOpen by rememberSaveable { mutableStateOf(false) }
+    var executeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var timerOpen by rememberSaveable { mutableStateOf(false) }
+
+    val currentPlayerIds = state.players.map { it.id }.toSet()
     LaunchedEffect(currentPlayerIds) {
         if (nominatorId !in currentPlayerIds) nominatorId = null
         if (nomineeId !in currentPlayerIds) nomineeId = null
         voters = voters.intersect(currentPlayerIds)
     }
 
-    val aliveCount = state.alivePlayers.size
-    val threshold = Voting.executionThreshold(aliveCount)
-    val highest = GameActions.highestVotesToday(state)
-    val onBlockId = GameActions.aboutToDie(state)
-    val onBlock = onBlockId?.let { state.player(it) }
-    val todaysNominations = state.nominations.filter { it.day == state.cycle }
+    val dayStart = remember(state) { viewModel.dayBriefing(state) }
+    val dawn = state.lastDawn?.takeIf { it.slot == BriefingSlot.DAWN && it.cycle == state.cycle }
+    val rows = remember(state, dayStart, dawn, ticked) {
+        DayModel.stages(state, lookup, dawn, dayStart, ticked)
+    }
+    val stats = remember(state) { DayModel.stats(state, lookup) }
+    val expanded = openStage ?: DayModel.autoExpanded(rows)
+    val sources = remember(dayStart) { DayModel.statementSources(dayStart) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        // Extra bottom room so the floating timer never covers the last
-        // nomination rows or the dusk reminder text.
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Text("Day ${state.cycle}", style = MaterialTheme.typography.headlineMedium, color = AgedGold)
-            Text(
-                "$aliveCount alive · $threshold votes to execute" +
-                    (if (highest > 0) " · $highest votes is the tally to beat" else ""),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (onBlock != null) {
-                // Prominent block banner with a one-tap execution shortcut.
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+    fun resetDraft() {
+        nominatorId = null
+        nomineeId = null
+        voters = emptySet()
+        forceNomination = false
+    }
+
+    fun openSay(speakerId: Long?, sourceId: String?) {
+        sayFor = speakerId
+        saySource = sourceId
+        sayOpen = true
+        openStage = DayStage.SAID
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        DayStatStrip(stats)
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            for (row in rows) {
+                item(key = row.stage.name) {
+                    StageCard(
+                        row = row,
+                        expanded = expanded == row.stage,
+                        onToggle = { openStage = if (expanded == row.stage) null else row.stage },
                     ) {
-                        Text(
-                            "On the block: ${onBlock.name}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = EmberRed,
-                            modifier = Modifier.weight(1f),
-                        )
-                        FilledTonalButton(onClick = {
-                            viewModel.kill(onBlock.id, DeathCause.EXECUTION)
-                        }) { Text("Execute") }
+                        when (row.stage) {
+                            DayStage.DAWN -> DawnBody(
+                                viewModel = viewModel,
+                                briefing = dawn,
+                                ticked = ticked,
+                                onTick = { ticked = ticked + it },
+                                onOpenSeat = onOpenSeat,
+                                onRecord = { openSay(null, it) },
+                            )
+
+                            DayStage.BRIEFING -> BriefingBody(
+                                viewModel = viewModel,
+                                briefing = dayStart,
+                                ticked = ticked,
+                                onTick = { ticked = ticked + it },
+                                onOpenSeat = onOpenSeat,
+                                onRecord = { openSay(null, it) },
+                            )
+
+                            DayStage.SAID -> SaidBody(
+                                viewModel = viewModel,
+                                state = state,
+                                onCompose = { openSay(null, null) },
+                            )
+
+                            DayStage.NOMINATIONS -> NominationsBody(
+                                viewModel = viewModel,
+                                state = state,
+                                nominatorId = nominatorId,
+                                nomineeId = nomineeId,
+                                voters = voters,
+                                force = forceNomination,
+                                secret = stats.secret,
+                                onPickSeat = { id ->
+                                    when {
+                                        nominatorId == id -> nominatorId = null
+                                        nomineeId == id -> nomineeId = null
+                                        nominatorId == null -> nominatorId = id
+                                        else -> {
+                                            nomineeId = id
+                                            voters = emptySet()
+                                        }
+                                    }
+                                    forceNomination = false
+                                },
+                                onToggleVoter = { id ->
+                                    voters = if (id in voters) voters - id else voters + id
+                                },
+                                onForce = { forceNomination = true },
+                                onReset = { resetDraft() },
+                                onSay = { openSay(it, null) },
+                                onExecute = { executeId = it },
+                            )
+
+                            DayStage.DUSK -> DuskBody(
+                                viewModel = viewModel,
+                                state = state,
+                                onDusk = onDusk,
+                                onExecute = { executeId = it },
+                            )
+                        }
                     }
                 }
-            } else {
+            }
+        }
+
+        DayBottomBar(
+            timerOpen = timerOpen,
+            onTimer = { timerOpen = !timerOpen },
+            onSay = { openSay(null, null) },
+            onNominate = { openStage = DayStage.NOMINATIONS },
+        )
+    }
+
+    if (sayOpen) {
+        SaidSheet(
+            viewModel = viewModel,
+            state = state,
+            initialSpeakerId = sayFor,
+            initialSourceId = saySource,
+            sources = sources,
+            onDismiss = { sayOpen = false },
+        )
+    }
+
+    executeId?.let { id ->
+        ExecutionSheet(
+            viewModel = viewModel,
+            state = state,
+            targetId = id,
+            nominatorId = blockingNomination(state, id)?.nominatorId,
+            nominationIndex = blockingNominationIndexFor(state, id),
+            onDismiss = { executeId = null },
+        )
+    }
+}
+
+/** Day N · alive · threshold · ghosts, and who is on the block. */
+@Composable
+private fun DayStatStrip(stats: com.clocktower.grimoire.ui.screens.day.DayStats) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    text = if (highest > 0) "Tie — no one is about to die" else "No one is about to die",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    stats.headline,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = AgedGold,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stats.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = FadedInk,
+                    modifier = Modifier.padding(bottom = 3.dp),
                 )
             }
-        }
-
-        item {
-            ElevatedCard {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("New nomination", style = MaterialTheme.typography.titleMedium)
-
-                    PlayerChipRow(
-                        label = "Nominator",
-                        players = state.players,
-                        selected = nominatorId,
-                        enabled = { p ->
-                            // Alive players who haven't nominated today (travellers may nominate).
-                            p.alive && !GameActions.hasNominatedToday(state, p.id)
-                        },
-                        onSelect = { nominatorId = if (nominatorId == it) null else it },
-                    )
-                    PlayerChipRow(
-                        label = "Nominee",
-                        players = state.players,
-                        selected = nomineeId,
-                        // Only living players can be nominated (or exiled).
-                        enabled = { p -> p.alive && !GameActions.hasBeenNominatedToday(state, p.id) },
-                        onSelect = {
-                            nomineeId = if (nomineeId == it) null else it
-                            // A fresh nominee always starts from an empty tally.
-                            voters = emptySet()
-                        },
-                    )
-
-                    val nominationNotes = com.clocktower.engine.StatusEffects.nominationWarnings(
-                        state, viewModel::characterById, nominatorId, nomineeId,
-                    )
-                    for (note in nominationNotes) {
-                        Text("! $note", color = EmberRed, style = MaterialTheme.typography.bodySmall)
-                    }
-
-                    if (nomineeId != null) {
-                        val nominee = state.player(nomineeId!!)
-                        val isExile = nominee?.isTraveller == true
-                        val voteThreshold = if (isExile) Voting.exileThreshold(state.players.size) else threshold
-                        // Hands are counted clockwise starting left of the
-                        // nominee — list voters in that order.
-                        val voteOrder = run {
-                            val start = state.players.indexOfFirst { it.id == nomineeId }
-                            if (start < 0) state.players
-                            else (1..state.players.size).map { state.players[(start + it) % state.players.size] }
-                        }
-                        val orderedVoterIds = voteOrder.map { it.id }.filter { it in voters }
-                        HorizontalDivider()
-                        Text(
-                            text = (if (isExile) "Exile vote — " else "Vote — ") +
-                                "tap everyone whose hand is up (${orderedVoterIds.size} so far, needs $voteThreshold)",
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            for (p in voteOrder) {
-                                val canVote = p.alive || !p.ghostVoteUsed || isExile
-                                FilterChip(
-                                    selected = p.id in voters,
-                                    enabled = canVote,
-                                    onClick = {
-                                        voters = if (p.id in voters) voters - p.id else voters + p.id
-                                    },
-                                    label = {
-                                        Text(p.name + if (!p.alive) " †" else "")
-                                    },
-                                )
-                            }
-                        }
-                        val result = if (isExile) {
-                            if (orderedVoterIds.size >= voteThreshold) {
-                                NominationResult.ABOUT_TO_DIE
-                            } else {
-                                NominationResult.SAFE
-                            }
-                        } else {
-                            Voting.outcome(orderedVoterIds.size, voteThreshold, highest)
-                        }
-                        Text(
-                            text = when (result) {
-                                NominationResult.ABOUT_TO_DIE ->
-                                    if (isExile) "Exiled!" else "${nominee?.name} is about to die"
-                                NominationResult.TIED -> "Tie — no one is about to die"
-                                else -> "${nominee?.name} is safe"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (result == NominationResult.ABOUT_TO_DIE) EmberRed else MaterialTheme.colorScheme.onSurface,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(
-                                enabled = nominatorId in currentPlayerIds && nomineeId in currentPlayerIds,
-                                onClick = {
-                                    val nomination = Nomination(
-                                        day = state.cycle,
-                                        nominatorId = nominatorId!!,
-                                        nomineeId = nomineeId!!,
-                                        votes = orderedVoterIds.size,
-                                        voterIds = orderedVoterIds,
-                                        result = result,
-                                        isExile = isExile,
-                                    )
-                                    viewModel.update { current ->
-                                        var next = GameActions.recordNomination(current, nomination)
-                                        // Spend ghost votes for dead voters (not on exiles).
-                                        if (!isExile) {
-                                            for (id in orderedVoterIds) {
-                                                val voter = next.player(id)
-                                                if (voter != null && !voter.alive && !voter.ghostVoteUsed) {
-                                                    next = GameActions.toggleGhostVote(next, id)
-                                                }
-                                            }
-                                        }
-                                        next
-                                    }
-                                    nominatorId = null
-                                    nomineeId = null
-                                    voters = emptySet()
-                                },
-                            ) { Text("Record") }
-                            TextButton(onClick = {
-                                nominatorId = null; nomineeId = null; voters = emptySet()
-                            }) { Text("Reset") }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (todaysNominations.isNotEmpty()) {
-            item {
-                Text("Today's nominations", style = MaterialTheme.typography.titleMedium)
-            }
-            for (n in todaysNominations.reversed()) {
-                item {
-                    NominationRow(viewModel, state, n, onBlockId)
-                }
-            }
-        }
-
-        item {
-            HorizontalDivider()
             Text(
-                "When dusk falls, execute whoever is on the block (from their seat or here), " +
-                    "then advance to night.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                stats.blockLine,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (stats.onBlockId != null) EmberRed else FadedInk,
             )
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * The fixed bottom bar (§A): the timer, the statement composer and the
+ * nomination ring. Everything routine lives here so the thumb never hunts.
+ */
 @Composable
-private fun PlayerChipRow(
-    label: String,
-    players: List<Player>,
-    selected: Long?,
-    enabled: (Player) -> Boolean,
-    onSelect: (Long) -> Unit,
+private fun DayBottomBar(
+    timerOpen: Boolean,
+    onTimer: () -> Unit,
+    onSay: () -> Unit,
+    onNominate: () -> Unit,
 ) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        Spacer(Modifier.height(4.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            for (p in players) {
-                FilterChip(
-                    selected = selected == p.id,
-                    enabled = enabled(p) || selected == p.id,
-                    onClick = { onSelect(p.id) },
-                    label = { Text(p.name + if (!p.alive) " †" else "") },
+    val timer = DayTimer.shared
+    // While this bar is on screen the shell's floating pill stands down, so
+    // there is exactly one timer and it is the same one.
+    HostTimerInBar(timer)
+    val now = rememberTimerNow(timer)
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            if (timerOpen) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    TimerControls(timer, now, onDone = onTimer)
+                }
+                HorizontalDivider()
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(onClick = onTimer) {
+                    Text("⏱ " + TimerFormat.barLabel(timer, now))
+                }
+                FilledTonalButton(onClick = onSay, modifier = Modifier.weight(1f)) {
+                    Text("+ Say")
+                }
+                Button(onClick = onNominate, modifier = Modifier.weight(1f)) {
+                    Text("Nominate", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Stage bodies
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun DawnBody(
+    viewModel: GameViewModel,
+    briefing: Briefing?,
+    ticked: Set<String>,
+    onTick: (String) -> Unit,
+    onOpenSeat: ((Long) -> Unit)?,
+    onRecord: (String) -> Unit,
+) {
+    if (briefing == null || briefing.items.isEmpty()) {
+        Text(
+            "Nobody died last night. Say so.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = FadedInk,
+        )
+        return
+    }
+    BriefingSections(viewModel, briefing, ticked, onTick, onOpenSeat, onRecord)
+}
+
+@Composable
+private fun BriefingBody(
+    viewModel: GameViewModel,
+    briefing: Briefing,
+    ticked: Set<String>,
+    onTick: (String) -> Unit,
+    onOpenSeat: ((Long) -> Unit)?,
+    onRecord: (String) -> Unit,
+) {
+    if (briefing.items.isEmpty()) {
+        Text(
+            "Nothing constrains today.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = FadedInk,
+        )
+        return
+    }
+    BriefingSections(viewModel, briefing, ticked, onTick, onOpenSeat, onRecord)
+}
+
+/** ANNOUNCE first, then PRIVATE, TRUE TODAY, STILL TO DO, SWEPT (WP6's order). */
+@Composable
+private fun BriefingSections(
+    viewModel: GameViewModel,
+    briefing: Briefing,
+    ticked: Set<String>,
+    onTick: (String) -> Unit,
+    onOpenSeat: ((Long) -> Unit)?,
+    onRecord: (String) -> Unit,
+) {
+    for (kind in BRIEFING_SECTIONS) {
+        val items = briefing.of(kind)
+        if (items.isEmpty()) continue
+        Text(
+            sectionHeading(kind),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = PaleGold,
+        )
+        for (item in items) {
+            val tickable = kind == BriefingKind.ANNOUNCE || kind == BriefingKind.TODO_ASK
+            val (label, action) = itemAction(viewModel, item, onOpenSeat, onRecord)
+            BriefingRow(
+                item = item,
+                ticked = item.key in ticked,
+                onTick = if (tickable) {
+                    {
+                        // A sentence that has been said stops being owed: the
+                        // engine's own verb retires the ledger entry or prompt.
+                        viewModel.resolveBriefingItem(item)
+                        onTick(item.key)
+                    }
+                } else {
+                    null
+                },
+                actionLabel = label,
+                onAction = action,
+            )
+        }
+    }
+}
+
+/**
+ * The one-tap follow-through for a briefing item. The engine wrote the
+ * `actionId`; the screen only decides which of its own surfaces opens.
+ */
+private fun itemAction(
+    viewModel: GameViewModel,
+    item: BriefingItem,
+    onOpenSeat: ((Long) -> Unit)?,
+    onRecord: (String) -> Unit,
+): Pair<String?, (() -> Unit)?> = when {
+    item.actionId.startsWith(Briefings.ACTION_RECORD) ->
+        "Record it" to { onRecord(item.actionId.removePrefix(Briefings.ACTION_RECORD)) }
+
+    item.actionId.startsWith(Briefings.ACTION_OPEN_SEAT) && onOpenSeat != null ->
+        "Open seat" to { item.playerId?.let(onOpenSeat) ?: Unit }
+
+    item.actionId.startsWith(Briefings.ACTION_RERUN_FIRST_NIGHT) ->
+        "Done" to { item.playerId?.let { viewModel.markRerunDone(it) } ?: Unit }
+
+    else -> null to null
+}
+
+/**
+ * "What was said": today's lines, the composer, and the earlier days behind an
+ * expander. Verdict chips only where a rule will read the answer.
+ */
+@Composable
+private fun SaidBody(
+    viewModel: GameViewModel,
+    state: GameState,
+    onCompose: () -> Unit,
+) {
+    val lookup: (String) -> Character? = viewModel::characterById
+    val today = remember(state) { SaidModel.rows(state, lookup, state.cycle) }
+    val earlier = remember(state) {
+        state.ledger.count { it.cycle < state.cycle && it.kind in SaidModel.KINDS }
+    }
+    var showEarlier by rememberSaveable { mutableStateOf(false) }
+
+    if (today.isEmpty()) {
+        Text(
+            "Nothing recorded today. Tap a seat, then type or dictate one line — " +
+                "nothing has to be in play.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = FadedInk,
+        )
+    }
+    for (row in today) {
+        SaidRowView(viewModel, row)
+    }
+    FilledTonalButton(onClick = onCompose, modifier = Modifier.fillMaxWidth()) {
+        Text("+ Record what was said")
+    }
+    if (earlier > 0) {
+        TextButton(onClick = { showEarlier = !showEarlier }) {
+            Text(if (showEarlier) "▾ earlier days ($earlier)" else "▸ earlier days ($earlier)")
+        }
+        if (showEarlier) {
+            Column(
+                Modifier.heightIn(max = 260.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                for (cycle in (state.cycle - 1) downTo 1) {
+                    val rows = SaidModel.rows(state, lookup, cycle)
+                    if (rows.isEmpty()) continue
+                    Text(
+                        "Day $cycle",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = PaleGold,
+                    )
+                    for (row in rows) SaidRowView(viewModel, row)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SaidRowView(viewModel: GameViewModel, row: SaidRow) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.weight(1f)) {
+            Text(row.line, style = MaterialTheme.typography.bodyMedium)
+            if (row.kind == LedgerKind.ANNOUNCE && row.announcePending) {
+                Text(
+                    "still owed to the table",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = EmberRed,
                 )
             }
         }
+        if (row.kind == LedgerKind.ANNOUNCE && row.announcePending) {
+            TextButton(onClick = { viewModel.markAnnounced(row.entryId) }) { Text("Said it") }
+        }
+        if (row.wantsVerdict) {
+            for (verdict in listOf(Verdict.TRUE, Verdict.FALSE, Verdict.UNJUDGED)) {
+                val glyph = when (verdict) {
+                    Verdict.TRUE -> "✓"
+                    Verdict.FALSE -> "✗"
+                    else -> "?"
+                }
+                TextButton(onClick = { viewModel.setLedgerVerdict(row.entryId, verdict) }) {
+                    Text(
+                        glyph,
+                        fontWeight = if (row.verdict == verdict) FontWeight.Bold else FontWeight.Normal,
+                        color = if (row.verdict == verdict) AgedGold else FadedInk,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+@Suppress("LongParameterList")
+private fun NominationsBody(
+    viewModel: GameViewModel,
+    state: GameState,
+    nominatorId: Long?,
+    nomineeId: Long?,
+    voters: Set<Long>,
+    force: Boolean,
+    secret: Boolean,
+    onPickSeat: (Long) -> Unit,
+    onToggleVoter: (Long) -> Unit,
+    onForce: () -> Unit,
+    onReset: () -> Unit,
+    onSay: (Long) -> Unit,
+    onExecute: (Long) -> Unit,
+) {
+    NominationPanel(
+        viewModel = viewModel,
+        state = state,
+        nominatorId = nominatorId,
+        nomineeId = nomineeId,
+        voters = voters,
+        force = force,
+        onPickSeat = onPickSeat,
+        onToggleVoter = onToggleVoter,
+        onForce = onForce,
+        onReset = onReset,
+        onSay = onSay,
+    )
+
+    val todays = state.nominations.withIndex().filter { it.value.day == state.cycle }
+    if (todays.isEmpty()) return
+    HorizontalDivider()
+    Text("Today's nominations", style = MaterialTheme.typography.titleSmall)
+    for ((index, nomination) in todays.reversed()) {
+        NominationRow(viewModel, state, index, nomination, secret, onExecute)
     }
 }
 
@@ -309,17 +580,20 @@ private fun PlayerChipRow(
 private fun NominationRow(
     viewModel: GameViewModel,
     state: GameState,
+    index: Int,
     nomination: Nomination,
-    onBlockId: Long?,
+    secret: Boolean,
+    onExecute: (Long) -> Unit,
 ) {
     val nominator = state.player(nomination.nominatorId)
     val nominee = state.player(nomination.nomineeId)
-    // A record's stored result can be superseded by a later tie; only the
-    // currently-blocked player (or a passed exile) gets an execute button.
-    val executable = if (nomination.isExile) {
-        nomination.result == NominationResult.ABOUT_TO_DIE
-    } else {
-        nomination.result == NominationResult.ABOUT_TO_DIE && nomination.nomineeId == onBlockId
+    var showVoters by rememberSaveable(index) { mutableStateOf(false) }
+    val onBlockId = DayRules.aboutToDie(state)
+    val passed = nomination.result == NominationResult.ABOUT_TO_DIE
+    val executable = nominee?.alive == true && when {
+        nomination.isExile -> passed
+        else -> passed && nomination.nomineeId == onBlockId &&
+            !DayRules.executionSpent(state)
     }
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -327,34 +601,157 @@ private fun NominationRow(
         tonalElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Column(Modifier.weight(1f)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "${nominator?.name ?: "?"} » ${nominee?.name ?: "?"}" +
+                            if (nomination.isExile) "  (exile)" else "",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        (if (secret && !nomination.isExile) "••• votes" else "${nomination.votes} votes") +
+                            " · " + resultLabel(nomination.result),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FadedInk,
+                    )
+                }
+                if (executable) {
+                    if (nomination.isExile) {
+                        OutlinedButton(onClick = { viewModel.exile(nomination.nomineeId) }) {
+                            Text("Exile")
+                        }
+                    } else {
+                        OutlinedButton(onClick = { onExecute(nomination.nomineeId) }) {
+                            Text("Execute")
+                        }
+                    }
+                }
+            }
+            Row {
+                TextButton(onClick = { showVoters = !showVoters }) {
+                    Text(if (showVoters) "▾ voters" else "▸ voters")
+                }
+                if (nomination.result != NominationResult.WITHDRAWN) {
+                    TextButton(onClick = { viewModel.withdrawNomination(index) }) {
+                        Text("Withdraw")
+                    }
+                }
+            }
+            if (showVoters) {
                 Text(
-                    "${nominator?.name ?: "?"} » ${nominee?.name ?: "?"}" + if (nomination.isExile) " (exile)" else "",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    "${nomination.votes} votes · " + when (nomination.result) {
-                        NominationResult.ABOUT_TO_DIE -> "about to die"
-                        NominationResult.TIED -> "tied"
-                        NominationResult.WITHDRAWN -> "withdrawn"
-                        NominationResult.SAFE -> "safe"
+                    if (nomination.voterIds.isEmpty()) {
+                        "No hands recorded."
+                    } else {
+                        nomination.voterIds.joinToString(", ") { state.player(it)?.name ?: "?" }
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = FadedInk,
                 )
-            }
-            if (executable && nominee?.alive == true) {
-                OutlinedButton(onClick = {
-                    viewModel.kill(
-                        nomination.nomineeId,
-                        if (nomination.isExile) DeathCause.EXILE else DeathCause.EXECUTION,
-                    )
-                }) { Text(if (nomination.isExile) "Exile" else "Execute") }
+                for (reason in nomination.voteRules?.reasons.orEmpty()) {
+                    Text("· $reason", style = MaterialTheme.typography.labelMedium, color = FadedInk)
+                }
             }
         }
     }
 }
+
+private fun resultLabel(result: NominationResult): String = when (result) {
+    NominationResult.ABOUT_TO_DIE -> "about to die"
+    NominationResult.TIED -> "tied"
+    NominationResult.WITHDRAWN -> "withdrawn"
+    NominationResult.SAFE -> "safe"
+}
+
+/**
+ * Dusk hands off to the shell's phase flow — WP6's dusk sheet already asks
+ * "No execution today?", shows the blocking win advisories and executes
+ * whoever is on the block. Duplicating any of that here would give the
+ * storyteller two places to close one day.
+ */
+@Composable
+private fun DuskBody(
+    viewModel: GameViewModel,
+    state: GameState,
+    onDusk: (() -> Unit)?,
+    onExecute: (Long) -> Unit,
+) {
+    val lookup: (String) -> Character? = viewModel::characterById
+    val record = viewModel.executionToday(state)
+    val onBlock = DayRules.aboutToDie(state)?.let { state.player(it) }
+
+    when {
+        record?.outcome == ExecutionOutcome.NO_EXECUTION -> Text(
+            "No execution today — recorded. The Mayor, the Vortox and the Zombuul all read this.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = FadedInk,
+        )
+
+        record != null -> {
+            Text(
+                DayRules.nominationsClosedReason(state, lookup),
+                style = MaterialTheme.typography.bodyMedium,
+                color = FadedInk,
+            )
+            for (consequence in viewModel.executionConsequences(state, record)) {
+                Text(
+                    "! ${consequence.headline}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PaleGold,
+                )
+                if (consequence.detail.isNotBlank()) {
+                    Text(
+                        consequence.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FadedInk,
+                    )
+                }
+            }
+        }
+
+        onBlock != null -> {
+            Text(
+                "On the block: ${onBlock.name}.",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = EmberRed,
+            )
+            Button(
+                onClick = { onExecute(onBlock.id) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Execute ${onBlock.name}", fontWeight = FontWeight.Bold) }
+        }
+
+        else -> Text(
+            "No one is about to die. There is no execution today — " +
+                "close the day and confirm it.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = PaleGold,
+        )
+    }
+
+    if (onDusk != null) {
+        Button(onClick = onDusk, modifier = Modifier.fillMaxWidth()) {
+            Text("Everyone, eyes closed ▸", fontWeight = FontWeight.Bold)
+        }
+    } else {
+        Text(
+            "Tap Dusk in the top bar to close the day — that sheet confirms the " +
+                "execution or records that there was none.",
+            style = MaterialTheme.typography.bodySmall,
+            color = FadedInk,
+        )
+    }
+    Spacer(Modifier.height(2.dp))
+}
+
+/** The nomination that put this seat on the block today. */
+private fun blockingNomination(state: GameState, playerId: Long): Nomination? =
+    state.nominations.lastOrNull {
+        it.day == state.cycle && !it.isExile && it.nomineeId == playerId
+    }
+
+private fun blockingNominationIndexFor(state: GameState, playerId: Long): Int? =
+    state.nominations.indexOfLast {
+        it.day == state.cycle && !it.isExile && it.nomineeId == playerId
+    }.takeIf { it >= 0 }
