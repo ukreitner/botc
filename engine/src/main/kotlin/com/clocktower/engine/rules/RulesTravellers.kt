@@ -1,6 +1,5 @@
 package com.clocktower.engine.rules
 
-import com.clocktower.engine.Alignment
 import com.clocktower.engine.BriefingContext
 import com.clocktower.engine.BriefingItem
 import com.clocktower.engine.BriefingKind
@@ -275,7 +274,9 @@ private fun apprentice(): CharacterRule = CharacterRule(
             "Townsfolk token (if good) or Minion token (if evil). They keep the Apprentice " +
             "token — place Is The Apprentice beside the granted one.",
         action = { ctx ->
-            val evil = ctx.holder?.let { it.alignment == Alignment.EVIL } ?: false
+            // The seat's explicit alignment, which `traveller.alignment:<seat>`
+            // (WP4) makes a blocking arrival requirement precisely for this.
+            val evil = ctx.holder?.isEvil(ctx.lookup) ?: false
             ChooseCharacter(
                 sourceId = "apprentice",
                 prompt = if (evil) "WHICH MINION ABILITY?" else "WHICH TOWNSFOLK ABILITY?",
