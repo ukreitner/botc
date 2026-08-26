@@ -421,6 +421,18 @@ interface GameActionsApi {
     fun executionPreview(state: GameState, playerId: Long): KillOutcome =
         Deaths.killOutcome(state, lookup, playerId, KillCause(DeathCause.EXECUTION))
 
+    /**
+     * The same preview for an exile, which is a different cause entirely: no
+     * ability modifies it, it is never the day's execution, and no
+     * `ExecutionRecord` is written (lead D25/D58).
+     */
+    fun exilePreview(state: GameState, playerId: Long): KillOutcome = Deaths.killOutcome(
+        state,
+        lookup,
+        playerId,
+        KillCause(DeathCause.EXILE, sourceCharacterId = Ledger.Sources.STORYTELLER),
+    )
+
     /** Today's execution record, including a declared "no execution" (lead D30). */
     fun executionToday(state: GameState): ExecutionRecord? = DayRules.executionToday(state)
 

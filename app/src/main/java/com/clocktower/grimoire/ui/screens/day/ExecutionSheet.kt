@@ -189,6 +189,61 @@ private fun ExecutionSheetBody(
     }
 }
 
+/**
+ * Exile, with its own visual identity so it can never be mistaken for an
+ * execution (§H): an exile is not the day's execution, no ability modifies it,
+ * no ghost vote is spent, and it writes no `ExecutionRecord`. It still goes
+ * through the kill funnel, so a Choice is answered before anything is written.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExileSheet(
+    viewModel: GameViewModel,
+    state: GameState,
+    targetId: Long,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        val target = state.player(targetId)
+        if (target == null) {
+            onDismiss()
+            return@ModalBottomSheet
+        }
+        val preview = remember(state, targetId) { viewModel.exilePreview(state, targetId) }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "Exile ${target.name}?",
+                style = MaterialTheme.typography.headlineSmall,
+                color = AgedGold,
+            )
+            Text(
+                "An exile is not an execution: today's execution stays available, " +
+                    "no vote token is spent, and no ability changes the result.",
+                style = MaterialTheme.typography.bodySmall,
+                color = FadedInk,
+            )
+            PreviewLine(preview)
+            Button(
+                onClick = {
+                    viewModel.exile(targetId)
+                    onDismiss()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("EXILE ${target.name.uppercase()}", fontWeight = FontWeight.Bold) }
+            HorizontalDivider()
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Not yet") }
+        }
+    }
+}
+
 /** The execution's outcome in the button, never the verb (§3.2, night-card rule). */
 fun executeLabel(preview: KillOutcome, name: String): String = when (preview) {
     is KillOutcome.Dies -> "${name.uppercase()} IS EXECUTED AND DIES"

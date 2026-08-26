@@ -27,7 +27,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,46 +66,61 @@ import com.clocktower.grimoire.ui.theme.PoisonGreen
  * [Allow anyway] (finding 14: a dead Banshee, a Butcher's second nomination
  * and a Riot re-nomination are all legal somewhere).
  */
-@Suppress("LongParameterList")
 @Composable
-fun NominationPanel(
+fun SeatRingPanel(
     viewModel: GameViewModel,
     state: GameState,
     nominatorId: Long?,
     nomineeId: Long?,
-    voters: Set<Long>,
-    force: Boolean,
     onPickSeat: (Long) -> Unit,
-    onToggleVoter: (Long) -> Unit,
-    onForce: () -> Unit,
-    onReset: () -> Unit,
     onSay: (Long) -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
     val ring = remember(state, nominatorId, nomineeId) {
         NominationModel.ring(state, lookup, nominatorId, nomineeId)
     }
-    val closed = DayRules.nominationsClosed(state, lookup)
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            NominationModel.ringPrompt(
+                nominatorId,
+                nomineeId,
+                nominatorId?.let { state.player(it)?.name },
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = PaleGold,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+        )
+        SeatRing(ring = ring, onTap = onPickSeat, onLongPress = onSay)
+    }
+}
 
-    if (closed) {
+/**
+ * The half that sits below the ring: the `NominationCheck` card and, once both
+ * taps have landed, the vote panel. The order is the spec's — check card
+ * BETWEEN the ring and the vote panel — so a Virgin's interceptor is answered
+ * before a single hand goes up.
+ */
+@Suppress("LongParameterList")
+@Composable
+fun NominationDetail(
+    viewModel: GameViewModel,
+    state: GameState,
+    nominatorId: Long?,
+    nomineeId: Long?,
+    voters: Set<Long>,
+    force: Boolean,
+    onToggleVoter: (Long) -> Unit,
+    onForce: () -> Unit,
+    onReset: () -> Unit,
+) {
+    val lookup: (String) -> Character? = viewModel::characterById
+    if (DayRules.nominationsClosed(state, lookup)) {
         Text(
             DayRules.nominationsClosedReason(state, lookup),
             style = MaterialTheme.typography.bodyMedium,
             color = FadedInk,
         )
     }
-
-    Text(
-        NominationModel.ringPrompt(
-            nominatorId,
-            nomineeId,
-            nominatorId?.let { state.player(it)?.name },
-        ),
-        style = MaterialTheme.typography.bodyMedium,
-        color = PaleGold,
-    )
-
-    SeatRing(ring = ring, onTap = onPickSeat, onLongPress = onSay)
 
     if (nominatorId != null || nomineeId != null) {
         val check = remember(state, nominatorId, nomineeId) {
@@ -368,7 +386,7 @@ private fun TriggerCard(viewModel: GameViewModel, trigger: NominationTrigger) {
  * and the "to beat" hint are `•••` — the phone must not be readable from
  * across the table.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 @Suppress("LongMethod", "LongParameterList")
 private fun VotePanel(
@@ -386,6 +404,10 @@ private fun VotePanel(
         NominationModel.voteView(state, lookup, nominatorId, nomineeId, voters)
     }
     val orderedVoters = view.order.filter { it in voters }
+    // Secret voting: the number exists, but only for the storyteller and only
+    // while they are holding the phone (§F). A long press peeks, a tap hides.
+    var peek by remember(nomineeId) { mutableStateOf(false) }
+    val hidden = view.secret && !peek
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -412,15 +434,20 @@ private fun VotePanel(
     // The big glanceable tally — the storyteller is sweeping a hand round a
     // circle of twelve, not reading a parenthetical (finding 21).
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { if (view.secret) peek = false },
+                onLongClick = { if (view.secret) peek = true },
+            ),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom,
     ) {
         Text(
-            if (view.secret) "•••" else view.tally.toString(),
+            if (hidden) "•••" else view.tally.toString(),
             fontSize = TALLY_SP.sp,
             fontWeight = FontWeight.Bold,
-            color = if (view.result == NominationResult.ABOUT_TO_DIE && !view.secret) {
+            color = if (view.result == NominationResult.ABOUT_TO_DIE && !hidden) {
                 EmberRed
             } else {
                 MaterialTheme.colorScheme.onSurface
@@ -428,7 +455,7 @@ private fun VotePanel(
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            if (view.secret) "" else "of ${view.threshold}",
+            if (view.secret) "hold to peek" else "of ${view.threshold}",
             style = MaterialTheme.typography.titleMedium,
             color = FadedInk,
             modifier = Modifier.padding(bottom = 10.dp),
@@ -494,7 +521,7 @@ private fun VotePanel(
         Text("· $reason", style = MaterialTheme.typography.bodySmall, color = FadedInk)
     }
 
-    if (!view.secret) {
+    if (!hidden) {
         Text(
             view.outcomeLine,
             style = MaterialTheme.typography.titleMedium,

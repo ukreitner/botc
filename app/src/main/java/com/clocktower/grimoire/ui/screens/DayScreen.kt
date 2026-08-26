@@ -56,7 +56,10 @@ import com.clocktower.grimoire.ui.screens.day.BriefingRow
 import com.clocktower.grimoire.ui.screens.day.DayModel
 import com.clocktower.grimoire.ui.screens.day.DayStage
 import com.clocktower.grimoire.ui.screens.day.ExecutionSheet
-import com.clocktower.grimoire.ui.screens.day.NominationPanel
+import com.clocktower.grimoire.ui.screens.day.DayStats
+import com.clocktower.grimoire.ui.screens.day.ExileSheet
+import com.clocktower.grimoire.ui.screens.day.NominationDetail
+import com.clocktower.grimoire.ui.screens.day.SeatRingPanel
 import com.clocktower.grimoire.ui.screens.day.SaidModel
 import com.clocktower.grimoire.ui.screens.day.SaidRow
 import com.clocktower.grimoire.ui.screens.day.SaidSheet
@@ -110,6 +113,7 @@ fun DayScreen(
     var saySource by rememberSaveable { mutableStateOf<String?>(null) }
     var sayOpen by rememberSaveable { mutableStateOf(false) }
     var executeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var exileId by rememberSaveable { mutableStateOf<Long?>(null) }
     var timerOpen by rememberSaveable { mutableStateOf(false) }
 
     val currentPlayerIds = state.players.map { it.id }.toSet()
@@ -144,6 +148,30 @@ fun DayScreen(
 
     Column(Modifier.fillMaxSize()) {
         DayStatStrip(stats)
+
+        // The ring is PINNED, not scrolled to: two taps must never cost a
+        // scroll while the table is waiting (§E).
+        if (expanded == DayStage.NOMINATIONS) {
+            SeatRingPanel(
+                viewModel = viewModel,
+                state = state,
+                nominatorId = nominatorId,
+                nomineeId = nomineeId,
+                onPickSeat = { id ->
+                    when {
+                        nominatorId == id -> nominatorId = null
+                        nomineeId == id -> nomineeId = null
+                        nominatorId == null -> nominatorId = id
+                        else -> {
+                            nomineeId = id
+                            voters = emptySet()
+                        }
+                    }
+                    forceNomination = false
+                },
+                onSay = { openSay(it, null) },
+            )
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -192,25 +220,13 @@ fun DayScreen(
                                 voters = voters,
                                 force = forceNomination,
                                 secret = stats.secret,
-                                onPickSeat = { id ->
-                                    when {
-                                        nominatorId == id -> nominatorId = null
-                                        nomineeId == id -> nomineeId = null
-                                        nominatorId == null -> nominatorId = id
-                                        else -> {
-                                            nomineeId = id
-                                            voters = emptySet()
-                                        }
-                                    }
-                                    forceNomination = false
-                                },
                                 onToggleVoter = { id ->
                                     voters = if (id in voters) voters - id else voters + id
                                 },
                                 onForce = { forceNomination = true },
                                 onReset = { resetDraft() },
-                                onSay = { openSay(it, null) },
                                 onExecute = { executeId = it },
+                                onExile = { exileId = it },
                             )
 
                             DayStage.DUSK -> DuskBody(
@@ -244,6 +260,15 @@ fun DayScreen(
         )
     }
 
+    exileId?.let { id ->
+        ExileSheet(
+            viewModel = viewModel,
+            state = state,
+            targetId = id,
+            onDismiss = { exileId = null },
+        )
+    }
+
     executeId?.let { id ->
         ExecutionSheet(
             viewModel = viewModel,
@@ -258,7 +283,7 @@ fun DayScreen(
 
 /** Day N · alive · threshold · ghosts, and who is on the block. */
 @Composable
-private fun DayStatStrip(stats: com.clocktower.grimoire.ui.screens.day.DayStats) {
+private fun DayStatStrip(stats: DayStats) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth(),
@@ -546,25 +571,22 @@ private fun NominationsBody(
     voters: Set<Long>,
     force: Boolean,
     secret: Boolean,
-    onPickSeat: (Long) -> Unit,
     onToggleVoter: (Long) -> Unit,
     onForce: () -> Unit,
     onReset: () -> Unit,
-    onSay: (Long) -> Unit,
     onExecute: (Long) -> Unit,
+    onExile: (Long) -> Unit,
 ) {
-    NominationPanel(
+    NominationDetail(
         viewModel = viewModel,
         state = state,
         nominatorId = nominatorId,
         nomineeId = nomineeId,
         voters = voters,
         force = force,
-        onPickSeat = onPickSeat,
         onToggleVoter = onToggleVoter,
         onForce = onForce,
         onReset = onReset,
-        onSay = onSay,
     )
 
     val todays = state.nominations.withIndex().filter { it.value.day == state.cycle }
@@ -572,7 +594,7 @@ private fun NominationsBody(
     HorizontalDivider()
     Text("Today's nominations", style = MaterialTheme.typography.titleSmall)
     for ((index, nomination) in todays.reversed()) {
-        NominationRow(viewModel, state, index, nomination, secret, onExecute)
+        NominationRow(viewModel, state, index, nomination, secret, onExecute, onExile)
     }
 }
 
@@ -584,6 +606,7 @@ private fun NominationRow(
     nomination: Nomination,
     secret: Boolean,
     onExecute: (Long) -> Unit,
+    onExile: (Long) -> Unit,
 ) {
     val nominator = state.player(nomination.nominatorId)
     val nominee = state.player(nomination.nomineeId)
@@ -610,15 +633,18 @@ private fun NominationRow(
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        (if (secret && !nomination.isExile) "••• votes" else "${nomination.votes} votes") +
-                            " · " + resultLabel(nomination.result),
+                        if (secret && !nomination.isExile) {
+                            "••• votes · •••"
+                        } else {
+                            "${nomination.votes} votes · " + resultLabel(nomination.result)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = FadedInk,
                     )
                 }
                 if (executable) {
                     if (nomination.isExile) {
-                        OutlinedButton(onClick = { viewModel.exile(nomination.nomineeId) }) {
+                        OutlinedButton(onClick = { onExile(nomination.nomineeId) }) {
                             Text("Exile")
                         }
                     } else {
