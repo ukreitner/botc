@@ -88,3 +88,4 @@ W4-followups MERGED (per-seat checklist ids, tokenShownAt, label gate LIVE). WP7
 WP7-FAB DONE + MERGED (25/25, 24 tests). Fabled rows are mostly inert until the engine walks state.fabled — top item for the post-W4 schema agent.
 WP7-EXP-M DONE + MERGED (15/15, 38 tests).
 WP7-TRAV DONE + MERGED (18/18, 31 tests).
+WP7-EXP-D DONE + MERGED (10/10, 28 tests). Remaining W4: WP7-BMR, WP7-SV, WP7-EXP-T, WP6.
