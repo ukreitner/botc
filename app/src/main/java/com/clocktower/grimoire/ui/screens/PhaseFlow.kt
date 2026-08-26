@@ -22,12 +22,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Briefing
 import com.clocktower.engine.BriefingItem
+import com.clocktower.engine.BriefingKind
+import com.clocktower.engine.BriefingSeverity
+import com.clocktower.engine.BriefingSlot
+import com.clocktower.engine.Briefings
 import com.clocktower.engine.Character
-import com.clocktower.engine.DeathCause
-import com.clocktower.engine.GameActions
+import com.clocktower.engine.DayRules
+import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Phase
+import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
 
@@ -50,39 +55,118 @@ sealed interface PhaseRequest {
 }
 
 /**
- * The engine-side phase decision. WP6 implements it on top of `Briefings.at`
- * and `WinCheck.duskCheck`; until then [requestPhaseAdvance] carries the
- * shipped behaviour, moved verbatim out of `GameShell`.
+ * The engine-side phase decision (WP6).
+ *
+ * Pure: the caller decides what to render. Tapping "Dawn" stops being a silent
+ * state change (friction §5) — it returns the briefing computed on the state as
+ * it stands NOW, with every token the night placed still on the grimoire, which
+ * is the same instant `Phases.advancePhase` freezes into `GameState.lastDawn`.
  */
 object PhaseFlow {
-    fun request(state: GameState, lookup: (String) -> Character?): PhaseRequest = TODO("WP6")
+
+    /** Blocked title for a setup that does not yet meet the bag rules. */
+    const val TITLE_SETUP: String = "Setup isn't legal yet"
+
+    /** Blocked title for a night with required steps still unticked. */
+    const val TITLE_NIGHT: String = "Night checklist incomplete"
+
+    fun request(state: GameState, lookup: (String) -> Character?): PhaseRequest = when (state.phase) {
+        Phase.SETUP -> setupBlockers(state, lookup)?.let {
+            PhaseRequest.Blocked(TITLE_SETUP, it)
+        } ?: PhaseRequest.Advance
+
+        // Only REQUIRED steps block the dawn: a gated-off row is auto-ticked by
+        // the planner and renders grey with a [Run anyway] (lead D37/D60), so it
+        // must never hold the storyteller up here.
+        Phase.NIGHT -> unfinishedSteps(state, lookup)?.let {
+            PhaseRequest.Blocked(TITLE_NIGHT, it)
+        } ?: PhaseRequest.ConfirmDawn(Briefings.at(state, lookup, BriefingSlot.DAWN))
+
+        Phase.DAY -> PhaseRequest.ConfirmDusk(
+            briefing = Briefings.at(state, lookup, BriefingSlot.DUSK),
+            advisories = WinCheck.duskCheck(state, lookup),
+        )
+    }
+
+    private fun setupBlockers(
+        state: GameState,
+        lookup: (String) -> Character?,
+    ): List<BriefingItem>? {
+        val problems = SetupRequirements.unmet(state, lookup).filter { it.blocking }
+        if (problems.isEmpty()) return null
+        return problems.mapIndexed { index, requirement ->
+            BriefingItem(
+                key = "setup:${requirement.id}:$index",
+                kind = BriefingKind.TODO_ASK,
+                severity = BriefingSeverity.ALERT,
+                sourceId = requirement.characterId,
+                text = requirement.problem.ifBlank { requirement.title },
+            )
+        }
+    }
+
+    private fun unfinishedSteps(
+        state: GameState,
+        lookup: (String) -> Character?,
+    ): List<BriefingItem>? {
+        val unfinished = NightPlan.build(state, lookup).unfinished(state.nightStepsDone)
+        if (unfinished.isEmpty()) return null
+        return unfinished.map { step ->
+            BriefingItem(
+                key = "night-step:${step.key.token}",
+                kind = BriefingKind.TODO_ASK,
+                severity = BriefingSeverity.ACTION,
+                sourceId = step.abilityId,
+                text = step.title,
+                playerId = step.holderId,
+            )
+        }
+    }
 }
 
 /**
- * The three guards the phase button can raise, as UI state. WP0 moved these
- * out of `GameShell` unchanged so WP8 owns only tabs, scaffold, top bar and
- * scrim, and WP6 can replace the bodies with [PhaseFlow.request].
+ * The guards and sheets the phase button can raise, as UI state. WP0 moved these
+ * out of `GameShell`; WP6 drives them from [PhaseFlow.request] so `GameShell`
+ * owns only tabs, scaffold, top bar and scrim.
  */
 class PhaseGuards {
     /** Setup problems that must be fixed (or deliberately ignored) first. */
     var setupIssues by mutableStateOf(listOf<String>())
 
-    /** Someone is on the block and has not been executed. */
-    var duskGuard by mutableStateOf(false)
-
     /** Night steps still unticked, by title. */
     var unfinishedNightSteps by mutableStateOf(listOf<String>())
 
+    /** The read-aloud dawn card, shown before the day opens. */
+    var dawn by mutableStateOf<Briefing?>(null)
+
+    /** The dusk sheet, shown before the night begins. */
+    var dusk by mutableStateOf<Briefing?>(null)
+
+    /** Blocking endings the dusk sheet must show alongside the briefing. */
+    var duskAdvisories by mutableStateOf(listOf<WinCheck.Advisory>())
+
     /** Debounce: an accidental double tap must not skip a whole phase. */
     var lastAdvanceAt by mutableLongStateOf(0L)
+
+    /** Someone is on the block and has not been executed. */
+    var onBlockId by mutableStateOf<Long?>(null)
+
+    internal fun clear() {
+        setupIssues = emptyList()
+        unfinishedNightSteps = emptyList()
+        dawn = null
+        dusk = null
+        duskAdvisories = emptyList()
+        onBlockId = null
+    }
 }
 
 @Composable
 internal fun rememberPhaseGuards(): PhaseGuards = remember { PhaseGuards() }
 
 /**
- * Runs the phase button. Returns the tab to switch to, or null when a guard
- * dialog opened instead. Moved verbatim from `GameShell.requestPhaseAdvance`.
+ * Runs the phase button. Returns the tab to switch to, or null when a guard or
+ * a briefing sheet opened instead.
  */
 internal fun requestPhaseAdvance(
     viewModel: GameViewModel,
@@ -91,43 +175,45 @@ internal fun requestPhaseAdvance(
 ): GameTab? {
     // Debounce: an accidental double tap must not skip a whole phase.
     val nowMs = com.clocktower.engine.Time.epochMillis()
-    if (nowMs - guards.lastAdvanceAt < 800) return null
+    if (nowMs - guards.lastAdvanceAt < DEBOUNCE_MS) return null
     guards.lastAdvanceAt = nowMs
-    // Setup guard: empty/manual games must meet the same adjusted team
-    // distribution as the bag builder before first night can begin.
-    if (state.phase == Phase.SETUP) {
-        val issues = GameActions.validateSetupState(state, viewModel::characterById)
-        if (issues.isNotEmpty()) {
-            guards.setupIssues = issues
-            return GameTab.GRIMOIRE
+
+    return when (val request = PhaseFlow.request(state, viewModel::characterById)) {
+        is PhaseRequest.Blocked -> {
+            val lines = request.items.map { it.text }
+            if (state.phase == Phase.SETUP) {
+                guards.setupIssues = lines
+                GameTab.GRIMOIRE
+            } else {
+                guards.unfinishedNightSteps = lines
+                GameTab.NIGHT
+            }
         }
-    }
-    // Dusk guard: someone is on the block and hasn't died.
-    val onBlock = GameActions.aboutToDie(state)?.let { state.player(it) }
-    if (state.phase == Phase.DAY && onBlock?.alive == true) {
-        guards.duskGuard = true
-        return null
-    }
-    if (state.phase == Phase.NIGHT) {
-        // WP2 redirect: gated-off steps are auto-ticked by the planner, so the
-        // dawn guard only ever names rows that really still owe something.
-        val unfinished = NightPlan.build(state, viewModel::characterById)
-            .unfinished(state.nightStepsDone)
-            .map { it.title }
-        if (unfinished.isNotEmpty()) {
-            guards.unfinishedNightSteps = unfinished
-            return GameTab.NIGHT
+
+        is PhaseRequest.ConfirmDawn -> {
+            guards.dawn = request.briefing
+            null
         }
-    }
-    viewModel.advancePhase()
-    // Jump to the tab that matters for the new phase.
-    return when (state.phase) {
-        Phase.SETUP, Phase.DAY -> GameTab.NIGHT
-        Phase.NIGHT -> GameTab.DAY
+
+        is PhaseRequest.ConfirmDusk -> {
+            guards.dusk = request.briefing
+            guards.duskAdvisories = request.advisories.filter { it.blocking }
+            guards.onBlockId = DayRules.aboutToDie(state)
+                ?.takeIf { state.player(it)?.alive == true && !DayRules.executionSpent(state) }
+            null
+        }
+
+        PhaseRequest.Advance -> {
+            viewModel.advancePhase()
+            GameTab.NIGHT
+        }
     }
 }
 
-/** The three guard dialogs, moved verbatim out of `GameShell`. */
+/** An accidental double tap must not skip a whole phase. */
+private const val DEBOUNCE_MS = 800L
+
+/** The guard dialogs and the two read-aloud briefing sheets. */
 @Composable
 internal fun PhaseGuardDialogs(
     viewModel: GameViewModel,
@@ -138,7 +224,7 @@ internal fun PhaseGuardDialogs(
     if (guards.setupIssues.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { guards.setupIssues = emptyList() },
-            title = { Text("Setup isn't legal yet") },
+            title = { Text(PhaseFlow.TITLE_SETUP) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Fix these issues before beginning the first night:")
@@ -169,46 +255,17 @@ internal fun PhaseGuardDialogs(
                 TextButton(onClick = {
                     guards.setupIssues = emptyList()
                     viewModel.advancePhase()
+                    onTab(GameTab.NIGHT)
                 }) { Text("Start the night anyway") }
             },
         )
     }
-    if (guards.duskGuard) {
-        val onBlock = GameActions.aboutToDie(state)?.let { state.player(it) }
-        AlertDialog(
-            onDismissRequest = { guards.duskGuard = false },
-            title = { Text("Dusk falls") },
-            text = {
-                Text(
-                    "${onBlock?.name ?: "Someone"} is on the block and hasn't been executed. " +
-                        "Execute before night?",
-                )
-            },
-            confirmButton = {
-                FilledTonalButton(onClick = {
-                    guards.duskGuard = false
-                    onBlock?.let { viewModel.kill(it.id, DeathCause.EXECUTION) }
-                    viewModel.advancePhase()
-                    onTab(GameTab.NIGHT)
-                }) { Text("Execute & begin night") }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        guards.duskGuard = false
-                        viewModel.advancePhase()
-                        onTab(GameTab.NIGHT)
-                    }) { Text("No execution") }
-                    TextButton(onClick = { guards.duskGuard = false }) { Text("Cancel") }
-                }
-            },
-        )
-    }
+
     if (guards.unfinishedNightSteps.isNotEmpty()) {
         val count = guards.unfinishedNightSteps.size
         AlertDialog(
             onDismissRequest = { guards.unfinishedNightSteps = emptyList() },
-            title = { Text("Night checklist incomplete") },
+            title = { Text(PhaseFlow.TITLE_NIGHT) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("$count step${if (count == 1) " is" else "s are"} still unchecked:")
@@ -226,15 +283,13 @@ internal fun PhaseGuardDialogs(
             confirmButton = {
                 FilledTonalButton(onClick = {
                     guards.unfinishedNightSteps = emptyList()
-                    val expectedCycle = state.cycle
-                    viewModel.update { current ->
-                        if (current.phase == Phase.NIGHT && current.cycle == expectedCycle) {
-                            GameActions.advancePhase(current)
-                        } else {
-                            current
-                        }
-                    }
-                    onTab(GameTab.DAY)
+                    // The dawn card still runs: skipping the checklist must not
+                    // skip the report (friction §5).
+                    guards.dawn = Briefings.at(
+                        state,
+                        viewModel::characterById,
+                        BriefingSlot.DAWN,
+                    )
                 }) { Text("Dawn anyway") }
             },
             dismissButton = {
@@ -245,4 +300,150 @@ internal fun PhaseGuardDialogs(
             },
         )
     }
+
+    guards.dawn?.let { briefing ->
+        BriefingSheet(
+            briefing = briefing,
+            title = "Dawn · night ${briefing.cycle}",
+            confirmLabel = "OPEN DAY ${briefing.cycle} →",
+            onConfirm = {
+                val expectedCycle = state.cycle
+                guards.clear()
+                viewModel.update { current ->
+                    if (current.phase == Phase.NIGHT && current.cycle == expectedCycle) {
+                        com.clocktower.engine.Phases.advancePhase(current, viewModel::characterById)
+                    } else {
+                        current
+                    }
+                }
+                onTab(GameTab.DAY)
+            },
+            onDismiss = { guards.dawn = null },
+        )
+    }
+
+    guards.dusk?.let { briefing ->
+        val onBlock = guards.onBlockId?.let { state.player(it) }
+        BriefingSheet(
+            briefing = briefing,
+            title = "Dusk · day ${briefing.cycle}",
+            confirmLabel = if (onBlock == null) {
+                "BEGIN NIGHT ${briefing.cycle + 1} →"
+            } else {
+                "EXECUTE ${onBlock.name.uppercase()} & BEGIN NIGHT"
+            },
+            advisories = guards.duskAdvisories,
+            onConfirm = {
+                val target = onBlock?.id
+                val index = target?.let { blockingNominationIndex(state, it) }
+                guards.clear()
+                // One execution funnel, always (lead D24): never a bare kill.
+                target?.let {
+                    viewModel.execute(it, via = ExecutionVia.VOTE, nominationIndex = index)
+                }
+                viewModel.advancePhase()
+                onTab(GameTab.NIGHT)
+            },
+            onDismiss = { guards.clear() },
+            // A day that closes with nobody executed is a RECORD, not an absence
+            // (lead D30): the Mayor, the Vortox and the Zombuul all read it.
+            secondaryLabel = "No execution".takeIf { !DayRules.executionSpent(state) },
+            onSecondary = {
+                guards.clear()
+                viewModel.noExecution()
+                viewModel.advancePhase()
+                onTab(GameTab.NIGHT)
+            },
+        )
+    }
 }
+
+/**
+ * The nomination that put [playerId] on the block today, so the execution keeps
+ * its nominator — the Fearmonger's win depends on it.
+ */
+private fun blockingNominationIndex(state: GameState, playerId: Long): Int? =
+    state.nominations.indexOfLast {
+        it.day == state.cycle && !it.isExile && it.nomineeId == playerId
+    }.takeIf { it >= 0 }
+
+/**
+ * The read-aloud card of ARCHITECTURE §3.2: ANNOUNCE lines first, PRIVATE
+ * below, SWEPT and TODO_ASK under that, and one primary button.
+ */
+@Composable
+@Suppress("LongParameterList")
+private fun BriefingSheet(
+    briefing: Briefing,
+    title: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    advisories: List<WinCheck.Advisory> = emptyList(),
+    secondaryLabel: String? = null,
+    onSecondary: () -> Unit = {},
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                for (advisory in advisories) {
+                    item(key = "advisory:${advisory.ruleId}") {
+                        Text(
+                            advisory.reason,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
+                    }
+                }
+                for (section in SECTIONS) {
+                    val lines = briefing.of(section.kind)
+                    if (lines.isEmpty()) continue
+                    item(key = "heading:${section.kind}") {
+                        Text(
+                            section.heading,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 2.dp),
+                        )
+                    }
+                    items(lines, key = { it.key }) { line ->
+                        Text(
+                            "• ${line.text}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (line.severity == BriefingSeverity.ALERT) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            modifier = Modifier.padding(vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { FilledTonalButton(onClick = onConfirm) { Text(confirmLabel) } },
+        dismissButton = {
+            Row {
+                secondaryLabel?.let { TextButton(onClick = onSecondary) { Text(it) } }
+                TextButton(onClick = onDismiss) { Text("Not yet") }
+            }
+        },
+    )
+}
+
+/** The card's sections, in reading order. */
+private data class BriefingSection(val kind: BriefingKind, val heading: String)
+
+private val SECTIONS: List<BriefingSection> = listOf(
+    BriefingSection(BriefingKind.ANNOUNCE, "SAY OUT LOUD, IN THIS ORDER"),
+    BriefingSection(BriefingKind.PRIVATE, "DO NOT SAY — your notes"),
+    BriefingSection(BriefingKind.TODO_ASK, "BEFORE YOU MOVE ON"),
+    BriefingSection(BriefingKind.STANDING_FACT, "TRUE NOW"),
+    BriefingSection(BriefingKind.SWEPT, "TAKEN OFF THE GRIMOIRE"),
+)
