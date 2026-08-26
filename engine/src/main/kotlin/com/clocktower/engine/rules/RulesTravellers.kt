@@ -843,7 +843,10 @@ private fun gangster(): CharacterRule = CharacterRule(
  *    `HAS_ABILITY` (a Bone Collector's restore) — and a dead nominator cannot
  *    be killed again.
  * The storyteller may NOT prompt the Gnome: the row states the fact quietly and
- * defaults to "nobody dies".
+ * defaults to "nobody dies". Whenever the built-in WOULD fire this row emits a
+ * row of its own — a `CHOICE` when the kill is legal, a targetless `WARN`
+ * saying why not otherwise — because `DayRules.triggersFor` suppresses a
+ * built-in only for an id the registry actually emitted.
  */
 private fun gnome(): CharacterRule = CharacterRule(
     id = "gnome",
@@ -861,12 +864,31 @@ private fun gnomeTrigger(ctx: NominationContext): NominationTrigger? {
     val gnome = ctx.holder
     val nominee = ctx.nomineeId?.let { ctx.state.player(it) } ?: return null
     val nominator = ctx.nominatorId?.let { ctx.state.player(it) } ?: return null
-    // An exile call is not a nomination.
-    if (nominee.isTraveller) return null
     if (!DayRules.hasToken(ctx.state, nominee.id, "gnome", "Amigo")) return null
-    if (!nominator.alive) return null
+    // Past this point WP3's built-in would fire, so this row must always speak:
+    // returning nothing would let the built-in through, because
+    // `DayRules.triggersFor` only suppresses a built-in whose id the registry
+    // actually emitted.
     val restored = Status.live(ctx.state, ctx.lookup, gnome.id, EffectKind.HAS_ABILITY).isNotEmpty()
-    if (!gnome.alive && !restored) return null
+    val blocked = when {
+        nominee.isTraveller ->
+            "This is an exile call, not a nomination — the Gnome does not trigger."
+        !nominator.alive ->
+            "${nominator.name} is already dead — there is nobody for the Gnome to kill."
+        !gnome.alive && !restored ->
+            "${gnome.name} is dead and has no restored ability — the Gnome does not trigger."
+        else -> null
+    }
+    if (blocked != null) {
+        return NominationTrigger(
+            kind = TriggerKind.WARN,
+            sourceId = "gnome",
+            actorId = gnome.id,
+            targetId = null,
+            headline = "${nominee.name} carries the Gnome's Amigo token.",
+            detail = blocked,
+        )
+    }
     return NominationTrigger(
         kind = TriggerKind.CHOICE,
         sourceId = "gnome",
