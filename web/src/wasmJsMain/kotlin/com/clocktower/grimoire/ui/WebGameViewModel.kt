@@ -68,8 +68,10 @@ class GameViewModel : GameActionsApi {
     private fun persist(mutate: (com.clocktower.grimoire.data.SavedData) -> com.clocktower.grimoire.data.SavedData) {
         saved = mutate(saved)
         // Quota failures raise WebStore.saveFailed, which the shell renders as
-        // a persistent banner — never swallowed (ARCHITECTURE §5.4).
-        WebStore.saveShedding(saved)
+        // a persistent banner — never swallowed (ARCHITECTURE §5.4). A write
+        // that only fitted after shedding the archive returns what it actually
+        // wrote, so the app never lists games that are no longer on disk.
+        WebStore.saveShedding(saved)?.let { saved = it }
         _archivedGames.value = saved.archivedGames
         _recentRosters.value = saved.recentRosters
     }
@@ -81,7 +83,11 @@ class GameViewModel : GameActionsApi {
         undoStack.clear()
         redoStack.clear()
         val previous = _game.value
-        val fresh = GameActions.newGame(script, playerNames).copy(updatedAt = Time.epochMillis())
+        // Stamp the game id here as well as at load (Migrations step 8), so the
+        // archive can tell two games apart before the first reload.
+        val now = Time.epochMillis()
+        val fresh = GameActions.newGame(script, playerNames)
+            .copy(id = "g" + now.toString(36), updatedAt = now)
         _game.value = fresh
         _canUndo.value = false
         _canRedo.value = false

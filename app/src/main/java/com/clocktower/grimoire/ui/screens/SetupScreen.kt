@@ -114,8 +114,11 @@ fun SetupScreen(
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     // Seat indices marked as Travellers: they fill no distribution slot and are
-    // dealt no token (setup-and-home #8). Not saveable-critical.
-    var travellerSeats by remember { mutableStateOf(setOf<Int>()) }
+    // dealt no token (setup-and-home #8). Saved as a List<Int>, because losing
+    // the marks on rotation silently disables Deal.
+    var travellerList by rememberSaveable { mutableStateOf(ArrayList<Int>() as List<Int>) }
+    val travellerSeats = travellerList.toSet()
+    val setTravellers: (Set<Int>) -> Unit = { travellerList = ArrayList(it.sorted()) }
     // Set once the bag has been dealt: hand-out mode owns the screen until the
     // storyteller finishes passing the phone round the table.
     var handingOut by rememberSaveable { mutableStateOf(false) }
@@ -213,7 +216,7 @@ fun SetupScreen(
                 pinnedIds = ArrayList()
                 bannedIds = ArrayList()
                 fabledIds = ArrayList()
-                travellerSeats = emptySet()
+                setTravellers(emptySet())
                 outsiderBranch = null
                 bagMessage = null
             }) { Text("Reset") }
@@ -274,7 +277,7 @@ fun SetupScreen(
                         travellerSeats = travellerSeats,
                         rosters = rosters.map { it.names },
                         onNames = { names = it },
-                        onTravellers = { travellerSeats = it },
+                        onTravellers = setTravellers,
                         onPaste = { showPaste = true },
                     )
                 }
@@ -463,7 +466,7 @@ fun SetupScreen(
             onDismiss = { showPaste = false },
             onNames = { pasted ->
                 names = ArrayList(pasted)
-                travellerSeats = travellerSeats.filter { it < pasted.size }.toSet()
+                setTravellers(travellerSeats.filter { it < pasted.size }.toSet())
                 showPaste = false
             },
         )

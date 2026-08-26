@@ -308,7 +308,7 @@ private fun HandOutCard(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(page, player.id) {
+            .pointerInput(page, player.id, pages.size) {
                 detectTapGestures(
                     onPress = {
                         // Hold, not tap: a stray tap in transit shows nothing,
@@ -320,10 +320,15 @@ private fun HandOutCard(
                             pressing = false
                         } else {
                             revealed = true
-                            tryAwaitRelease()
+                            val released = tryAwaitRelease()
                             revealed = false
                             pressing = false
-                            if (page + 1 < pages.size) page += 1 else onFinished()
+                            // Only a real finger-lift counts. A CANCELLED
+                            // gesture (the sheet closing, a system takeover)
+                            // leaves the seat exactly where it was.
+                            if (released) {
+                                if (page + 1 < pages.size) page += 1 else onFinished()
+                            }
                         }
                     },
                 )
@@ -444,13 +449,16 @@ private fun handOutPages(player: Player, believed: Character?): List<HandOutPage
         ?: player.characterId?.let(Character::normalizeId)
     if (id in NEVER_TOLD_ALIGNMENT) return pages
     val naturallyEvil = believed?.team?.isEvil == true
-    val override = player.alignment
+    // No override yet means the storyteller has not decided. Showing a
+    // default here would TELL the player something untrue; the checklist row
+    // (`traveller.alignment:<seat>`) asks for it first.
+    val override = player.alignment ?: return pages
     when {
         player.isTraveller -> pages += HandOutPage.AlignmentPage(
             evil = override == SeatAlignment.EVIL,
             caption = "You are a Traveller. This is the side you play for.",
         )
-        override != null && (override == SeatAlignment.EVIL) != naturallyEvil ->
+        (override == SeatAlignment.EVIL) != naturallyEvil ->
             pages += HandOutPage.AlignmentPage(
                 evil = override == SeatAlignment.EVIL,
                 caption = "Your character's usual side does not apply to you.",

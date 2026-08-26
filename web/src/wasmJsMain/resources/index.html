@@ -60,14 +60,18 @@
   };
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(function (registration) {
+      function ready(worker) {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          window.__waitingWorker = worker;
+          window.__updateReady = true;
+        }
+      }
       function watch(worker) {
         if (!worker) return;
-        worker.addEventListener('statechange', function () {
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-            window.__waitingWorker = worker;
-            window.__updateReady = true;
-          }
-        });
+        // It may ALREADY be installed by the time we attach — statechange
+        // would then never fire and the update would sit there unannounced.
+        ready(worker);
+        worker.addEventListener('statechange', function () { ready(worker); });
       }
       if (registration.waiting && navigator.serviceWorker.controller) {
         window.__waitingWorker = registration.waiting;
@@ -78,9 +82,12 @@
         watch(registration.installing);
       });
     }).catch(function () { /* offline first load: the app still runs */ });
+    // On the FIRST visit the worker activates and claims immediately, which
+    // also fires controllerchange — reloading then would bounce a cold start.
+    var hadController = !!navigator.serviceWorker.controller;
     var reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', function () {
-      if (reloading) return;
+      if (!hadController || reloading) return;
       reloading = true;
       window.location.reload();
     });

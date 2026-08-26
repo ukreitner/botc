@@ -102,8 +102,11 @@ class GameViewModel(application: Application) :
         undoStack.clear()
         redoStack.clear()
         val previous = _game.value
+        // Stamp the game id here as well as at load (Migrations step 8), so the
+        // archive can tell two games apart before the first reload.
+        val now = System.currentTimeMillis()
         val fresh = GameActions.newGame(script, playerNames)
-            .copy(updatedAt = System.currentTimeMillis())
+            .copy(id = "g" + now.toString(36), updatedAt = now)
         _game.value = fresh
         _canUndo.value = false
         _canRedo.value = false

@@ -236,13 +236,20 @@ private fun WebRoot() {
         intent.route?.let { route = it }
     }
 
-    // The keyboard inset is polled on the frame clock but only WRITTEN when it
-    // changes, so a still keyboard costs no recompositions.
+    // Insets are polled but only WRITTEN when they change, so a still keyboard
+    // and a still device cost no recompositions. Rotation moves the safe area,
+    // so it is re-read here rather than once at first composition.
     var keyboardInset by remember { mutableStateOf(0.0) }
+    var safeTop by remember { mutableStateOf(jsSafeTop()) }
+    var safeBottom by remember { mutableStateOf(jsSafeBottom()) }
     LaunchedEffect(Unit) {
         while (true) {
-            val measured = jsKeyboardInset()
-            if (measured != keyboardInset) keyboardInset = measured
+            val keyboard = jsKeyboardInset()
+            if (keyboard != keyboardInset) keyboardInset = keyboard
+            val top = jsSafeTop()
+            if (top != safeTop) safeTop = top
+            val bottom = jsSafeBottom()
+            if (bottom != safeBottom) safeBottom = bottom
             delay(100)
         }
     }
@@ -263,8 +270,8 @@ private fun WebRoot() {
                 Modifier
                     .fillMaxSize()
                     .padding(
-                        top = jsSafeTop().dp,
-                        bottom = (jsSafeBottom() + keyboardInset).dp,
+                        top = safeTop.dp,
+                        bottom = (safeBottom + keyboardInset).dp,
                     ),
             ) {
                 WebRoutes(route, viewModel, game, notes, sharedScriptId) { route = it }
@@ -282,6 +289,7 @@ private fun WebRoot() {
 @Composable
 private fun ShellBanners(modifier: Modifier = Modifier) {
     val saveFailed by WebStore.saveFailed.collectAsState()
+    val storageWarning by WebStore.storageWarning.collectAsState()
     val persisted by WebStore.storagePersisted.collectAsState()
     var updateReady by remember { mutableStateOf(false) }
     var hintDismissed by rememberSaveable { mutableStateOf(false) }
@@ -300,6 +308,9 @@ private fun ShellBanners(modifier: Modifier = Modifier) {
                 background = BloodRed,
                 text = "Not saving — browser storage is full. Copy the game log now.",
             )
+        }
+        if (!saveFailed && storageWarning.isNotBlank()) {
+            Banner(background = Twilight, text = storageWarning)
         }
         if (updateReady) {
             Banner(

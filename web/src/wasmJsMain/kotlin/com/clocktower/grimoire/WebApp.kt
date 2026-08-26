@@ -55,6 +55,14 @@ object WebStore {
     val saveError: StateFlow<String> = _saveError
 
     /**
+     * Set when a write only succeeded because something was DROPPED to make
+     * room. Saving works, so [saveFailed] stays false — but the storyteller
+     * must still be told what they lost.
+     */
+    private val _storageWarning = MutableStateFlow("")
+    val storageWarning: StateFlow<String> = _storageWarning
+
+    /**
      * True until the browser tells us the origin's storage is evictable.
      * iOS caps a non-installed PWA at 7 days of non-use, so a false here is
      * the cue for the "Add to Home Screen" hint.
@@ -114,9 +122,22 @@ object WebStore {
     }
 
     /**
-     * A last-ditch write that drops the archive first: when quota is the
-     * problem, the live game matters more than ten finished ones.
+     * A last-ditch write that drops the archive when quota is the problem: the
+     * live game matters more than ten finished ones.
+     *
+     * Returns WHAT WAS ACTUALLY WRITTEN, so the caller can adopt it — otherwise
+     * the app would keep listing past games that are no longer on disk — or
+     * null when nothing could be written at all.
      */
-    fun saveShedding(data: SavedData): Boolean =
-        save(data) || save(data.copy(archivedGames = emptyList()))
+    fun saveShedding(data: SavedData): SavedData? {
+        if (save(data)) {
+            if (_storageWarning.value.isNotEmpty()) _storageWarning.value = ""
+            return data
+        }
+        val shed = data.copy(archivedGames = emptyList())
+        if (!save(shed)) return null
+        _storageWarning.value =
+            "Browser storage was full — past games were dropped to keep this one saved."
+        return shed
+    }
 }

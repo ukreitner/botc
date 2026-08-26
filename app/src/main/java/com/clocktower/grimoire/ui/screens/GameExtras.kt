@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.clocktower.engine.Bluffs
 import com.clocktower.engine.Candidate
 import com.clocktower.engine.RequirementKind
 import com.clocktower.engine.Selection
@@ -395,7 +396,13 @@ fun SetupIdentityPrompts(
     var open by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(blockingKey) {
-        if (blockingKey.isNotEmpty() && blockingKey != dismissedKey) open = true
+        when {
+            // Nothing outstanding: forget what was dismissed, so the SAME set
+            // of rows raised again later (a Pit-Hag re-creating a Drunk) still
+            // re-opens the sheet.
+            blockingKey.isEmpty() -> dismissedKey = ""
+            blockingKey != dismissedKey -> open = true
+        }
     }
     if (open) {
         SetupChecklistSheet(
@@ -431,12 +438,15 @@ fun SetupChecklistSheet(
     val satisfied = remember(state, rows) { rows.map { it.satisfied(state, lookup) } }
     val doneCount = satisfied.count { it }
     var openRow by rememberSaveable { mutableStateOf(-1) }
-    var showBluffs by rememberSaveable { mutableStateOf(false) }
+    var bluffKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // `SetupRequirements` builds its BLUFFS rows straight from this list, in
+    // this order, so the Nth bluff row is the Nth requirement.
+    val bluffKeys = remember(state) { Bluffs.requirements(state, lookup).map { it.key } }
 
     // The bluff picker is itself a bottom sheet, so it REPLACES the checklist
     // rather than stacking on it; closing it comes back here.
-    if (showBluffs) {
-        BluffsSheet(viewModel, state, onDismiss = { showBluffs = false })
+    if (bluffKey != null) {
+        BluffsSheet(viewModel, state, onDismiss = { bluffKey = null }, initialKey = bluffKey)
         return
     }
 
@@ -471,7 +481,10 @@ fun SetupChecklistSheet(
                         .fillMaxWidth()
                         .clickable {
                             if (row.kind == RequirementKind.BLUFFS) {
-                                showBluffs = true
+                                val ordinal = rows.take(index)
+                                    .count { it.kind == RequirementKind.BLUFFS }
+                                bluffKey = bluffKeys.getOrNull(ordinal)
+                                    ?: bluffKeys.firstOrNull()
                             } else {
                                 openRow = index
                             }
@@ -618,11 +631,18 @@ private fun SetupRequirementDialog(
                         }
                     }
 
-                    // A free-text secret (the Mezepheles' word) or an
-                    // acknowledgement with nothing to pick.
-                    requirement.kind == RequirementKind.GRANT -> OutlinedTextField(
+                    // A free-text secret (the Mezepheles' word) or a bare
+                    // number (the Outsider branch) — rows that offer no list.
+                    requirement.kind == RequirementKind.GRANT ||
+                        requirement.kind == RequirementKind.NUMBER -> OutlinedTextField(
                         value = freeText,
-                        onValueChange = { freeText = it },
+                        onValueChange = { entered ->
+                            freeText = if (requirement.kind == RequirementKind.NUMBER) {
+                                entered.filter { it.isDigit() }.take(2)
+                            } else {
+                                entered
+                            }
+                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -641,6 +661,13 @@ private fun SetupRequirementDialog(
                     enabled = chosen.isNotEmpty(),
                     onClick = { apply(Selection(playerIds = chosen.mapNotNull { it.toLongOrNull() })) },
                 ) { Text("Place ${chosen.size}") }
+
+                candidates.isEmpty() && requirement.kind == RequirementKind.NUMBER -> FilledTonalButton(
+                    enabled = freeText.toIntOrNull() != null,
+                    onClick = {
+                        apply(Selection(number = freeText.toIntOrNull(), text = freeText))
+                    },
+                ) { Text("Save") }
 
                 candidates.isEmpty() && requirement.kind == RequirementKind.GRANT -> FilledTonalButton(
                     enabled = freeText.isNotBlank(),
