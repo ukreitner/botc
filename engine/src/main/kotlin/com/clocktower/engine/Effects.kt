@@ -248,7 +248,16 @@ internal class StatusQuery(
     private val byTarget: Map<Long, List<Effect>> by lazy { allEffects.groupBy { it.targetId } }
 
     private val memo = HashMap<Long, Boolean>()
-    private val inFlight = HashSet<Long>()
+
+    /**
+     * Effects whose `active` is being evaluated right now — the cycle guard.
+     * Keyed by (id, targetId): the paradox case is two effects with the SAME id,
+     * so the id alone does not identify one.
+     */
+    private val inFlight = HashSet<Pair<Long, Long>>()
+
+    private val baseMemo = HashMap<Long, Boolean>()
+    private val baseInFlight = HashSet<Pair<Long, Long>>()
 
     // ---- time ----------------------------------------------------------
 
@@ -260,6 +269,13 @@ internal class StatusQuery(
 
     /** True when [e] has passed the boundary its [Until] names. */
     fun expired(e: Effect): Boolean {
+        // A countdown step's lifetime is its chain, not the clock: "Drunk 1"
+        // becomes "Drunk 2" at dusk rather than expiring there.
+        if (e.label.isNotEmpty() &&
+            Tokens.rule(e.sourceCharacterId, e.label)?.let(Tokens::isCountdown) == true
+        ) {
+            return false
+        }
         val born = slot(e.createdCycle, e.createdAtNight)
         val bornAtNight = born % 2 == 0L
         return when (e.until) {
@@ -287,42 +303,90 @@ internal class StatusQuery(
         return id in KEEPS_ABILITY_WHEN_DEAD
     }
 
-    /** `active(e, cap)` of ARCHITECTURE §2.3. */
-    fun active(e: Effect, cap: Long): Boolean {
+    /**
+     * `active(e, cap)` of ARCHITECTURE §2.3: an effect applies while its source
+     * still has their ability.
+     *
+     * DEVIATION FROM THE §2.3 PSEUDOCODE, deliberate. The published recursion caps
+     * the search on `Effect.id` (`it.id < cap`, `min(cap, e.id)`), which makes an
+     * effect immune to anything that impaired its source *afterwards*. That
+     * contradicts two of WP1's own acceptance cases — the Widow/Innkeeper chain and
+     * "Julian poisons Amy, then Evin poisons Julian" — and the wiki rule they come
+     * from ("if the sober Innkeeper protects the Chambermaid, but then the Innkeeper
+     * becomes drunk, the Chambermaid stops being protected").
+     *
+     * Termination is kept by guarding on the EFFECT being evaluated rather than on
+     * its id: re-entering an effect means two effects sustain each other, which is
+     * the paradox — resolved as "both active", exactly as §2.3 requires.
+     */
+    fun active(e: Effect, cap: Long = Long.MAX_VALUE): Boolean {
         if (expired(e) || e.suspended) return false
         if (!e.endsWithSource) return true
         val source = e.sourcePlayerId ?: return true
-        return abilityWorks(source, minOf(cap, e.id))
-    }
-
-    /** `abilityWorks(pid, cap)` of ARCHITECTURE §2.3, memoised and cycle-safe. */
-    fun abilityWorks(playerId: Long, cap: Long): Boolean {
-        val memoKey = playerId * 1_000_003L + (cap and 0xFFFFF)
-        memo[memoKey]?.let { return it }
-        if (!inFlight.add(memoKey)) {
-            // Two effects impairing each other. Resolve as "both active": the source
-            // keeps its ability for this arm of the recursion, so neither effect is
-            // silently dropped, and raise the storyteller's DECIDE prompt.
+        val key = e.id to e.targetId
+        if (!inFlight.add(key)) {
+            // A sustains B and B sustains A. Neither can be resolved first, so both
+            // apply and the storyteller is asked to settle it.
             paradox = true
-            paradoxSeats += playerId
+            paradoxSeats += e.targetId
             return true
         }
-        val result = try {
-            compute(playerId, cap)
+        return try {
+            abilityWorks(source, cap)
         } finally {
-            inFlight.remove(memoKey)
+            inFlight.remove(key)
         }
-        memo[memoKey] = result
+    }
+
+    /** `abilityWorks(pid)` of ARCHITECTURE §2.3, memoised outside a paradox. */
+    fun abilityWorks(playerId: Long, cap: Long = Long.MAX_VALUE): Boolean {
+        if (inFlight.isEmpty()) memo[playerId]?.let { return it }
+        val result = compute(playerId, cap, effectsOn(playerId), ::active)
+        if (inFlight.isEmpty()) memo[playerId] = result
         return result
     }
 
-    private fun compute(playerId: Long, cap: Long): Boolean {
+    /**
+     * "Does this seat's ability work?", answered from [baseEffects] only.
+     *
+     * The positional standing rules must ask it: they are themselves part of
+     * [allEffects], so consulting the full query while emitting them would recurse
+     * through their own lazy. Everything a positional rule legitimately depends on
+     * — a Poisoner's token, an Innkeeper's drunk, the seat's own innate state — is
+     * already in the base set.
+     */
+    fun abilityWorksBase(playerId: Long): Boolean {
+        if (baseInFlight.isEmpty()) baseMemo[playerId]?.let { return it }
+        val result = compute(playerId, Long.MAX_VALUE, baseByTarget[playerId].orEmpty(), ::activeBase)
+        if (baseInFlight.isEmpty()) baseMemo[playerId] = result
+        return result
+    }
+
+    private fun activeBase(e: Effect, cap: Long): Boolean {
+        if (expired(e) || e.suspended) return false
+        if (!e.endsWithSource) return true
+        val source = e.sourcePlayerId ?: return true
+        val key = e.id to e.targetId
+        if (!baseInFlight.add(key)) return true
+        return try {
+            abilityWorksBase(source)
+        } finally {
+            baseInFlight.remove(key)
+        }
+    }
+
+    private fun compute(
+        playerId: Long,
+        cap: Long,
+        on: List<Effect>,
+        isActive: (Effect, Long) -> Boolean,
+    ): Boolean {
         val p = state.player(playerId) ?: return false
-        val actives = effectsOn(playerId).filter { it.id < cap && !it.suspended && !expired(it) }
-        val hasAbilityToken = actives.any { it.kind == EffectKind.HAS_ABILITY && active(it, cap) }
+        val actives = on.filter { !it.suspended && !expired(it) }
+        val hasAbilityToken = actives.any { it.kind == EffectKind.HAS_ABILITY && isActive(it, cap) }
         if (!p.alive && !keepsAbilityWhenDead(p.characterId) && !hasAbilityToken) return false
-        if (actives.any { it.kind == EffectKind.SOBER_HEALTHY && active(it, cap) }) return true
-        return actives.none { it.kind in IMPAIRING && active(it, cap) }
+        if (actives.any { it.kind == EffectKind.SOBER_HEALTHY && isActive(it, cap) }) return true
+        return actives.none { it.kind in IMPAIRING && isActive(it, cap) }
     }
 
     /** Live impairing effects on this seat, in creation order. Empty when the ability works. */
@@ -351,6 +415,33 @@ internal class StatusQuery(
             holder == null -> "$verb by the $sourceName"
             else -> "$verb by the $sourceName ($holder)"
         }
+    }
+
+    /**
+     * Seats caught in a mutual-impairment paradox: A's poison is sustained by B
+     * and B's by A, with the same effect id, so neither can be resolved first.
+     *
+     * The `it.id < cap` filter already makes the recursion terminate — the pair
+     * resolves as "both active", which is the ruling — but the storyteller still
+     * has to be told, so the query records it rather than hiding it.
+     */
+    fun detectParadox(): Set<Long> {
+        val impairing = allEffects.filter {
+            it.kind in IMPAIRING && it.endsWithSource && it.sourcePlayerId != null && !it.suspended
+        }
+        val out = linkedSetOf<Long>()
+        for (a in impairing) {
+            for (b in impairing) {
+                if (a.id != b.id) continue
+                if (a.targetId == b.targetId) continue
+                if (a.sourcePlayerId == b.targetId && b.sourcePlayerId == a.targetId) {
+                    out += a.targetId
+                    out += b.targetId
+                }
+            }
+        }
+        if (out.isNotEmpty()) paradox = true
+        return out + paradoxSeats
     }
 
     /** SAFE_FROM_DEMON blocks non-kill Demon harm too, read from [baseEffects] only. */
@@ -445,11 +536,11 @@ object Status {
             .any { it.kind == EffectKind.SAFE_FROM_DEMON && q.active(it, Long.MAX_VALUE) }
     }
 
-    /** True when a mutual-impairment paradox is live on this board. */
+    /** Seats caught in a mutual-impairment paradox the storyteller must settle. */
     fun paradoxSeats(state: GameState, lookup: (String) -> Character?): Set<Long> {
         val q = StatusQuery(state, lookup)
         state.seats.forEach { q.abilityWorks(it.id, Long.MAX_VALUE) }
-        return q.paradoxSeats
+        return q.detectParadox()
     }
 }
 
@@ -532,7 +623,7 @@ internal object Standing {
     /** "If both your alive neighbors are good, they can't die." */
     private fun teaLady(q: StatusQuery, tea: Player): List<Effect> {
         if (!tea.alive) return emptyList()
-        if (!q.abilityWorks(tea.id, Long.MAX_VALUE)) return emptyList()
+        if (!q.abilityWorksBase(tea.id)) return emptyList()
         val neighbours = aliveNeighbours(q.state, tea) ?: return emptyList()
         val (left, right) = neighbours
         val bothGood = listOf(left, right).none { q.registersEvilBase(it) }
@@ -556,7 +647,7 @@ internal object Standing {
     /** Nearest Townsfolk neighbour each way; a Soldier is never poisoned by a Demon. */
     private fun noDashii(q: StatusQuery, demon: Player): List<Effect> {
         if (!demon.alive) return emptyList()
-        if (!q.abilityWorks(demon.id, Long.MAX_VALUE)) return emptyList()
+        if (!q.abilityWorksBase(demon.id)) return emptyList()
         val seats = q.state.players
         val index = seats.indexOfFirst { it.id == demon.id }
         if (index < 0) return emptyList()
@@ -593,7 +684,7 @@ internal object Standing {
         if (!xaan.alive) return emptyList()
         val x = Decisions.int(q.state, Decisions.XAAN_X) ?: return emptyList()
         if (q.state.cycle != x) return emptyList()
-        if (!q.abilityWorks(xaan.id, Long.MAX_VALUE)) return emptyList()
+        if (!q.abilityWorksBase(xaan.id)) return emptyList()
         return q.state.seats
             .filter { it.characterId?.let(q.lookup)?.team == Team.TOWNSFOLK }
             .map {
