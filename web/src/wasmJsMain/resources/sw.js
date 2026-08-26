@@ -15,11 +15,30 @@ const isShellRequest = (request) => {
     path.endsWith('manifest.webmanifest');
 };
 
-self.addEventListener('install', () => self.skipWaiting());
+// The shell files a cold start needs, warmed during install so the NEW cache
+// is already populated before the new worker ever activates. A game that is
+// running when an update lands keeps its offline safety net (#44).
+const SHELL = ['./', 'index.html', 'grimoire.js', 'manifest.webmanifest'];
+
+self.addEventListener('install', (event) => {
+  // Deliberately NO skipWaiting(): a new build waits until the storyteller
+  // taps "Reload" (index.html posts SKIP_WAITING), so the cache is never
+  // swapped out from under a live night (#44).
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(SHELL).catch(() => undefined))
+  );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
+    // Only now — after this worker's own cache exists — are the old ones safe
+    // to drop.
+    caches.open(CACHE)
+      .then(() => caches.keys())
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );

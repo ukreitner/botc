@@ -60,6 +60,8 @@ private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
     val game by viewModel.game.collectAsState()
     val notes by viewModel.notes.collectAsState()
     val ready by viewModel.ready.collectAsState()
+    // WP11: past games are archived, not destroyed, and reopenable from Home.
+    val archived by viewModel.archivedGames.collectAsState()
 
     // Hold rendering until the saved game has been read, so a process-death
     // restore doesn't flash the "no game" fallback before the grimoire loads.
@@ -83,6 +85,13 @@ private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
                 onEndGame = { viewModel.endGame() },
                 onEndNotes = { viewModel.endNotes() },
                 buildLabel = BuildConfig.BUILD_SHA.take(7),
+                archivedGames = archived,
+                onOpenArchived = {
+                    viewModel.resumeArchived(it)
+                    nav.navigate(Routes.GAME)
+                },
+                onDiscardArchived = { viewModel.discardArchived(it) },
+                lookup = viewModel::characterById,
             )
         }
         composable(Routes.SETUP) {

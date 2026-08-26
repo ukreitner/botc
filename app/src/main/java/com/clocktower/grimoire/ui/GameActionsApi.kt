@@ -512,4 +512,41 @@ interface GameActionsApi {
     }
 
     // ---- WP11: setup, hand-out, home, PWA shell ----
+
+    /**
+     * Marks this seat's token as handed over. Progress is STATE, not local
+     * composition, so re-opening hand-out mode resumes where it stopped
+     * (setup-and-home §S6, defect #21).
+     */
+    fun markTokenHandedOut(playerId: Long) = update { Identity.markRevealed(it, playerId) }
+
+    /** Puts one seat back in the hand-out queue ("show me that again"). */
+    fun clearTokenHandedOut(playerId: Long) = update { state ->
+        state.updatePlayer(playerId) { it.copy(tokenShownAt = null) }
+    }
+
+    /** Puts EVERY seat back in the hand-out queue — a fresh pass round the table. */
+    fun resetTokenHandout() = update { state ->
+        state.copy(players = state.players.map { it.copy(tokenShownAt = null) })
+    }
+
+    /**
+     * Marks a seat as a Traveller (or back to a resident) during setup, so it
+     * is excluded from the distribution and dealt no token.
+     */
+    fun setTraveller(playerId: Long, isTraveller: Boolean) = update { state ->
+        val seat = state.player(playerId) ?: return@update state
+        Seats.assignCharacter(state, playerId, seat.characterId, isTraveller)
+    }
+
+    /** Records a storyteller number choice (Xaan's X, the Outsider branch). */
+    fun setDecisionNumber(key: String, value: Int) =
+        update { Decisions.set(it, key, value.toString()) }
+
+    /**
+     * Ticks one ACK-kind checklist row by id — `lilmonsta.noDemonSeat`,
+     * `kazali.noMinions`, `damsel.minions`. The setup wizard records the
+     * acknowledgement it took before the game existed.
+     */
+    fun applySetupRequirementAck(id: String) = update { Decisions.set(it, id, "true") }
 }

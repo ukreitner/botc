@@ -21,17 +21,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.clocktower.engine.Character
-import com.clocktower.engine.GameActions
-import com.clocktower.engine.PlacedReminder
+import com.clocktower.engine.Bluffs
+import com.clocktower.engine.Candidate
+import com.clocktower.engine.RequirementKind
+import com.clocktower.engine.Selection
+import com.clocktower.engine.SetupRequirement
+import com.clocktower.engine.SetupRequirements
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +46,6 @@ import androidx.compose.ui.unit.dp
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NominationResult
-import com.clocktower.engine.Phase
 import com.clocktower.engine.Team
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
@@ -367,192 +371,331 @@ fun RevealSheet(
 }
 
 /**
- * The four setup identity prompts — Fortune Teller red herring, Drunk,
- * Lunatic and Marionette — moved verbatim out of `GameShell` by WP0 so the
- * shell owns only tabs, scaffold, top bar and scrim. WP11 replaces them with
- * the data-driven `SetupRequirements` checklist.
+ * The "Before the first night" checklist (setup-and-home §S4).
+ *
+ * WP11 replaced the four hand-written dialogs (Fortune Teller red herring,
+ * Drunk, Lunatic, Marionette) with ONE sheet rendering `SetupRequirements.all`,
+ * so all 26-odd setup decisions are prompted and validated, and adding the next
+ * character is a table row rather than 35 more lines of UI.
+ *
+ * It is deliberately NOT gated on `phase == SETUP` (defect #5): a Pit-Hag
+ * creating a Drunk on night 3 raises `drunk.token` and the sheet re-opens.
  */
 @Composable
 fun SetupIdentityPrompts(
     viewModel: GameViewModel,
     state: GameState,
 ) {
-    var drunkPromptDone by rememberSaveable { mutableStateOf(false) }
-    var lunaticPromptDone by rememberSaveable { mutableStateOf(false) }
-    var marionettePromptDone by rememberSaveable { mutableStateOf(false) }
-    // The Fortune Teller needs a red herring before night one.
-    var herringPromptDone by rememberSaveable { mutableStateOf(false) }
-    val ftSeat = state.players.find { it.characterId == "fortuneteller" }
-    val waitingForHerring = !herringPromptDone && state.phase == Phase.SETUP && ftSeat != null &&
-        state.players.none { p -> p.reminders.any { it.label.equals("Red herring", true) } }
-    if (waitingForHerring) {
-        AlertDialog(
-            onDismissRequest = { herringPromptDone = true },
-            title = { Text("Fortune Teller red herring") },
-            text = {
-                Column {
-                    Text("Pick the good player who registers as the Demon to the Fortune Teller:")
-                    androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                        val candidates = state.players.filter { !it.isEvil(viewModel::characterById) }
-                        items(candidates.size) { i ->
-                            val p = candidates[i]
-                            TextButton(onClick = {
-                                viewModel.addReminder(
-                                    p.id,
-                                    com.clocktower.engine.PlacedReminder("fortuneteller", "Red herring"),
-                                )
-                                herringPromptDone = true
-                            }) { Text(p.name) }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { herringPromptDone = true }) { Text("Later") } },
-        )
+    val lookup = viewModel::characterById
+    val blockingKey = remember(state) {
+        SetupRequirements.unmet(state, lookup).filter { it.blocking }.joinToString("|") { it.id }
     }
-    // The Drunk needs a believed-character before night one.
-    val drunkSeat = state.players.find { it.characterId == "drunk" }
-    val waitingForDrunk = !drunkPromptDone && !waitingForHerring &&
-        state.phase == Phase.SETUP && drunkSeat != null && drunkSeat.shownCharacterId == null
-    if (waitingForDrunk) {
-        checkNotNull(drunkSeat)
-        val inPlay = state.players.mapNotNull { it.characterId }.toSet()
-        val options = viewModel.gameData.resolve(state.script)
-            .filter { it.team == com.clocktower.engine.Team.TOWNSFOLK && it.id !in inPlay }
-        HiddenIdentityDialog(
-            title = "The Drunk is in play",
-            explanation = "${drunkSeat.name} is the Drunk. Which Townsfolk token do they see?",
-            options = options,
-            onPick = { character ->
-                viewModel.update { current ->
-                    var next = GameActions.setShownCharacter(current, drunkSeat.id, character.id)
-                    if (next.player(drunkSeat.id)?.reminders?.none {
-                            it.sourceId == "drunk" && it.label == "Is the Drunk"
-                        } == true
-                    ) {
-                        next = GameActions.addReminder(
-                            next,
-                            drunkSeat.id,
-                            com.clocktower.engine.PlacedReminder("drunk", "Is the Drunk"),
-                        )
-                    }
-                    GameActions.setNote(
-                        next,
-                        drunkSeat.id,
-                        "Believes they are the ${character.name}",
-                    )
-                }
-                drunkPromptDone = true
-            },
-            onLater = { drunkPromptDone = true },
-        )
-    }
+    // "Seen" is the set of blocking rows the storyteller has already dismissed.
+    // A NEW blocking row (a mid-game identity change) re-raises the sheet.
+    var dismissedKey by rememberSaveable { mutableStateOf("") }
+    var open by rememberSaveable { mutableStateOf(false) }
 
-    // The Lunatic sees a Demon token but keeps the Lunatic's real rules.
-    val lunaticSeat = state.players.find { it.characterId == "lunatic" }
-    val waitingForLunatic = !lunaticPromptDone && !waitingForHerring && !waitingForDrunk &&
-        state.phase == Phase.SETUP && lunaticSeat != null && lunaticSeat.shownCharacterId == null
-    if (waitingForLunatic) {
-        checkNotNull(lunaticSeat)
-        val options = viewModel.gameData.resolve(state.script)
-            .filter { it.team == com.clocktower.engine.Team.DEMON }
-        HiddenIdentityDialog(
-            title = "The Lunatic is in play",
-            explanation = "${lunaticSeat.name} is the Lunatic. Which Demon token do they see?",
-            options = options,
-            onPick = { character ->
-                viewModel.update { current ->
-                    val next = GameActions.setShownCharacter(current, lunaticSeat.id, character.id)
-                    GameActions.setNote(
-                        next,
-                        lunaticSeat.id,
-                        "Believes they are the ${character.name}",
-                    )
-                }
-                lunaticPromptDone = true
-            },
-            onLater = { lunaticPromptDone = true },
-        )
+    LaunchedEffect(blockingKey) {
+        when {
+            // Nothing outstanding: forget what was dismissed, so the SAME set
+            // of rows raised again later (a Pit-Hag re-creating a Drunk) still
+            // re-opens the sheet.
+            blockingKey.isEmpty() -> dismissedKey = ""
+            blockingKey != dismissedKey -> open = true
+        }
     }
-
-    // The Marionette sees a good token and wakes as that apparent role.
-    val marionetteSeat = state.players.find { it.characterId == "marionette" }
-    val waitingForMarionette = !marionettePromptDone && !waitingForHerring &&
-        !waitingForDrunk && !waitingForLunatic && state.phase == Phase.SETUP &&
-        marionetteSeat != null && marionetteSeat.shownCharacterId == null
-    if (waitingForMarionette) {
-        checkNotNull(marionetteSeat)
-        val inPlay = state.players.mapNotNull { it.characterId }.toSet()
-        val options = viewModel.gameData.resolve(state.script)
-            .filter { !it.team.isEvil && it.team.isTownResident && it.id !in inPlay }
-        HiddenIdentityDialog(
-            title = "The Marionette is in play",
-            explanation = "${marionetteSeat.name} is the Marionette. Which good token do they think they are?",
-            options = options,
-            onPick = { character ->
-                viewModel.update { current ->
-                    var next = GameActions.setShownCharacter(current, marionetteSeat.id, character.id)
-                    if (next.player(marionetteSeat.id)?.reminders?.none {
-                            it.sourceId == "marionette" && it.label == "Is the Marionette"
-                        } == true
-                    ) {
-                        next = GameActions.addReminder(
-                            next,
-                            marionetteSeat.id,
-                            com.clocktower.engine.PlacedReminder("marionette", "Is the Marionette"),
-                        )
-                    }
-                    GameActions.setNote(
-                        next,
-                        marionetteSeat.id,
-                        "Believes they are the ${character.name}",
-                    )
-                }
-                marionettePromptDone = true
+    if (open) {
+        SetupChecklistSheet(
+            viewModel = viewModel,
+            state = state,
+            onDismiss = {
+                open = false
+                dismissedKey = blockingKey
             },
-            onLater = { marionettePromptDone = true },
         )
     }
 }
 
+/**
+ * The checklist itself: one row per `SetupRequirement`, ticked when satisfied,
+ * every row openable, and every row's answer applied through the requirement's
+ * own `apply` — no character ids and no per-character UI anywhere.
+ *
+ * Advisory rows (`blocking = false`) are shown too, greyed and labelled, so a
+ * default is never silent (lead D54).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HiddenIdentityDialog(
-    title: String,
-    explanation: String,
-    options: List<Character>,
-    onPick: (Character) -> Unit,
-    onLater: () -> Unit,
+fun SetupChecklistSheet(
+    viewModel: GameViewModel,
+    state: GameState,
+    onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onLater,
-        title = { Text(title) },
-        text = {
-            Column {
-                Text(explanation)
-                LazyColumn(Modifier.heightIn(max = 320.dp)) {
-                    if (options.isEmpty()) {
-                        item {
-                            Text(
-                                "No eligible characters are available on this script. " +
-                                    "You can set the shown identity from the player's seat.",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
+    val lookup = viewModel::characterById
+    val rows = remember(state) { SetupRequirements.all(state, lookup) }
+    // By INDEX, not by id: two Lunatics (or two Village Idiots) legally raise
+    // two rows with the same id, and each carries its own seat in its `apply`.
+    val satisfied = remember(state, rows) { rows.map { it.satisfied(state, lookup) } }
+    val doneCount = satisfied.count { it }
+    var openRow by rememberSaveable { mutableStateOf(-1) }
+    var bluffKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // `SetupRequirements` builds its BLUFFS rows straight from this list, in
+    // this order, so the Nth bluff row is the Nth requirement.
+    val bluffKeys = remember(state) { Bluffs.requirements(state, lookup).map { it.key } }
+
+    // The bluff picker is itself a bottom sheet, so it REPLACES the checklist
+    // rather than stacking on it; closing it comes back here.
+    if (bluffKey != null) {
+        BluffsSheet(viewModel, state, onDismiss = { bluffKey = null }, initialKey = bluffKey)
+        return
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            item {
+                Text(
+                    "Before the first night",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = AgedGold,
+                )
+                Text(
+                    "$doneCount of ${rows.size} done" +
+                        if (rows.isEmpty()) " — this game needs no setup decisions." else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+            }
+            items(rows.size, key = { "req-$it" }) { index ->
+                val row = rows[index]
+                val ok = satisfied.getOrElse(index) { false }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (row.kind == RequirementKind.BLUFFS) {
+                                val ordinal = rows.take(index)
+                                    .count { it.kind == RequirementKind.BLUFFS }
+                                bluffKey = bluffKeys.getOrNull(ordinal)
+                                    ?: bluffKeys.firstOrNull()
+                            } else {
+                                openRow = index
+                            }
                         }
+                        .padding(vertical = 6.dp),
+                ) {
+                    Text(
+                        if (ok) "✓" else "○",
+                        color = if (ok) AgedGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(22.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            row.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (ok) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                        Text(
+                            row.prompt,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    items(options, key = { it.id }) { character ->
-                        TextButton(
-                            onClick = { onPick(character) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            CharacterToken(character = character, size = 40.dp)
-                            Spacer(Modifier.width(12.dp))
-                            Text(character.name, modifier = Modifier.weight(1f))
-                        }
+                    if (!row.blocking) {
+                        Text(
+                            "optional",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
+            item {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "\"Begin night\" still works with rows outstanding — the guard " +
+                        "tells you what is missing and lets you start anyway.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                FilledTonalButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Close")
+                }
+            }
+        }
+    }
+
+    rows.getOrNull(openRow)?.let { row ->
+        SetupRequirementDialog(
+            viewModel = viewModel,
+            state = state,
+            requirement = row,
+            rowIndex = openRow,
+            onDismiss = { openRow = -1 },
+        )
+    }
+}
+
+/**
+ * One requirement, answered. The picker shape is chosen from
+ * [RequirementKind] and the candidate list the requirement itself supplies —
+ * the screen never knows which character raised the row.
+ */
+@Composable
+private fun SetupRequirementDialog(
+    viewModel: GameViewModel,
+    state: GameState,
+    requirement: SetupRequirement,
+    /** Position in the checklist — the row's identity, since ids can repeat. */
+    rowIndex: Int,
+    onDismiss: () -> Unit,
+) {
+    val lookup = viewModel::characterById
+    val candidates = remember(state, rowIndex) { requirement.candidates(state, lookup) }
+    // Rows that place a token on SEVERAL seats at once. Advisory rows that name
+    // no single holder are the only ones this applies to today (the Lunatic's
+    // fake Minions); everything else takes exactly one answer.
+    val multi = requirement.kind == RequirementKind.REMINDER &&
+        !requirement.blocking && candidates.size > 1
+    var chosen by rememberSaveable(rowIndex) { mutableStateOf(ArrayList<String>() as List<String>) }
+    var freeText by rememberSaveable(rowIndex) { mutableStateOf("") }
+
+    val apply: (Selection) -> Unit = { selection ->
+        viewModel.applySetupRequirement(requirement, selection)
+        onDismiss()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(requirement.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(requirement.prompt, style = MaterialTheme.typography.bodyMedium)
+                if (requirement.problem.isNotBlank()) {
+                    Text(
+                        requirement.problem,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                when {
+                    candidates.isNotEmpty() -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        // Index keys: a script may legally list one id twice.
+                        items(candidates.size, key = { "cand-$it" }) { i ->
+                            val candidate = candidates[i]
+                            val picked = candidate.id in chosen
+                            TextButton(
+                                enabled = candidate.enabled,
+                                onClick = {
+                                    if (multi) {
+                                        chosen = ArrayList(
+                                            if (picked) chosen - candidate.id else chosen + candidate.id,
+                                        )
+                                    } else {
+                                        apply(selectionFor(requirement, candidate))
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                val character = viewModel.characterById(candidate.id)
+                                if (character != null && candidate.playerId == null) {
+                                    CharacterToken(character = character, size = 34.dp)
+                                    Spacer(Modifier.width(10.dp))
+                                }
+                                Text(
+                                    (if (picked) "• " else "") + candidate.label,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (candidate.badge.isNotBlank()) {
+                                    Text(
+                                        candidate.badge,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = AgedGold,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // A free-text secret (the Mezepheles' word) or a bare
+                    // number (the Outsider branch) — rows that offer no list.
+                    requirement.kind == RequirementKind.GRANT ||
+                        requirement.kind == RequirementKind.NUMBER -> OutlinedTextField(
+                        value = freeText,
+                        onValueChange = { entered ->
+                            freeText = if (requirement.kind == RequirementKind.NUMBER) {
+                                entered.filter { it.isDigit() }.take(2)
+                            } else {
+                                entered
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    else -> Text(
+                        "Nothing to pick — confirm when you have done it at the table.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
-        confirmButton = { TextButton(onClick = onLater) { Text("Later") } },
+        confirmButton = {
+            when {
+                multi -> FilledTonalButton(
+                    enabled = chosen.isNotEmpty(),
+                    onClick = { apply(Selection(playerIds = chosen.mapNotNull { it.toLongOrNull() })) },
+                ) { Text("Place ${chosen.size}") }
+
+                candidates.isEmpty() && requirement.kind == RequirementKind.NUMBER -> FilledTonalButton(
+                    enabled = freeText.toIntOrNull() != null,
+                    onClick = {
+                        apply(Selection(number = freeText.toIntOrNull(), text = freeText))
+                    },
+                ) { Text("Save") }
+
+                candidates.isEmpty() && requirement.kind == RequirementKind.GRANT -> FilledTonalButton(
+                    enabled = freeText.isNotBlank(),
+                    onClick = { apply(Selection(text = freeText)) },
+                ) { Text("Save") }
+
+                candidates.isEmpty() -> FilledTonalButton(onClick = { apply(Selection()) }) {
+                    Text("Confirm")
+                }
+
+                else -> TextButton(onClick = onDismiss) { Text("Later") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
+}
+
+/**
+ * Maps one candidate onto the `Selection` shape its requirement's `apply`
+ * reads. Seat candidates carry a `playerId`; number rows carry an integer id;
+ * everything else is a character id, which the decision rows read as text.
+ */
+private fun selectionFor(requirement: SetupRequirement, candidate: Candidate): Selection = when {
+    candidate.playerId != null -> Selection(playerIds = listOf(candidate.playerId!!))
+    requirement.kind == RequirementKind.NUMBER -> Selection(
+        number = candidate.id.toIntOrNull(),
+        characterIds = listOf(candidate.id),
+        text = candidate.id,
+    )
+    else -> Selection(characterIds = listOf(candidate.id), text = candidate.id)
 }

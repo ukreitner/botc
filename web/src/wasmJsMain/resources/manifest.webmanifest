@@ -1,15 +1,26 @@
 {
+  "id": "/clocktower-grimoire",
   "name": "Clocktower Grimoire",
   "short_name": "Grimoire",
   "description": "Storyteller grimoire and player notes for Blood on the Clocktower",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
-  "orientation": "portrait",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "any",
   "background_color": "#0E0A14",
   "theme_color": "#0E0A14",
   "icons": [
-    { "src": "appicon.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "appicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "appicon.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+  ],
+  "shortcuts": [
+    { "name": "Resume game", "short_name": "Resume", "url": "./?resume=1" },
+    { "name": "New game", "short_name": "New game", "url": "./?new=1" }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "params": { "text": "script", "url": "script" }
+  }
 }

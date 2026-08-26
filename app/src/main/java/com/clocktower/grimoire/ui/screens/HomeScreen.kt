@@ -2,17 +2,22 @@ package com.clocktower.grimoire.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -25,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.remember
 import androidx.compose.ui.draw.drawBehind
@@ -36,10 +42,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.text.TextStyle
+import com.clocktower.engine.Character
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NotesState
 import com.clocktower.engine.Phase
+import com.clocktower.engine.Time
+import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.FadedInk
 import com.clocktower.grimoire.ui.theme.Midnight
@@ -48,7 +56,7 @@ import com.clocktower.grimoire.ui.theme.PaleGold
 import com.clocktower.grimoire.ui.theme.Twilight
 import kotlin.random.Random
 
-/** Landing screen: resume, new game, or browse the library. */
+/** Landing screen: resume, new game, past games, or browse the library. */
 @Composable
 fun HomeScreen(
     game: GameState?,
@@ -63,9 +71,17 @@ fun HomeScreen(
     // Short build id shown as a footer, so it's obvious which build is
     // installed (handy right after an in-app update). Hidden when blank.
     buildLabel: String = "",
+    /** Finished or replaced games, newest first (WP11 archives, never destroys). */
+    archivedGames: List<GameState> = emptyList(),
+    onOpenArchived: (GameState) -> Unit = {},
+    onDiscardArchived: (GameState) -> Unit = {},
+    /** Character lookup, so a past game's summary can name its cast. */
+    lookup: (String?) -> Character? = { null },
 ) {
     var confirmEnd by rememberSaveable { mutableStateOf(false) }
     var confirmEndNotes by rememberSaveable { mutableStateOf(false) }
+    var confirmNewGame by rememberSaveable { mutableStateOf(false) }
+    var openSummary by rememberSaveable { mutableStateOf<String?>(null) }
 
     // A quiet night sky behind everything: fixed stars, a crescent moon,
     // and a candle-glow pooling behind the title. Drawn, not image assets.
@@ -173,20 +189,27 @@ fun HomeScreen(
                 ) {
                     Text("Resume game", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "${game.script.name} · ${game.players.size} players · " +
-                            when (game.phase) {
-                                Phase.SETUP -> "setting up"
-                                Phase.NIGHT -> if (game.cycle == 1) "first night" else "night ${game.cycle}"
-                                Phase.DAY -> "day ${game.cycle}"
-                            },
+                        "${game.script.name} · ${game.players.size} players · ${phaseLabel(game)}",
                         style = MaterialTheme.typography.bodySmall,
+                    )
+                    // "night 3" alone never says whether that was tonight or
+                    // three weeks ago (setup-and-home #45).
+                    Text(
+                        "saved ${relativeTime(game.updatedAt)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             Spacer(Modifier.height(12.dp))
         }
 
-        ElevatedButton(onClick = onNewGame, modifier = Modifier.fillMaxWidth()) {
+        ElevatedButton(
+            // Starting a new game with one in progress ARCHIVES it — but the
+            // storyteller is told first, every time (setup-and-home #1).
+            onClick = { if (game != null) confirmNewGame = true else onNewGame() },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Text("New game (storyteller)", modifier = Modifier.padding(vertical = 6.dp))
         }
         Spacer(Modifier.height(12.dp))
@@ -213,6 +236,26 @@ fun HomeScreen(
         OutlinedButton(onClick = onLibrary, modifier = Modifier.fillMaxWidth()) {
             Text("Character library & night order", modifier = Modifier.padding(vertical = 6.dp))
         }
+
+        if (archivedGames.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "PAST GAMES",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            HorizontalDivider(Modifier.padding(vertical = 6.dp))
+            for (past in archivedGames) {
+                ArchivedGameRow(
+                    game = past,
+                    lookup = lookup,
+                    onOpen = { openSummary = past.archiveKey },
+                    onResume = { onOpenArchived(past) },
+                )
+            }
+        }
+
         if (game != null || notes != null) {
             Spacer(Modifier.height(24.dp))
         }
@@ -236,13 +279,61 @@ fun HomeScreen(
         }
     }
 
+    if (confirmNewGame && game != null) {
+        AlertDialog(
+            onDismissRequest = { confirmNewGame = false },
+            title = { Text("A game is still in progress") },
+            text = {
+                Text(
+                    "${game.script.name} is still in progress (${phaseLabel(game)}). " +
+                        "Starting a new game will archive it — you can reopen it from Home.",
+                )
+            },
+            confirmButton = {
+                FilledTonalButton(onClick = { confirmNewGame = false; onNewGame() }) {
+                    Text("Archive & start new")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { confirmNewGame = false; onResume() }) {
+                        Text("Resume instead")
+                    }
+                    TextButton(onClick = { confirmNewGame = false }) { Text("Cancel") }
+                }
+            },
+        )
+    }
+
+    openSummary?.let { key ->
+        val past = archivedGames.firstOrNull { it.archiveKey == key }
+        if (past == null) {
+            openSummary = null
+        } else {
+            ArchivedGameDialog(
+                game = past,
+                lookup = lookup,
+                onResume = { openSummary = null; onOpenArchived(past) },
+                onDiscard = { openSummary = null; onDiscardArchived(past) },
+                onDismiss = { openSummary = null },
+            )
+        }
+    }
+
     if (confirmEnd) {
         AlertDialog(
             onDismissRequest = { confirmEnd = false },
             title = { Text("End game?") },
-            text = { Text("This clears the saved grimoire. There is no undo across games.") },
+            text = {
+                Text(
+                    "The grimoire is archived, not deleted — it stays under " +
+                        "\"Past games\" with its log, deaths and nominations intact.",
+                )
+            },
             confirmButton = {
-                FilledTonalButton(onClick = { confirmEnd = false; onEndGame() }) { Text("End game") }
+                FilledTonalButton(onClick = { confirmEnd = false; onEndGame() }) {
+                    Text("Archive & end game")
+                }
             },
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep playing") } },
         )
@@ -257,5 +348,142 @@ fun HomeScreen(
             },
             dismissButton = { TextButton(onClick = { confirmEndNotes = false }) { Text("Keep them") } },
         )
+    }
+}
+
+@Composable
+private fun ArchivedGameRow(
+    game: GameState,
+    lookup: (String?) -> Character?,
+    onOpen: () -> Unit,
+    onResume: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                "${game.script.name} · ${game.players.size}p · ${outcomeLabel(game, lookup)}",
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                relativeTime(game.updatedAt),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = onOpen) { Text("Open") }
+        TextButton(onClick = onResume) { Text("Resume") }
+    }
+}
+
+/** The read-only record of a finished game, plus a shareable plain-text summary. */
+@Composable
+private fun ArchivedGameDialog(
+    game: GameState,
+    lookup: (String?) -> Character?,
+    onResume: () -> Unit,
+    onDiscard: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+    val summary = remember(game) { archiveSummary(game, lookup) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("${game.script.name} · ${game.players.size} players") },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                items(summary.size) { i ->
+                    Text(summary[i], style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            Column {
+                FilledTonalButton(onClick = onResume) { Text("Reopen this game") }
+                if (confirmDiscard) {
+                    TextButton(onClick = onDiscard) {
+                        Text("Delete for good", color = MaterialTheme.colorScheme.error)
+                    }
+                } else {
+                    TextButton(onClick = { confirmDiscard = true }) {
+                        Text("Delete…", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+private val GameState.archiveKey: String
+    get() = if (id.isNotBlank()) id else "${script.id}-$updatedAt-${players.size}"
+
+private fun phaseLabel(game: GameState): String = when (game.phase) {
+    Phase.SETUP -> "setting up"
+    Phase.NIGHT -> if (game.cycle == 1) "first night" else "night ${game.cycle}"
+    Phase.DAY -> "day ${game.cycle}"
+}
+
+/** "evil won" / "good won" when the grimoire says so, else where it stopped. */
+private fun outcomeLabel(game: GameState, lookup: (String?) -> Character?): String {
+    val advisory = runCatching { WinCheck.check(game) { id -> lookup(id) } }.getOrNull()
+    return when (advisory?.goodWins) {
+        true -> "good won"
+        false -> "evil won"
+        null -> phaseLabel(game)
+    }
+}
+
+/**
+ * The plain-text record of a finished game (setup-and-home §S9): every seat,
+ * what they really were, what they were shown, and how they left.
+ */
+private fun archiveSummary(game: GameState, lookup: (String?) -> Character?): List<String> {
+    val lines = mutableListOf<String>()
+    lines += "${game.script.name} · ${game.players.size} players · ${outcomeLabel(game, lookup)}"
+    lines += ""
+    game.players.forEachIndexed { index, p ->
+        val character = lookup(p.characterId)?.name ?: "no character"
+        val shown = p.shownCharacterId?.let { " (shown ${lookup(it)?.name ?: it})" }.orEmpty()
+        val death = game.deaths.lastOrNull { it.playerId == p.id }
+        val fate = when {
+            death != null && death.atNight -> "died N${death.day}"
+            death != null -> "died D${death.day}"
+            p.alive -> "survived"
+            else -> "dead"
+        }
+        lines += "${index + 1} ${p.name}  $character$shown  $fate"
+    }
+    if (game.nominations.isNotEmpty()) {
+        lines += ""
+        for (n in game.nominations) {
+            val nominator = game.player(n.nominatorId)?.name ?: "?"
+            val nominee = game.player(n.nomineeId)?.name ?: "?"
+            lines += "D${n.day}  $nominator nominated $nominee — ${n.votes} votes"
+        }
+    }
+    return lines
+}
+
+/** "4 minutes ago", "yesterday", "12 days ago" — no platform date formatter needed. */
+private fun relativeTime(millis: Long): String {
+    if (millis <= 0L) return "just now"
+    val delta = Time.epochMillis() - millis
+    if (delta < 0) return "just now"
+    val minutes = delta / 60_000
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        minutes < 1 -> "just now"
+        minutes == 1L -> "1 minute ago"
+        minutes < 60 -> "$minutes minutes ago"
+        hours == 1L -> "1 hour ago"
+        hours < 24 -> "$hours hours ago"
+        days == 1L -> "yesterday"
+        else -> "$days days ago"
     }
 }
