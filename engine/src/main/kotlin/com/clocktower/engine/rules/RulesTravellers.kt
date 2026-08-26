@@ -117,8 +117,15 @@ private fun beggar(): CharacterRule = CharacterRule(
                     kind = EffectKind.SOBER_HEALTHY,
                     targetId = holder.id,
                     sourceCharacterId = "beggar",
-                    sourcePlayerId = holder.id,
+                    // No source seat to check, exactly as WP1 emits the Drunk's
+                    // NO_ABILITY: a self-sourced SOBER_HEALTHY would recurse
+                    // through `abilityWorks`, trip the in-flight guard and put
+                    // the Beggar in `paradoxSeats` for a board with no paradox.
+                    // The rule already ends with its holder — a dead Beggar
+                    // emits nothing at all.
+                    sourcePlayerId = null,
                     until = Until.FOREVER,
+                    endsWithSource = false,
                     label = "",
                     note = "The Beggar is sober & healthy — drunk and poison tokens have no effect.",
                     createdCycle = state.cycle,

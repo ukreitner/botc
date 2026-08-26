@@ -135,6 +135,14 @@ class RulesTravellersTest {
         assertTrue(Status.impairment(state, lookup, beggar).isEmpty(), "the Beggar is sober & healthy")
         assertTrue(Status.hasAbility(state, lookup, beggar))
         assertFalse(Status.impairment(state, lookup, monk).isEmpty(), "the Monk is genuinely poisoned")
+        // The innate rule must not sustain itself: that would trip the in-flight
+        // guard and report a paradox on a board that has none.
+        assertTrue(Status.paradoxSeats(state, lookup).isEmpty())
+        assertTrue(state.prompts.none { it.kind == PromptKind.DECIDE && it.sourceId == "status" })
+
+        // A dead Beggar has no ability, so the token bites again.
+        val dead = GameActions.kill(state, beggar, DeathCause.EXILE, lookup)
+        assertFalse(Status.hasAbility(dead, lookup, beggar))
     }
 
     @Test
