@@ -91,3 +91,5 @@ WP7-TRAV DONE + MERGED (18/18, 31 tests).
 WP7-EXP-D DONE + MERGED (10/10, 28 tests). Remaining W4: WP7-BMR, WP7-SV, WP7-EXP-T, WP6.
 WP7-SV DONE + MERGED (25/25, 36 tests). Remaining W4: WP7-BMR, WP7-EXP-T, WP6.
 WP7-EXP-T DONE + MERGED (30/30, 40 tests). Suite 702/0/7. Remaining W4: WP7-BMR, WP6.
+WP6 DONE + MERGED (5 commits; Briefings.at seven slots, PhaseFlow.request, NightPlan ledger/memory routed, Phases try/catch gone; dusk sheet executes via Execution.execute + "No execution"). Suite 718/0/7; uicheck 20 tests; web green. WP12 fixtures: Professor/DA/Gossip now fail only for missing BMR registry rows → flip after WP7-BMR; Lunatic fixture needs WP4/WP2 acting-role follow-up (plan emits po#9 where lunatic expected).
+Launching W5 now (WP8 NightScreen, WP9 DayScreen) — deps WP2/WP3/WP6 all merged. Schema/data pass + stopgap cleanup + WP12 pass 2 wait for WP7-BMR.
