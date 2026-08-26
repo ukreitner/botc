@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.clocktower.engine.Character
+import com.clocktower.engine.EffectGroup
+import com.clocktower.grimoire.ui.theme.MIN_TEXT_SP
 import com.clocktower.grimoire.ui.theme.Parchment
 import com.clocktower.grimoire.ui.theme.color
 
@@ -149,32 +151,171 @@ fun tokenMonogram(name: String): String {
     }
 }
 
-/** Small circular reminder token. */
+// ---------------------------------------------------------------------------
+// Status rendering (WP10)
+//
+// The organising idea of grimoire-and-seats: THE CIRCLE IS FOR RECOGNITION,
+// THE BOARD IS FOR READING, THE SHEET IS FOR ACTING. Below ~36 dp a token
+// cannot carry a real label — "Survives Execution" in a 22 dp disc was drawn
+// at 6 sp and ellipsised to "Surv…" — so at those sizes we draw the
+// EffectGroup GLYPH instead, never micro-text.
+//
+// The three functions below are deliberately pure (Float sp/dp, no Compose
+// types) so `tools/uicheck`'s test source set can measure them.
+// ---------------------------------------------------------------------------
+
+/** The smallest size, in dp, at which a token may render its label as TEXT. */
+const val TOKEN_LABEL_MIN_DP: Float = 36f
+
+/**
+ * Font size for a reminder token's label, in sp. Never below [MIN_TEXT_SP] —
+ * that floor is the whole fix for grimoire-and-seats P0-3.
+ */
+fun reminderFontSp(sizeDp: Float): Float = (sizeDp / 4f).coerceAtLeast(MIN_TEXT_SP)
+
+/** Font size for a status pip's glyph, in sp. Also floored at [MIN_TEXT_SP]. */
+fun pipGlyphSp(sizeDp: Float): Float = (sizeDp / 2.2f).coerceAtLeast(MIN_TEXT_SP)
+
+/** True when a token of [sizeDp] has room for its label rather than a glyph. */
+fun tokenShowsLabel(sizeDp: Float): Boolean = sizeDp >= TOKEN_LABEL_MIN_DP
+
+/**
+ * Which pips a seat shows, and how many are hidden.
+ *
+ * Ordered by [EffectGroup.priority], NEVER by placement order: the tokens that
+ * must never be forgotten ("Is The Drunk", "Red Herring", "No Ability") are
+ * the OLDEST ones, and the old `takeLast(2)` hid exactly those
+ * (grimoire-and-seats P0-5). Ties keep the order they came in, so a seat with
+ * two IMPAIRED effects shows the first-placed one.
+ */
+fun visiblePips(groups: List<EffectGroup>, budget: Int): PipRow {
+    if (budget <= 0) return PipRow(emptyList(), groups.size)
+    val ordered = groups.sortedBy { it.priority }
+    if (ordered.size <= budget) return PipRow(ordered, 0)
+    // Keep budget - 1 slots for real pips so the "+N" itself has room.
+    val shown = ordered.take(budget - 1)
+    return PipRow(shown, ordered.size - shown.size)
+}
+
+/** The result of [visiblePips]: the pips to draw and the lower-priority overflow. */
+data class PipRow(val shown: List<EffectGroup>, val hidden: Int)
+
+/**
+ * Collapses a character's reminder list to distinct labels with copy counts.
+ *
+ * `characters.json` lists an N-copy token N times (the green leaves on the
+ * physical token), so a raw render shows "Poisoned Poisoned" for the Pukka.
+ * Pickers show one chip reading `Poisoned ×2` instead (FOLLOWUPS, WP10/WP8).
+ * Matching is case-insensitive per lead D5; the first spelling seen wins, and
+ * that is the official Title Case one from the data file.
+ */
+fun labelCopies(labels: List<String>): List<TokenCopies> {
+    val out = LinkedHashMap<String, TokenCopies>()
+    for (raw in labels) {
+        val label = raw.trim()
+        if (label.isEmpty()) continue
+        val key = label.lowercase()
+        val seen = out[key]
+        out[key] = if (seen == null) TokenCopies(label, 1) else seen.copy(copies = seen.copies + 1)
+    }
+    return out.values.toList()
+}
+
+/** One distinct token label and how many physical copies the character owns. */
+data class TokenCopies(val label: String, val copies: Int)
+
+/**
+ * A status pip: kind-coloured disc, team-coloured provenance ring, glyph in
+ * white at >= 11 sp.
+ *
+ * [suspended] renders the physical "turn the token upside-down" state — hollow
+ * fill, dimmed glyph — which the wiki recommends over removing a token whose
+ * owner has gone drunk or poisoned. [derived] (No Dashii's neighbours) has no
+ * physical token, so its ring is dotted rather than solid.
+ */
+@Composable
+fun StatusPip(
+    group: EffectGroup,
+    modifier: Modifier = Modifier,
+    ringColor: Color = Color.Transparent,
+    size: Dp = 18.dp,
+    suspended: Boolean = false,
+    derived: Boolean = false,
+) {
+    val fill = group.color
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(if (suspended) Color.Transparent else fill)
+            .border(
+                width = if (derived) 1.dp else 2.dp,
+                color = when {
+                    suspended -> fill.copy(alpha = 0.7f)
+                    ringColor == Color.Transparent -> fill.copy(alpha = 0.65f)
+                    derived -> ringColor.copy(alpha = 0.55f)
+                    else -> ringColor
+                },
+                shape = CircleShape,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = group.glyph,
+            fontSize = pipGlyphSp(size.value).sp,
+            lineHeight = pipGlyphSp(size.value).sp,
+            fontWeight = FontWeight.Bold,
+            color = if (suspended) fill else Color.White,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Small circular reminder token.
+ *
+ * [color] is the FILL — pass `group.color`, not the source team, so colour
+ * means "what this does". [ringColor] is the provenance ring. Below
+ * [TOKEN_LABEL_MIN_DP] the token draws [glyph] instead of [label]; the label
+ * is never squeezed under [MIN_TEXT_SP].
+ */
 @Composable
 fun ReminderToken(
     label: String,
     color: Color,
     size: Dp,
     modifier: Modifier = Modifier,
+    ringColor: Color = Color.White.copy(alpha = 0.5f),
+    glyph: String? = null,
+    suspended: Boolean = false,
+    derived: Boolean = false,
 ) {
+    val showsLabel = tokenShowsLabel(size.value) || glyph == null
     Box(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(color.copy(alpha = 0.9f))
-            .border(1.5.dp, Color.White.copy(alpha = 0.5f), CircleShape),
+            .background(if (suspended) color.copy(alpha = 0.18f) else color.copy(alpha = 0.9f))
+            .border(
+                width = if (derived) 1.dp else 1.5.dp,
+                color = if (suspended) color else ringColor,
+                shape = CircleShape,
+            ),
         contentAlignment = Alignment.Center,
     ) {
+        val content = if (showsLabel) label else glyph.orEmpty()
+        val sp = if (showsLabel) reminderFontSp(size.value) else pipGlyphSp(size.value)
         Text(
-            text = label,
-            fontSize = (size.value / 5f).coerceAtLeast(6f).sp,
-            lineHeight = (size.value / 4.6f).coerceAtLeast(7f).sp,
-            color = Color.White,
+            text = content,
+            fontSize = sp.sp,
+            lineHeight = (sp * 1.08f).sp,
+            color = if (suspended) Color.White.copy(alpha = 0.65f) else Color.White,
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(2.dp),
+            modifier = Modifier.padding(horizontal = 2.dp),
         )
     }
 }

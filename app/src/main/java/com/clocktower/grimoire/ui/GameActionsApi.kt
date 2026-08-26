@@ -11,13 +11,21 @@ import com.clocktower.engine.Effects
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Identity
+import com.clocktower.engine.KillCause
+import com.clocktower.engine.LedgerEntry
+import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Nomination
+import com.clocktower.engine.Phase
 import com.clocktower.engine.Phases
 import com.clocktower.engine.PlacedReminder
+import com.clocktower.engine.Player
+import com.clocktower.engine.RenderedToken
+import com.clocktower.engine.SeatNote
 import com.clocktower.engine.Seats
 import com.clocktower.engine.Selection
 import com.clocktower.engine.SetupRequirement
+import com.clocktower.engine.Tokens
 import com.clocktower.engine.DayRules
 import kotlin.random.Random
 
@@ -173,6 +181,173 @@ interface GameActionsApi {
     // ---- WP9: day screen ----
 
     // ---- WP10: grimoire, seat sheet, kill sheet ----
+
+    /**
+     * THE kill funnel, for every kill site the UI owns (lead D24, friction §1).
+     * `KillSheet` renders `Deaths.killOutcome` first and then calls this with
+     * the same [cause], so preview and application can never disagree.
+     *
+     * [optionId] answers a `KillOutcome.Choice` — pass "" the first time, then
+     * one of `Deaths.OPTION_DIES` / `OPTION_LIVES` / `OPTION_REDIRECT`.
+     */
+    fun attemptDeath(targetId: Long, cause: KillCause, optionId: String = "") =
+        update { Deaths.attempt(it, lookup, targetId, cause, optionId).state }
+
+    /** Removes one effect by id — the rule behind a rendered token. */
+    fun removeEffect(effectId: Long) = update { Effects.remove(it, effectId) }
+
+    /**
+     * Turns a token upside-down instead of removing it (wiki, Abilities): the
+     * effect stops applying but survives until the storyteller restores it.
+     */
+    fun suspendEffect(effectId: Long, suspended: Boolean) =
+        update { Effects.suspend(it, effectId, suspended) }
+
+    /**
+     * Removes whatever backs a rendered token: the effect if it has one,
+     * otherwise the matching storyteller free token on that seat.
+     */
+    fun removeRenderedToken(playerId: Long, token: RenderedToken) = update { state ->
+        val effectId = token.effectId
+        if (effectId != null) {
+            Effects.remove(state, effectId)
+        } else {
+            val key = Tokens.key(token.sourceId, token.label)
+            val index = state.player(playerId)?.reminders?.indexOfFirst { Tokens.key(it) == key } ?: -1
+            if (index < 0) state else Effects.removeReminder(state, playerId, index)
+        }
+    }
+
+    /**
+     * ONE placement semantic for the seat sheet, the token peek and the night
+     * tray (grimoire-and-seats §7, P0-6): a token is placed respecting the
+     * number of physical copies the character owns. With one copy it MOVES;
+     * with N it accumulates to N and then displaces the oldest.
+     *
+     * [copies] defaults to the count in `characters.json`, where an N-copy
+     * token is listed N times.
+     */
+    fun placeToken(playerId: Long, reminder: PlacedReminder, copies: Int = -1) = update { state ->
+        val fixed = reminder.copy(
+            sourceId = reminder.sourceId.ifBlank { Tokens.STORYTELLER_SOURCE },
+            placedCycle = if (reminder.placedCycle > 0) reminder.placedCycle else state.cycle,
+        )
+        val limit = when {
+            copies > 0 -> copies
+            else -> characterById(fixed.sourceId)
+                ?.allReminders
+                ?.count { it.trim().equals(fixed.label.trim(), ignoreCase = true) }
+                ?.coerceAtLeast(1)
+                ?: Int.MAX_VALUE
+        }
+        if (limit == Int.MAX_VALUE) {
+            Effects.addReminder(state, playerId, fixed)
+        } else {
+            val key = Tokens.key(fixed)
+            // Everywhere this token currently sits, OLDEST first: earliest
+            // cycle, then seat order, then placement order within the seat.
+            val placed = state.players.flatMapIndexed { seat: Int, p: Player ->
+                p.reminders.mapIndexedNotNull { i, r ->
+                    if (Tokens.key(r) == key) Triple(p.id, i, r.placedCycle * 10_000 + seat * 100 + i) else null
+                }
+            }.sortedBy { it.third }
+            val displace = (placed.size + 1 - limit).coerceAtLeast(0)
+            val doomed = placed.take(displace).map { it.first to it.second }.toSet()
+            val cleared = state.copy(
+                players = state.players.map { p ->
+                    p.copy(
+                        reminders = p.reminders.filterIndexed { i, _ -> (p.id to i) !in doomed },
+                    )
+                },
+            )
+            Effects.addReminder(cleared, playerId, fixed)
+        }
+    }
+
+    /** How many copies of [label] the character [sourceId] physically owns. */
+    fun tokenCopies(sourceId: String, label: String): Int =
+        characterById(sourceId)
+            ?.allReminders
+            ?.count { it.trim().equals(label.trim(), ignoreCase = true) }
+            ?.coerceAtLeast(1)
+            ?: 1
+
+    /** Moves a token from one seat to another in a single undo step. */
+    fun moveToken(fromPlayerId: Long, toPlayerId: Long, token: RenderedToken) = update { state ->
+        val key = Tokens.key(token.sourceId, token.label)
+        val index = state.player(fromPlayerId)?.reminders?.indexOfFirst { Tokens.key(it) == key } ?: -1
+        val effectId = token.effectId
+        when {
+            effectId != null ->
+                state.copy(
+                    effects = state.effects.map {
+                        if (it.id == effectId) it.copy(targetId = toPlayerId) else it
+                    },
+                )
+            index >= 0 -> {
+                val reminder = state.player(fromPlayerId)!!.reminders[index]
+                Effects.addReminder(
+                    Effects.removeReminder(state, fromPlayerId, index),
+                    toPlayerId,
+                    reminder,
+                )
+            }
+            else -> state
+        }
+    }
+
+    /**
+     * APPENDS a dated seat note. `Seats.setNote` replaces the whole list, which
+     * is how the setup prompts used to destroy whatever the storyteller had
+     * typed (grimoire-and-seats P1-12); every WP10 surface uses this instead.
+     */
+    fun appendNote(playerId: Long, text: String) = update { state ->
+        if (text.isBlank()) {
+            state
+        } else {
+            state.updatePlayer(playerId) {
+                it.copy(notes = it.notes + SeatNote(state.cycle, state.phase, text.trim()))
+            }
+        }
+    }
+
+    /** Rewrites one note in place, keeping its cycle/phase stamp. */
+    fun editNote(playerId: Long, index: Int, text: String) = update { state ->
+        state.updatePlayer(playerId) { p ->
+            if (index !in p.notes.indices) {
+                p
+            } else if (text.isBlank()) {
+                p.copy(notes = p.notes.filterIndexed { i, _ -> i != index })
+            } else {
+                p.copy(notes = p.notes.mapIndexed { i, n -> if (i == index) n.copy(text = text.trim()) else n })
+            }
+        }
+    }
+
+    /**
+     * Records a storyteller ruling the grimoire needs to remember — "the Monk
+     * saved Dana", "I ruled the Recluse registered as the Imp".
+     *
+     * HOOK FOR WP3: `Ledger.ruling(...)` is `TODO("WP3")` at this base, so the
+     * entry is built here exactly as `Deaths.recordPrevented` builds its own.
+     * When WP3 lands, this body becomes
+     * `Ledger.ruling(it, sourceId, playerId, text)` and nothing else changes.
+     */
+    fun recordRuling(playerId: Long?, sourceId: String, text: String) = update { state ->
+        val id = state.nextLedgerId
+        state.copy(
+            ledger = state.ledger + LedgerEntry(
+                id = id,
+                cycle = state.cycle,
+                atNight = state.phase != Phase.DAY,
+                kind = LedgerKind.RULING,
+                sourceId = sourceId,
+                actorId = playerId,
+                text = text,
+            ),
+            nextLedgerId = id + 1,
+        )
+    }
 
     // ---- WP11: setup, hand-out, home, PWA shell ----
 }
