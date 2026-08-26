@@ -292,7 +292,9 @@ private fun HandOutCard(
     val believedId = Identity.believedCharacterId(player)
     val character = viewModel.characterById(believedId)
     val pages = remember(player, character) { handOutPages(player, character) }
-    var page by rememberSaveable(player.id) { mutableStateOf(0) }
+    // Deliberately NOT saveable: re-opening a seat starts at the character
+    // card again rather than resuming mid-sequence.
+    var page by remember(player.id) { mutableStateOf(0) }
     var pressing by remember { mutableStateOf(false) }
     var revealed by remember { mutableStateOf(false) }
 

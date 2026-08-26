@@ -429,7 +429,14 @@ fun SetupChecklistSheet(
     val satisfied = remember(state, rows) { rows.associate { it.id to it.satisfied(state, lookup) } }
     val doneCount = satisfied.values.count { it }
     var openRowId by rememberSaveable { mutableStateOf<String?>(null) }
-    var bluffKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var showBluffs by rememberSaveable { mutableStateOf(false) }
+
+    // The bluff picker is itself a bottom sheet, so it REPLACES the checklist
+    // rather than stacking on it; closing it comes back here.
+    if (showBluffs) {
+        BluffsSheet(viewModel, state, onDismiss = { showBluffs = false })
+        return
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         LazyColumn(
@@ -461,7 +468,7 @@ fun SetupChecklistSheet(
                         .fillMaxWidth()
                         .clickable {
                             if (row.kind == RequirementKind.BLUFFS) {
-                                bluffKey = row.id
+                                showBluffs = true
                             } else {
                                 openRowId = row.id
                             }
@@ -525,13 +532,6 @@ fun SetupChecklistSheet(
                 onDismiss = { openRowId = null },
             )
         } ?: run { openRowId = null }
-    }
-    bluffKey?.let {
-        BluffsSheet(
-            viewModel = viewModel,
-            state = state,
-            onDismiss = { bluffKey = null },
-        )
     }
 }
 

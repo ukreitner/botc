@@ -189,14 +189,13 @@ private fun consumeLaunchIntent(viewModel: GameViewModel, hasGame: Boolean): Lau
     val shared = params["script"]?.takeIf { it.isNotBlank() }
     var scriptId: String? = null
     if (shared != null) {
-        // The share sheet hands over either a link or the raw JSON; the view
-        // model's importer already understands both.
-        val text = if (ScriptLink.isLink(shared)) shared else shared
-        if (viewModel.importScript(text) == null) {
+        // The share sheet hands over either a script-tool link or raw JSON;
+        // the view model's importer already understands both.
+        if (viewModel.importScript(shared) == null) {
             scriptId = runCatching {
-                ScriptParser.parse(
-                    if (ScriptLink.isLink(text)) ScriptLink.decode(text) ?: text else text,
-                ).id
+                val jsonText =
+                    if (ScriptLink.isLink(shared)) ScriptLink.decode(shared) ?: shared else shared
+                ScriptParser.parse(jsonText).id
             }.getOrNull()
         }
     }
@@ -224,15 +223,14 @@ private fun WebRoot() {
     val notes by viewModel.notes.collectAsState()
     var route by rememberSaveable { mutableStateOf("home") }
     var sharedScriptId by rememberSaveable { mutableStateOf<String?>(null) }
-    var launchHandled by rememberSaveable { mutableStateOf(false) }
 
     // The table's phone must not sleep — hoisted to the app root so the setup
     // wizard and hand-out mode are covered too (setup-and-home #41).
     KeepScreenOn()
     RequestWakeLockOnResume()
 
-    if (!launchHandled) {
-        launchHandled = true
+    // A manifest shortcut or a shared script link, consumed exactly once.
+    LaunchedEffect(Unit) {
         val intent = consumeLaunchIntent(viewModel, viewModel.game.value != null)
         intent.scriptId?.let { sharedScriptId = it }
         intent.route?.let { route = it }
