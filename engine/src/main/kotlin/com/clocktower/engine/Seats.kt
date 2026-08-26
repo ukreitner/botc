@@ -50,6 +50,10 @@ object Seats {
      * Re-assigning a seat drops the tokens and the "Believes they are…" note the
      * abandoned character owned, so a seat that stops being the Drunk stops
      * carrying `Is The Drunk`.
+     *
+     * It also clears [Player.tokenShownAt] — exactly as `Seats.deal` and
+     * `Identity.changeCharacter` do — so the seat goes back into the hand-out
+     * queue: whatever the storyteller showed this player is no longer true.
      */
     fun assignCharacter(
         state: GameState,
@@ -74,12 +78,20 @@ object Seats {
                 } else {
                     seat.notes.filterNot { it.text.startsWith("Believes they are", true) }
                 },
+                tokenShownAt = null,
             )
         }
     }
 
+    /**
+     * The token this seat BELIEVES it holds (the Drunk's Townsfolk, the
+     * Lunatic's Demon). Clears [Player.tokenShownAt] too: the seat must be
+     * handed the new token before the game starts.
+     */
     fun setShownCharacter(state: GameState, playerId: Long, shownCharacterId: String?): GameState =
-        state.updatePlayer(playerId) { it.copy(shownCharacterId = shownCharacterId) }
+        state.updatePlayer(playerId) {
+            it.copy(shownCharacterId = shownCharacterId, tokenShownAt = null)
+        }
 
     /**
      * Explicit alignment override. Null restores the character's natural side.

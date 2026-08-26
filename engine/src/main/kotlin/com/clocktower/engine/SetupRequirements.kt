@@ -55,14 +55,32 @@ data class Selection(
 
 /**
  * One row of the "Before the first night" checklist AND one clause of setup
- * validation. Ids are canonical (lead D48): "drunk.token", "lunatic.token",
- * "lunatic.minions", "lunatic.bluffs", "marionette.token", "marionette.seat",
- * "fortuneteller.herring", "puzzlemaster.drunk", "villageidiot.drunk", "pixie.mad",
- * "widow.know", "grandmother.grandchild", "balloonist.know", "eviltwin.twin",
- * "bountyhunter.evil", "snitch.bluffs:<seat>", "demon.bluffs", "summoner.bluffs",
- * "boffin.grant", "alchemist.grant", "xaan.X", "damsel.minions", "mezepheles.word",
- * "traveller.alignment:<seat>", "kazali.noMinions", "lilmonsta.noDemonSeat",
- * "setup.outsiderBranch".
+ * validation.
+ *
+ * Ids are canonical (lead D48) and **unique within one `all()` call**: a row
+ * that belongs to ONE SEAT carries that seat's id after a colon, exactly as
+ * `traveller.alignment:<seat>` always has. Two Village Idiots, two Lunatics or
+ * a Pit-Hag-made second Fortune Teller therefore raise two DISTINCT rows —
+ * the UI can key a list by [id], and [SetupRequirements.blockingProblems] no
+ * longer folds two seats' problems into one message.
+ *
+ * Seat-scoped: "drunk.token:<seat>", "lunatic.token:<seat>",
+ * "lunatic.minions:<seat>", "lunatic.bluffs:<seat>", "marionette.token:<seat>",
+ * "marionette.seat:<seat>", "fortuneteller.herring:<seat>",
+ * "puzzlemaster.drunk:<seat>", "pixie.mad:<seat>", "widow.know:<seat>",
+ * "grandmother.grandchild:<seat>", "balloonist.know:<seat>",
+ * "eviltwin.twin:<seat>", "bountyhunter.evil:<seat>", "bountyhunter.know:<seat>",
+ * "boffin.grant:<seat>", "alchemist.grant:<seat>", "mezepheles.word:<seat>",
+ * "xaan.X:<seat>", "damsel.minions:<seat>", "summoner.bluffs:<seat>",
+ * "snitch.bluffs:<seat>", "traveller.alignment:<seat>".
+ *
+ * Whole-game (never suffixed, because they can only be raised once):
+ * "villageidiot.drunk", "demon.bluffs", "kazali.noMinions",
+ * "lilmonsta.noDemonSeat", "setup.outsiderBranch", "bag.<n>".
+ *
+ * The suffix is presentation only — the `Decisions` keys the rows read and
+ * write ([Decisions.XAAN_X], [Decisions.BOFFIN_GRANT], …) are unchanged, so
+ * old saves keep their answers.
  */
 data class SetupRequirement(
     val id: String,
@@ -162,7 +180,7 @@ object SetupRequirements {
         for (seat in residents) {
             when (seat.characterId?.let(Character::normalizeId)) {
                 "drunk" -> rows += shownTokenRow(
-                    id = "drunk.token",
+                    id = "drunk.token:${seat.id}",
                     characterId = "drunk",
                     seat = seat,
                     title = "The Drunk believes",
@@ -173,7 +191,7 @@ object SetupRequirements {
 
                 "lunatic" -> {
                     rows += shownTokenRow(
-                        id = "lunatic.token",
+                        id = "lunatic.token:${seat.id}",
                         characterId = "lunatic",
                         seat = seat,
                         title = "The Lunatic believes",
@@ -186,7 +204,7 @@ object SetupRequirements {
 
                 "marionette" -> {
                     rows += shownTokenRow(
-                        id = "marionette.token",
+                        id = "marionette.token:${seat.id}",
                         characterId = "marionette",
                         seat = seat,
                         title = "The Marionette believes",
@@ -197,7 +215,7 @@ object SetupRequirements {
                         },
                     )
                     rows += SetupRequirement(
-                        id = "marionette.seat",
+                        id = "marionette.seat:${seat.id}",
                         characterId = "marionette",
                         kind = RequirementKind.SEATING,
                         title = "The Marionette's seat",
@@ -210,7 +228,7 @@ object SetupRequirements {
                 }
 
                 "fortuneteller" -> rows += exclusiveTokenRow(
-                    id = "fortuneteller.herring",
+                    id = "fortuneteller.herring:${seat.id}",
                     characterId = "fortuneteller",
                     label = "Red Herring",
                     title = "Fortune Teller red herring",
@@ -221,7 +239,7 @@ object SetupRequirements {
                 )
 
                 "puzzlemaster" -> rows += exclusiveTokenRow(
-                    id = "puzzlemaster.drunk",
+                    id = "puzzlemaster.drunk:${seat.id}",
                     characterId = "puzzlemaster",
                     label = "Drunk",
                     title = "Puzzlemaster's drunk",
@@ -230,7 +248,7 @@ object SetupRequirements {
                 )
 
                 "pixie" -> rows += exclusiveTokenRow(
-                    id = "pixie.mad",
+                    id = "pixie.mad:${seat.id}",
                     characterId = "pixie",
                     label = "Mad",
                     title = "Pixie's madness",
@@ -242,7 +260,7 @@ object SetupRequirements {
                 )
 
                 "widow" -> rows += exclusiveTokenRow(
-                    id = "widow.know",
+                    id = "widow.know:${seat.id}",
                     characterId = "widow",
                     label = "Know",
                     title = "Who knows about the Widow",
@@ -252,7 +270,7 @@ object SetupRequirements {
                 )
 
                 "grandmother" -> rows += exclusiveTokenRow(
-                    id = "grandmother.grandchild",
+                    id = "grandmother.grandchild:${seat.id}",
                     characterId = "grandmother",
                     label = "Grandchild",
                     title = "The Grandchild",
@@ -262,7 +280,7 @@ object SetupRequirements {
                 )
 
                 "balloonist" -> rows += exclusiveTokenRow(
-                    id = "balloonist.know",
+                    id = "balloonist.know:${seat.id}",
                     characterId = "balloonist",
                     label = "Know",
                     title = "Balloonist's first player",
@@ -271,7 +289,7 @@ object SetupRequirements {
                 )
 
                 "eviltwin" -> rows += SetupRequirement(
-                    id = "eviltwin.twin",
+                    id = "eviltwin.twin:${seat.id}",
                     characterId = "eviltwin",
                     kind = RequirementKind.PAIR,
                     title = "The good twin",
@@ -294,7 +312,7 @@ object SetupRequirements {
 
                 "bountyhunter" -> {
                     rows += SetupRequirement(
-                        id = "bountyhunter.evil",
+                        id = "bountyhunter.evil:${seat.id}",
                         characterId = "bountyhunter",
                         kind = RequirementKind.ALIGNMENT,
                         title = "The evil Townsfolk",
@@ -315,7 +333,7 @@ object SetupRequirements {
                         },
                     )
                     rows += exclusiveTokenRow(
-                        id = "bountyhunter.know",
+                        id = "bountyhunter.know:${seat.id}",
                         characterId = "bountyhunter",
                         label = "Know",
                         title = "The evil player they know",
@@ -327,7 +345,7 @@ object SetupRequirements {
                 }
 
                 "boffin" -> rows += decisionRow(
-                    id = "boffin.grant",
+                    id = "boffin.grant:${seat.id}",
                     characterId = "boffin",
                     key = Decisions.BOFFIN_GRANT,
                     kind = RequirementKind.GRANT,
@@ -342,7 +360,7 @@ object SetupRequirements {
                 )
 
                 "alchemist" -> rows += decisionRow(
-                    id = "alchemist.grant",
+                    id = "alchemist.grant:${seat.id}",
                     characterId = "alchemist",
                     key = Decisions.ALCHEMIST_GRANT,
                     kind = RequirementKind.GRANT,
@@ -357,7 +375,7 @@ object SetupRequirements {
                 )
 
                 "mezepheles" -> rows += decisionRow(
-                    id = "mezepheles.word",
+                    id = "mezepheles.word:${seat.id}",
                     characterId = "mezepheles",
                     key = Decisions.MEZEPHELES_WORD,
                     kind = RequirementKind.GRANT,
@@ -367,7 +385,7 @@ object SetupRequirements {
                 )
 
                 "xaan" -> rows += SetupRequirement(
-                    id = "xaan.X",
+                    id = "xaan.X:${seat.id}",
                     characterId = "xaan",
                     kind = RequirementKind.NUMBER,
                     title = "Xaan's X",
@@ -385,7 +403,11 @@ object SetupRequirements {
                 )
 
                 "damsel" -> rows += ackRow(
-                    id = DAMSEL_MINIONS,
+                    id = "$DAMSEL_MINIONS:${seat.id}",
+                    // One table-wide action ("show every Minion the token"), so
+                    // two Damsels share ONE decision — only the row id is
+                    // per-seat, to keep the checklist keys unique.
+                    decisionKey = DAMSEL_MINIONS,
                     characterId = "damsel",
                     kind = RequirementKind.INFORM,
                     title = "Show the Damsel token",
@@ -444,10 +466,13 @@ object SetupRequirements {
         lookup: (String) -> Character?,
     ): List<SetupRequirement> = Bluffs.requirements(state, lookup).map { req ->
         SetupRequirement(
+            // Every set but the Demon's belongs to ONE recipient and there may
+            // be several of them (two Lunatics, a Snitch's Minion each), so the
+            // seat is part of the id.
             id = when (req.sourceId) {
                 "snitch" -> "snitch.bluffs:${req.recipientId}"
-                "summoner" -> "summoner.bluffs"
-                "lunatic" -> "lunatic.bluffs"
+                "summoner" -> "summoner.bluffs:${req.recipientId}"
+                "lunatic" -> "lunatic.bluffs:${req.recipientId}"
                 else -> "demon.bluffs"
             },
             characterId = req.sourceId,
@@ -527,6 +552,7 @@ object SetupRequirements {
                     choiceBrackets.joinToString(", ") { "${it.characterId} [${it.text}]" },
                 problem = "",
                 blocking = false,
+                candidates = { s, l -> outsiderBranchCandidates(s, l) },
                 apply = { s, sel ->
                     sel.number?.let {
                         Decisions.set(s, Decisions.OUTSIDER_BRANCH, it.toString())
@@ -536,6 +562,40 @@ object SetupRequirements {
             )
         }
         return rows
+    }
+
+    /**
+     * The Outsider counts `setup.outsiderBranch` may legally record — the base
+     * distribution moved by every fixed bracket, then branched once per choice
+     * bracket ("-1 or +1 Outsider" gives two, "[-? to +? Outsiders]" gives the
+     * whole range). Offered as chips so the row is answerable without typing.
+     */
+    private fun outsiderBranchCandidates(
+        state: GameState,
+        lookup: (String) -> Character?,
+    ): List<Candidate> {
+        val residents = state.seats.filterNot { it.isTraveller }
+        val count = residents.size
+        if (count !in Setup.MIN_PLAYERS..Setup.MAX_PLAYERS) return emptyList()
+        val base = Setup.distributionFor(count).outsiders
+        val modifiers = residents.mapNotNull { it.characterId?.let(lookup) }
+            .mapNotNull(Setup::modifierFor)
+        val fixed = base + modifiers.filterNot { it.choice }.sumOf { it.outsiderDelta }
+
+        val outsiderChoices = modifiers.filter { it.choice && Team.OUTSIDER in it.choiceTeams }
+        // "[-? to +? Outsiders]" — the Kazali chooses freely, so every count is legal.
+        val openEnded = outsiderChoices.any { it.choiceDeltas[Team.OUTSIDER].isNullOrEmpty() }
+        val counts = if (openEnded) {
+            (0..count).toSet()
+        } else {
+            outsiderChoices.fold(setOf(fixed)) { totals, mod ->
+                val deltas = mod.choiceDeltas.getValue(Team.OUTSIDER)
+                totals.flatMapTo(mutableSetOf()) { total -> deltas.map { total + it } }
+            }
+        }
+        return counts.filter { it in 0..count }.sorted().map {
+            Candidate(it.toString(), if (it == 1) "1 Outsider" else "$it Outsiders")
+        }
     }
 
     // ---- predicates ---------------------------------------------------------
@@ -651,7 +711,7 @@ object SetupRequirements {
      * Advisory: `"Fake Minion"` is not an official token, so it never blocks.
      */
     private fun lunaticMinionsRow(seat: Player): SetupRequirement = SetupRequirement(
-        id = "lunatic.minions",
+        id = "lunatic.minions:${seat.id}",
         characterId = "lunatic",
         kind = RequirementKind.REMINDER,
         title = "The Lunatic's \"Minions\"",
@@ -704,7 +764,10 @@ object SetupRequirements {
         title: String,
         prompt: String,
         problem: String,
-        satisfied: (GameState, (String) -> Character?) -> Boolean = { s, _ -> Decisions.bool(s, id) },
+        /** Where the tick is stored. Defaults to [id]; seat-scoped rows pass the bare key. */
+        decisionKey: String = id,
+        satisfied: (GameState, (String) -> Character?) -> Boolean =
+            { s, _ -> Decisions.bool(s, decisionKey) },
     ): SetupRequirement = SetupRequirement(
         id = id,
         characterId = characterId,
@@ -712,7 +775,7 @@ object SetupRequirements {
         title = title,
         prompt = prompt,
         problem = problem,
-        apply = { s, _ -> Decisions.set(s, id, "true") },
+        apply = { s, _ -> Decisions.set(s, decisionKey, "true") },
         satisfied = satisfied,
     )
 
