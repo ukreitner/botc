@@ -58,14 +58,17 @@ enum class Verdict {
  *
  * The whole ledger MUST work as free text with everything else empty — recording
  * "Bo said Fay is the Imp" in a game with no Gossip in play is the point.
+ *
+ * [id], [cycle] and [atNight] are stamped by [Ledger.record]; a caller building an
+ * entry by hand leaves them at their defaults.
  */
 @Serializable
 data class LedgerEntry(
-    val id: Long,
+    val id: Long = 0L,
     /** Same numbering as [DeathEvent]: day N follows night N. */
-    val cycle: Int,
-    val atNight: Boolean,
-    val kind: LedgerKind,
+    val cycle: Int = 0,
+    val atNight: Boolean = false,
+    val kind: LedgerKind = LedgerKind.NOTE,
     /**
      * Character id ("gossip", "devilsadvocate"), a night marker ("DAWN"), or a
      * pseudo-source: "claim", "misregister", "malfunction", "note", "st".
@@ -105,10 +108,48 @@ data class LedgerEntry(
     val announcePending: Boolean = false,
 )
 
-/** Append-only writers. Each stamps cycle/atNight from the state and allocates the id (WP3). */
+/**
+ * Append-only writers (WP3). Each stamps cycle/atNight from the state and
+ * allocates the id, so no caller ever touches [GameState.nextLedgerId].
+ *
+ * Nothing here is destructive: [edit] and [delete] exist for storyteller
+ * corrections and are the only ways an entry changes shape.
+ */
 object Ledger {
 
-    fun record(state: GameState, entry: LedgerEntry): GameState = TODO("WP3")
+    /** Pseudo-sources. A character id is always preferred where one exists. */
+    object Sources {
+        /** A plain "I am the Empath" with no ability behind it. */
+        const val CLAIM: String = "claim"
+
+        /** A misregistration ruling (lead D10). */
+        const val MISREGISTER: String = "misregister"
+
+        /** A Mathematician-visible malfunction. */
+        const val MALFUNCTION: String = "malfunction"
+
+        /** Free text with no ability behind it. */
+        const val NOTE: String = "note"
+
+        /** The storyteller speaking as themself. */
+        const val STORYTELLER: String = "st"
+
+        /** [LedgerKind.IMPAIRMENT_SPAN] rows, written by `Effects.reconcile`. */
+        const val STATUS: String = "status"
+    }
+
+    /** Appends [entry], stamping id, cycle and atNight from [state]. */
+    fun record(state: GameState, entry: LedgerEntry): GameState {
+        val id = state.nextLedgerId
+        return state.copy(
+            ledger = state.ledger + entry.copy(
+                id = id,
+                cycle = state.cycle,
+                atNight = state.phase != Phase.DAY,
+            ),
+            nextLedgerId = id + 1,
+        )
+    }
 
     fun choice(
         state: GameState,
@@ -118,7 +159,18 @@ object Ledger {
         characterIds: List<String> = emptyList(),
         impaired: Boolean = false,
         byStoryteller: Boolean = false,
-    ): GameState = TODO("WP3")
+    ): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.CHOICE,
+            sourceId = sourceId,
+            actorId = actorId,
+            targetIds = targetIds,
+            characterIds = characterIds,
+            impaired = impaired,
+            byStoryteller = byStoryteller,
+        ),
+    )
 
     fun told(
         state: GameState,
@@ -127,8 +179,27 @@ object Ledger {
         shown: String,
         impaired: Boolean = false,
         text: String = "",
-    ): GameState = TODO("WP3")
+        targetIds: List<Long> = emptyList(),
+        characterIds: List<String> = emptyList(),
+    ): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.TOLD,
+            sourceId = sourceId,
+            actorId = playerId,
+            targetIds = targetIds,
+            characterIds = characterIds,
+            shown = shown,
+            text = text,
+            impaired = impaired,
+        ),
+    )
 
+    /**
+     * Something said in public. This is the one the user asked for by name:
+     * it works with **nothing** in play — `sourceId` may be [Sources.CLAIM]
+     * and every other field empty.
+     */
     fun statement(
         state: GameState,
         speakerId: Long?,
@@ -137,7 +208,24 @@ object Ledger {
         targetIds: List<Long> = emptyList(),
         characterIds: List<String> = emptyList(),
         genuine: Boolean = true,
-    ): GameState = TODO("WP3")
+        targetIdsB: List<Long> = emptyList(),
+        textB: String = "",
+        count: Int? = null,
+    ): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.STATEMENT,
+            sourceId = sourceId.ifEmpty { Sources.CLAIM },
+            actorId = speakerId,
+            targetIds = targetIds,
+            targetIdsB = targetIdsB,
+            characterIds = characterIds,
+            text = text,
+            textB = textB,
+            count = count,
+            genuine = genuine,
+        ),
+    )
 
     fun private(
         state: GameState,
@@ -145,91 +233,252 @@ object Ledger {
         sourceId: String,
         text: String,
         shown: String,
-    ): GameState = TODO("WP3")
+    ): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.PRIVATE,
+            sourceId = sourceId,
+            actorId = playerId,
+            text = text,
+            shown = shown,
+        ),
+    )
 
+    /**
+     * A storyteller decision that must stay consistent. [shown] carries the exact
+     * line to say out loud when the ruling has one (a prevented death does).
+     */
     fun ruling(
         state: GameState,
         sourceId: String,
         playerId: Long?,
         text: String,
         characterIds: List<String> = emptyList(),
-    ): GameState = TODO("WP3")
+        shown: String = "",
+    ): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.RULING,
+            sourceId = sourceId,
+            actorId = playerId,
+            characterIds = characterIds,
+            text = text,
+            shown = shown,
+        ),
+    )
 
-    fun announce(state: GameState, text: String, sourceId: String = ""): GameState = TODO("WP3")
+    /** Something the storyteller still owes the table. Pending until [markAnnounced]. */
+    fun announce(
+        state: GameState,
+        text: String,
+        sourceId: String = Sources.STORYTELLER,
+        actorId: Long? = null,
+        detail: String = "",
+    ): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.ANNOUNCE,
+            sourceId = sourceId.ifEmpty { Sources.STORYTELLER },
+            actorId = actorId,
+            text = text,
+            textB = detail,
+            announcePending = true,
+        ),
+    )
 
     fun woke(state: GameState, playerId: Long, sourceId: String, ownAbility: Boolean): GameState =
-        TODO("WP3")
+        record(
+            state,
+            LedgerEntry(
+                kind = LedgerKind.WOKE,
+                sourceId = sourceId,
+                actorId = playerId,
+                genuine = ownAbility,
+                byStoryteller = !ownAbility,
+            ),
+        )
 
     fun malfunction(
         state: GameState,
         playerId: Long,
         sourceId: String,
         reason: String,
-    ): GameState = TODO("WP3")
+    ): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.MALFUNCTION,
+            sourceId = sourceId,
+            actorId = playerId,
+            text = reason,
+            impaired = true,
+        ),
+    )
 
-    fun spent(state: GameState, sourceId: String, actorId: Long): GameState = TODO("WP3")
+    fun spent(state: GameState, sourceId: String, actorId: Long): GameState = record(
+        state,
+        LedgerEntry(kind = LedgerKind.SPENT, sourceId = sourceId, actorId = actorId),
+    )
 
-    fun markAnnounced(state: GameState, id: Long): GameState = TODO("WP3")
+    /**
+     * Opens an impairment window for one seat (lead D41). Closed by [resolve].
+     * Written only by `Effects.reconcile` — never by a screen.
+     */
+    fun impairmentSpan(state: GameState, playerId: Long, reason: String): GameState = record(
+        state,
+        LedgerEntry(
+            kind = LedgerKind.IMPAIRMENT_SPAN,
+            sourceId = Sources.STATUS,
+            actorId = playerId,
+            text = reason,
+            impaired = true,
+        ),
+    )
 
-    fun setVerdict(state: GameState, id: Long, verdict: Verdict): GameState = TODO("WP3")
+    /** Free text with no other structure. */
+    fun note(state: GameState, text: String, playerId: Long? = null): GameState = record(
+        state,
+        LedgerEntry(kind = LedgerKind.NOTE, sourceId = Sources.NOTE, actorId = playerId, text = text),
+    )
+
+    fun markAnnounced(state: GameState, id: Long): GameState =
+        edit(state, id) { it.copy(announcePending = false) }
+
+    fun setVerdict(state: GameState, id: Long, verdict: Verdict): GameState =
+        edit(state, id) { it.copy(verdict = verdict) }
 
     /** Sets `resolvedCycle = state.cycle`. */
-    fun resolve(state: GameState, id: Long): GameState = TODO("WP3")
+    fun resolve(state: GameState, id: Long): GameState =
+        edit(state, id) { it.copy(resolvedCycle = state.cycle) }
 
-    fun edit(state: GameState, id: Long, transform: (LedgerEntry) -> LedgerEntry): GameState =
-        TODO("WP3")
+    fun edit(state: GameState, id: Long, transform: (LedgerEntry) -> LedgerEntry): GameState {
+        if (state.ledger.none { it.id == id }) return state
+        return state.copy(
+            ledger = state.ledger.map { if (it.id == id) transform(it).copy(id = id) else it },
+        )
+    }
 
-    fun delete(state: GameState, id: Long): GameState = TODO("WP3")
+    fun delete(state: GameState, id: Long): GameState =
+        state.copy(ledger = state.ledger.filterNot { it.id == id })
 }
 
-/** Read-only queries. Nothing here is stored; everything derives from the ledger (WP3). */
+/**
+ * Read-only queries over the ledger (WP3). Nothing here is stored; a map of
+ * "last night's choice" would break with two Village Idiots and would need its
+ * own undo discipline, which an append-only list gets for free (lead D3).
+ */
 object Memory {
 
-    /** The most recent CHOICE by [sourceId] (optionally by one holder) strictly before [beforeCycle]. */
+    private fun sameSource(entry: LedgerEntry, sourceId: String): Boolean =
+        Character.normalizeId(entry.sourceId) == Character.normalizeId(sourceId)
+
+    /** Every entry of [kind] written by [sourceId], oldest first. */
+    fun by(state: GameState, kind: LedgerKind, sourceId: String, holderId: Long? = null): List<LedgerEntry> =
+        state.ledger.filter {
+            it.kind == kind && sameSource(it, sourceId) && (holderId == null || it.actorId == holderId)
+        }
+
+    /**
+     * The most recent CHOICE by [sourceId] (optionally by one holder) strictly
+     * before [beforeCycle]. This is what survives the token sweep: the Devil's
+     * Advocate's `Survives Execution` token is gone by dusk, the choice is not.
+     */
     fun lastChoice(
         state: GameState,
         sourceId: String,
         holderId: Long? = null,
         beforeCycle: Int = state.cycle,
-    ): LedgerEntry? = TODO("WP3")
+    ): LedgerEntry? = by(state, LedgerKind.CHOICE, sourceId, holderId).lastOrNull { it.cycle < beforeCycle }
 
     /** Seats [sourceId] may NOT pick tonight because of a "different to last night" clause. */
     fun forbiddenTargets(state: GameState, sourceId: String, holderId: Long? = null): Set<Long> =
-        TODO("WP3")
+        lastChoice(state, sourceId, holderId)?.targetIds?.toSet().orEmpty()
 
     /** Every seat [sourceId] has ever chosen — "cannot learn the same evil player twice". */
     fun everChosen(state: GameState, sourceId: String, holderId: Long? = null): Set<Long> =
-        TODO("WP3")
+        by(state, LedgerKind.CHOICE, sourceId, holderId).flatMap { it.targetIds }.toSet()
 
-    fun choseNobodyLastNight(state: GameState, sourceId: String, holderId: Long? = null): Boolean =
-        TODO("WP3")
+    /**
+     * True when [sourceId] was asked last night and picked nobody (the Po's charge).
+     * A night on which the step never ran is not a "chose nobody" night.
+     */
+    fun choseNobodyLastNight(state: GameState, sourceId: String, holderId: Long? = null): Boolean {
+        val lastNight = by(state, LedgerKind.CHOICE, sourceId, holderId)
+            .filter { it.cycle == state.cycle - 1 && it.atNight }
+        return lastNight.isNotEmpty() && lastNight.all { it.targetIds.isEmpty() }
+    }
 
-    fun isSpent(state: GameState, sourceId: String, actorId: Long? = null): Boolean = TODO("WP3")
+    /** Has this once-per-game ability been used? Reads SPENT rows, never a token. */
+    fun isSpent(state: GameState, sourceId: String, actorId: Long? = null): Boolean =
+        by(state, LedgerKind.SPENT, sourceId, actorId).isNotEmpty()
 
+    /**
+     * Everything said in public on [day]. With `sourceId = null` this is the whole
+     * "what was said today" card — which must work in a game with nothing in play.
+     */
     fun statementsOn(
         state: GameState,
         day: Int,
         sourceId: String? = null,
         speakerId: Long? = null,
-    ): List<LedgerEntry> = TODO("WP3")
+    ): List<LedgerEntry> = state.ledger.filter {
+        it.kind == LedgerKind.STATEMENT &&
+            it.cycle == day &&
+            (sourceId == null || sameSource(it, sourceId)) &&
+            (speakerId == null || it.actorId == speakerId)
+    }
 
-    fun unresolved(state: GameState, sourceId: String, day: Int): List<LedgerEntry> = TODO("WP3")
+    /** Entries by [sourceId] on [day] a later step has not consumed yet. */
+    fun unresolved(state: GameState, sourceId: String, day: Int): List<LedgerEntry> =
+        state.ledger.filter {
+            sameSource(it, sourceId) && it.cycle == day && it.resolvedCycle == null
+        }
 
-    fun pendingAnnouncements(state: GameState): List<LedgerEntry> = TODO("WP3")
+    fun pendingAnnouncements(state: GameState): List<LedgerEntry> =
+        state.ledger.filter { it.kind == LedgerKind.ANNOUNCE && it.announcePending }
 
     /**
-     * Everything ever told to, chosen by, or said by one seat — merged with deaths,
-     * nominations, votes and executions. This is the seat sheet's History section.
+     * Everything ever told to, chosen by, or said by one seat. Merged with deaths,
+     * nominations and executions by [GameLog]; this is the ledger half.
      */
-    fun forPlayer(state: GameState, playerId: Long): List<LedgerEntry> = TODO("WP3")
+    fun forPlayer(state: GameState, playerId: Long): List<LedgerEntry> =
+        state.ledger.filter {
+            it.actorId == playerId || playerId in it.targetIds || playerId in it.targetIdsB
+        }
 
-    fun ruling(state: GameState, playerId: Long, askedBy: String): LedgerEntry? = TODO("WP3")
+    /** The standing ruling for how [playerId] registers to [askedBy], if any. */
+    fun ruling(state: GameState, playerId: Long, askedBy: String): LedgerEntry? {
+        val rulings = state.ledger.filter { it.kind == LedgerKind.RULING && it.actorId == playerId }
+        return rulings.lastOrNull { sameSource(it, askedBy) }
+            ?: rulings.lastOrNull { sameSource(it, Ledger.Sources.MISREGISTER) }
+    }
 
-    fun typesSeen(state: GameState, lookup: (String) -> Character?, actorId: Long): List<Team> =
-        TODO("WP3")
+    /** Character types this seat has already been shown — the Balloonist's memory. */
+    fun typesSeen(state: GameState, lookup: (String) -> Character?, actorId: Long): List<Team> {
+        val out = linkedSetOf<Team>()
+        for (entry in state.ledger) {
+            if (entry.actorId != actorId) continue
+            if (entry.kind != LedgerKind.TOLD && entry.kind != LedgerKind.CHOICE) continue
+            for (id in entry.characterIds) lookup(Character.normalizeId(id))?.team?.let { out += it }
+            for (seat in entry.targetIds) {
+                state.player(seat)?.characterId?.let(lookup)?.team?.let { out += it }
+            }
+        }
+        return out.toList()
+    }
 
-    fun cyclesSince(state: GameState, playerId: Long, sourceId: String, label: String): Int? =
-        TODO("WP3")
+    /**
+     * Cycles elapsed since `(sourceId, label)` was placed on [playerId] — the
+     * label-independent way to run any countdown. Null when it is not placed.
+     */
+    fun cyclesSince(state: GameState, playerId: Long, sourceId: String, label: String): Int? {
+        val key = Tokens.key(sourceId, label)
+        val placed = state.player(playerId)?.reminders?.firstOrNull { Tokens.key(it) == key }
+        if (placed != null) return state.cycle - placed.placedCycle
+        val effect = state.effects.firstOrNull {
+            it.targetId == playerId && Tokens.key(it.sourceCharacterId, it.label) == key
+        }
+        return effect?.let { state.cycle - it.createdCycle }
+    }
 
     /** Was this seat impaired at any point in [fromCycle]..[toCycle]? Reads IMPAIRMENT_SPAN. */
     fun wasImpairedDuring(
@@ -237,5 +486,10 @@ object Memory {
         playerId: Long,
         fromCycle: Int,
         toCycle: Int,
-    ): Boolean = TODO("WP3")
+    ): Boolean = state.ledger.any {
+        it.kind == LedgerKind.IMPAIRMENT_SPAN &&
+            it.actorId == playerId &&
+            it.cycle <= toCycle &&
+            (it.resolvedCycle ?: Int.MAX_VALUE) >= fromCycle
+    }
 }

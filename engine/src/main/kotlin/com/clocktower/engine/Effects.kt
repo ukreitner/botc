@@ -997,32 +997,18 @@ object Effects {
         val open = state.ledger
             .filter { it.kind == LedgerKind.IMPAIRMENT_SPAN && it.resolvedCycle == null }
             .associateBy { it.actorId }
-        var ledger = state.ledger
-        var nextId = state.nextLedgerId
-        var changed = false
+        // WP3: both writes go through Ledger, which owns id/cycle/atNight stamping.
+        var next = state
         for (p in state.seats) {
             val reasons = impairedNow[p.id].orEmpty()
             val span = open[p.id]
             if (reasons.isNotEmpty() && span == null) {
-                ledger = ledger + LedgerEntry(
-                    id = nextId++,
-                    cycle = state.cycle,
-                    atNight = state.phase != Phase.DAY,
-                    kind = LedgerKind.IMPAIRMENT_SPAN,
-                    sourceId = "status",
-                    actorId = p.id,
-                    text = reasons.joinToString("; ") { it.text },
-                    impaired = true,
-                )
-                changed = true
+                next = Ledger.impairmentSpan(next, p.id, reasons.joinToString("; ") { it.text })
             } else if (reasons.isEmpty() && span != null) {
-                ledger = ledger.map {
-                    if (it.id == span.id) it.copy(resolvedCycle = state.cycle) else it
-                }
-                changed = true
+                next = Ledger.resolve(next, span.id)
             }
         }
-        return if (changed) state.copy(ledger = ledger, nextLedgerId = nextId) else state
+        return next
     }
 
     /** One DECIDE prompt per live paradox, never duplicated. */
