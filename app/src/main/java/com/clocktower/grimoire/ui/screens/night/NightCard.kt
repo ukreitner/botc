@@ -47,10 +47,13 @@ import com.clocktower.engine.NightInput
 import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
+import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.TokenCopies
+import com.clocktower.grimoire.ui.components.labelCopies
 import com.clocktower.grimoire.ui.components.ShowCard
 import com.clocktower.grimoire.ui.components.asCard
 import com.clocktower.grimoire.ui.theme.AgedGold
@@ -480,6 +483,7 @@ private fun SecondaryDrawer(
                 )
             }
         }
+        TokenPlacer(viewModel, state, step)
         if (step.key.token in state.nightStepsDone) {
             NightChip(
                 label = "undo this step — put it back on the sheet",
@@ -503,6 +507,70 @@ private fun SecondaryDrawer(
                 lineHeight = nightSp(19f).sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * A hand-placed reminder token for this character, for the cases the registry
+ * cannot know about (a storyteller ruling, a homebrew script).
+ *
+ * It goes through `GameActionsApi.placeToken`, which honours the number of
+ * physical copies `characters.json` lists. The old night tray counted copies
+ * itself and, once they were all placed, silently removed whichever copy
+ * happened to be first in iteration order (defect #31).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TokenPlacer(viewModel: GameViewModel, state: GameState, step: NightStep) {
+    val character = viewModel.characterById(step.abilityId) ?: return
+    val tokens = remember(character.id) { labelCopies(character.allReminders) }
+    if (tokens.isEmpty()) return
+    var pending by remember(step.key.token) { mutableStateOf<TokenCopies?>(null) }
+
+    Text(
+        text = "PLACE A TOKEN BY HAND",
+        fontSize = NIGHT_MIN_SP.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        for (token in tokens) {
+            val label = if (token.copies > 1) "${token.label} ×${token.copies}" else token.label
+            NightChip(
+                label = if (pending?.label == token.label) "✓ $label" else label,
+                tone = if (pending?.label == token.label) Tone.ACTIVE else Tone.MUTED,
+                onClick = { pending = if (pending?.label == token.label) null else token },
+            )
+        }
+    }
+    pending?.let { token ->
+        Text(
+            text = "Place “${token.label}” on:",
+            fontSize = NIGHT_MIN_SP.sp,
+            color = AgedGold,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            for ((index, seat) in state.seats.withIndex()) {
+                NightChip(
+                    label = "${index + 1} ${seat.name}",
+                    tone = Tone.NORMAL,
+                    onClick = {
+                        viewModel.placeToken(
+                            playerId = seat.id,
+                            reminder = PlacedReminder(sourceId = character.id, label = token.label),
+                            copies = token.copies,
+                        )
+                        pending = null
+                    },
+                )
+            }
         }
     }
 }

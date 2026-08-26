@@ -80,7 +80,6 @@ class SourceGatesTest {
     }
 
     @Test
-    @Ignore("WP8 — NightScreen.kt still names 7 character ids (snakecharmer, fanggu x2, professor x2, imp, scarletwoman) in its four hard-coded resolvers; enable when WP8 lands the registry-driven screen")
     fun `NightScreen branches on no character id`() {
         val hits = characterIdLiterals(nightScreen)
         assertTrue(hits.isEmpty(), "character ids in NightScreen.kt (I1):\n" + hits.joinToString("\n"))

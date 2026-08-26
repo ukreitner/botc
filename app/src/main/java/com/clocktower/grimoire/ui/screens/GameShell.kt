@@ -152,7 +152,9 @@ fun GameShell(
                         Text(state.script.name, style = MaterialTheme.typography.titleMedium)
                         Text(
                             "$phaseLabel · ${state.alivePlayers.size}/${state.players.size} alive",
-                            style = MaterialTheme.typography.labelMedium,
+                            // 14 sp floor: the top bar is read at arm's length
+                            // in a dark room like everything else.
+                            style = MaterialTheme.typography.bodyMedium,
                             color = AgedGold,
                         )
                     }

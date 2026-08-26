@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.ChooseCharacter
+import com.clocktower.engine.Effects
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.GameState
@@ -46,7 +47,12 @@ import com.clocktower.engine.Team
 import com.clocktower.engine.YesNo
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.StatusPip
+import com.clocktower.grimoire.ui.components.visiblePips
 import com.clocktower.grimoire.ui.theme.AgedGold
+
+/** How many status pips one seat cell has room for beside its token. */
+private const val PIP_BUDGET = 3
 
 /**
  * Every seat, annotated with what this step's constraints make of it.
@@ -264,7 +270,21 @@ private fun SeatCell(
             size = 34.dp,
             dimmed = !option.alive || blockedReason != null,
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
+        // WP10's status pips, so "she is marked SAFE" is visible while the
+        // storyteller is choosing rather than after they have chosen.
+        val pips = remember(state, option.id) {
+            visiblePips(
+                Effects.rendered(state, viewModel::characterById, option.id).map { it.group },
+                budget = PIP_BUDGET,
+            )
+        }
+        if (pips.shown.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                for (group in pips.shown) StatusPip(group = group, size = 14.dp)
+            }
+            Spacer(Modifier.width(6.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(
                 text = "${option.seat}  ${option.name}",

@@ -370,7 +370,7 @@ class FullGamePlaytestTest {
                 }
             }
             assertEquals(
-                sheet.map { it.id }.toSet(),
+                sheet.map { it.slotId }.toSet(),
                 state.nightStepsDone,
                 "${scenario.title} N${night.cycle}: checklist completion",
             )
