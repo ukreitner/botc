@@ -670,7 +670,17 @@ private fun organGrinder(): CharacterRule {
         firstNight = rule,
         otherNight = rule,
         tokens = listOf(
-            TokenRule("organgrinder", "Drunk", EffectKind.DRUNK, Until.DUSK, impairs = true),
+            // `endsWithSource = false` is load-bearing, and this row exists for it.
+            // The Organ Grinder drunkens THEMSELVES, so a source-ending effect is
+            // circular: the drunkenness breaks the ability that sustains it, which
+            // un-drunkens them, which re-sustains it. `Status.abilityWorks` resolves
+            // that circle as "the ability works", so a nodded-yes Organ Grinder
+            // would still have closed every eye. The drunkenness is the ability's
+            // own product and outlives it, exactly like `sweetheart/Drunk`.
+            TokenRule(
+                "organgrinder", "Drunk", EffectKind.DRUNK, Until.DUSK,
+                endsWithSource = false, impairs = true,
+            ),
             TokenRule("organgrinder", "About To Die", null, Until.DAWN),
         ),
     )
