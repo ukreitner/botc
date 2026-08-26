@@ -48,7 +48,14 @@ object WinCheck {
     const val RULE_FEARMONGER: String = "fearmonger"
     const val RULE_EVIL_TWIN: String = "eviltwin-good-executed"
     const val RULE_ATHEIST: String = "atheist-storyteller-executed"
-    const val RULE_HERETIC: String = "heretic"
+    const val RULE_LEVIATHAN_TWO_GOOD: String = "leviathan-two-good"
+
+    /**
+     * Advisory dedupe and dismissal key on [Advisory.ruleId], never on the prose —
+     * the same rule may word itself differently on two evaluations, and two
+     * different rules may read alike.
+     */
+    fun dedupe(advisories: List<Advisory>): List<Advisory> = advisories.distinctBy { it.ruleId }
 
     /** Continuous and cheap; called on any state change. */
     fun check(state: GameState, lookup: (String) -> Character?): Advisory? =
@@ -239,6 +246,9 @@ object WinCheck {
             return null
         }
 
+        // An executed storyteller ends an Atheist game outright, before anything
+        // the board would otherwise say.
+        atheistExecution(state)?.let { return it }
         saint(state, lookup, players)?.let { return it }
 
         if (demons.isNotEmpty() && aliveDemons.isEmpty()) {
@@ -284,9 +294,23 @@ object WinCheck {
         goblinClaim(state, lookup)?.let { return it }
         fearmonger(state, lookup)?.let { return it }
         evilTwin(state, lookup)?.let { return it }
-        atheistExecution(state)?.let { return it }
+        leviathanCounter(state)?.let { return it }
 
         return null
+    }
+
+    /** "If 2 good players are executed, evil wins." Counted from the tokens. */
+    private fun leviathanCounter(state: GameState): Advisory? {
+        if (DayRules.holderOf(state, "leviathan") == null) return null
+        val key = Tokens.key("leviathan", "Good Player Executed")
+        val marks = (state.storytellerReminders + state.players.flatMap { it.reminders })
+            .count { Tokens.key(it) == key }
+        if (marks < 2) return null
+        return Advisory(
+            goodWins = false,
+            reason = "Two good players have been executed — the Leviathan wins.",
+            ruleId = RULE_LEVIATHAN_TWO_GOOD,
+        )
     }
 
     /**
@@ -406,10 +430,7 @@ object WinCheck {
         state: GameState,
         lookup: (String) -> Character?,
         advisories: List<Advisory>,
-    ): List<Advisory> = advisories
-        .let { atheistPass(state, it) }
-        .let { hereticPass(state, lookup, it) }
-        .distinctBy { it.ruleId }
+    ): List<Advisory> = dedupe(hereticPass(state, lookup, atheistPass(state, advisories)))
 
     /**
      * "If the storyteller is executed, good wins" — and while the Atheist has
