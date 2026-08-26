@@ -35,6 +35,7 @@ import com.clocktower.grimoire.ui.screens.night.isDestructive
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
 import com.clocktower.grimoire.ui.screens.night.nightSp
 import com.clocktower.grimoire.ui.screens.night.placedLabels
+import com.clocktower.grimoire.ui.screens.night.pointPrefix
 import com.clocktower.grimoire.ui.screens.night.primaryEnabled
 import com.clocktower.grimoire.ui.screens.night.primaryLabel
 import com.clocktower.grimoire.ui.screens.night.progress
@@ -356,6 +357,14 @@ class NightRowsTest {
             answerLabel(Answer.Characters(listOf("poisoner")), characterName = { "Poisoner" }),
         )
         assertEquals("Ben", answerLabel(Answer.Players(listOf(4L)), playerName = { "Ben" }))
+    }
+
+    @Test
+    fun `a point card names the players and says whether a token goes above them`() {
+        assertEquals("ONE OF THESE PLAYERS IS THE", pointPrefix(withCharacter = true, names = 2))
+        assertEquals("THIS PLAYER IS THE", pointPrefix(withCharacter = true, names = 1))
+        assertEquals("THESE PLAYERS", pointPrefix(withCharacter = false, names = 3))
+        assertEquals("THIS PLAYER", pointPrefix(withCharacter = false, names = 1))
     }
 
     // ---- the dim control ---------------------------------------------------

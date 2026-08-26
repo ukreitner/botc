@@ -35,10 +35,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.clocktower.engine.CardOffer
+import com.clocktower.engine.Answer
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.GameState
 import com.clocktower.engine.InfoCalc
+import com.clocktower.engine.InfoResult
 import com.clocktower.engine.KillCause
 import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.NightEffect
@@ -116,8 +117,10 @@ fun NightCard(
             null
         }
     }
-    val offers = remember(step.cards, info) {
-        (step.cards + info?.let { NightPlan.cardsFor(it) }.orEmpty()).distinctBy { it.label }
+    val offers = remember(step.cards, info, state) {
+        val fromEngine = (step.cards + info?.let { NightPlan.cardsFor(it) }.orEmpty())
+            .map { UiOffer(it.label, it.card.asCard(), it.truthful, it.editable) }
+        (fromEngine + pointOffers(state, viewModel, info)).distinctBy { it.label }
     }
     val answer = info?.let {
         answerLabel(
@@ -397,6 +400,80 @@ fun NightCard(
     }
 }
 
+/**
+ * One card the storyteller can hold up, as the SCREEN sees it.
+ *
+ * The engine offers `CardOffer(label, ShowCardSpec, truthful)`. Two answer
+ * shapes have no `ShowCardSpec` to carry them yet — "point at these players"
+ * and "here are two tokens at once" — so the screen builds those itself from
+ * the same typed `InfoResult` (see [pointOffers]). When `ShowCardSpec` grows
+ * `PointCard` and `MultiTokenCard`, [pointOffers] deletes and the registry
+ * offers them directly.
+ */
+data class UiOffer(
+    val label: String,
+    val card: ShowCard,
+    val truthful: Boolean,
+    val editable: Boolean = true,
+)
+
+/**
+ * The card the app never had (ux/night-screen defect #18, its "largest single
+ * gap between the paper procedure and the app"): the phone does the pointing,
+ * so the storyteller's other hand — the one that taps knees — stays free.
+ *
+ * Washerwoman, Librarian, Investigator, Noble, Steward, Knight, Sage,
+ * Grandmother and every "point out the Minions" step answer with
+ * `Answer.Players`; the Dreamer answers with two characters at once. Lies get
+ * the same treatment, from `InfoResult.alternatives`, so a poisoned holder is
+ * never offered a red heading with nothing under it (defect #16).
+ */
+private fun pointOffers(
+    state: GameState,
+    viewModel: GameViewModel,
+    info: InfoResult?,
+): List<UiOffer> {
+    info ?: return emptyList()
+    fun cardFor(answer: Answer): ShowCard? = when {
+        answer is Answer.Players && answer.ids.isNotEmpty() -> {
+            val seats = answer.ids.mapNotNull { id ->
+                state.seats.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { it + 1 to state.player(id) }
+            }
+            ShowCard.PointCard(
+                prefix = pointPrefix(answer.characterId != null, seats.size),
+                playerNames = seats.mapNotNull { it.second?.name },
+                seatNumbers = seats.map { it.first },
+                characterId = answer.characterId,
+            )
+        }
+        answer is Answer.Characters && answer.ids.size > 1 ->
+            ShowCard.MultiTokenCard("THESE CHARACTERS", answer.ids)
+        else -> null
+    }
+    fun label(answer: Answer, truthful: Boolean): String {
+        val what = when (answer) {
+            is Answer.Players -> answer.ids.mapNotNull { state.player(it)?.name }.joinToString(", ")
+            is Answer.Characters -> answer.ids.joinToString(", ") { viewModel.characterById(it)?.name ?: it }
+            else -> ""
+        }
+        return if (truthful) "SHOW: $what" else "LIE · SHOW $what"
+    }
+    return buildList {
+        cardFor(info.answer)?.let { add(UiOffer(label(info.answer, true), it, true)) }
+        for (alternative in info.alternatives) {
+            cardFor(alternative)?.let { add(UiOffer(label(alternative, false), it, false)) }
+        }
+    }
+}
+
+/** The line above the names on a [ShowCard.PointCard]. */
+fun pointPrefix(withCharacter: Boolean, names: Int): String = when {
+    withCharacter && names > 1 -> "ONE OF THESE PLAYERS IS THE"
+    withCharacter -> "THIS PLAYER IS THE"
+    names > 1 -> "THESE PLAYERS"
+    else -> "THIS PLAYER"
+}
+
 /** The kill funnel's own words, under the picker and above the button. */
 fun outcomeDetail(outcome: KillOutcome): String = when (outcome) {
     is KillOutcome.Dies -> outcome.reason.ifBlank { "Nothing stops it — they die." }
@@ -418,7 +495,7 @@ fun outcomeDetail(outcome: KillOutcome): String = when (outcome) {
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun CardOffers(
-    offers: List<CardOffer>,
+    offers: List<UiOffer>,
     recipientId: Long?,
     onShow: (ShowCard, Long?, Boolean) -> Unit,
     onEdit: (ShowCard) -> Unit,
@@ -429,7 +506,7 @@ private fun CardOffers(
     ) {
         for (offer in offers) {
             val tone = if (offer.truthful) Tone.ACTIVE else Tone.ALERT
-            val card = offer.card.asCard()
+            val card = offer.card
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
