@@ -63,9 +63,12 @@ class StatusEffectsTest {
         state = GameActions.advancePhase(state)
         state = state.copy(cycle = 2)
         state = GameActions.addReminder(state, 0, PlacedReminder("exorcist", "Chosen"))
-        val steps = data.nightOrder.otherNight(state, data::character)
-        val demonStep = steps.first { it.id == "zombuul" }
-        assertTrue("EXORCIST" in demonStep.detail, demonStep.detail)
+        val steps = NightPlan.build(state, data::character).steps
+        val demonStep = steps.first { it.slotId == "zombuul" }
+        // WP2: the Exorcist annotation became a REDUCED gate plus a banner —
+        // the deferred half of a silenced Demon still runs (lead D24).
+        assertTrue(demonStep.gate is StepGate.Reduced, demonStep.gate.toString())
+        assertTrue("Exorcist" in demonStep.banner, demonStep.banner)
     }
 
     @Test

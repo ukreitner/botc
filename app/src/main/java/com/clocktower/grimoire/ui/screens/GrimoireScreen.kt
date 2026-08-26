@@ -71,6 +71,7 @@ import com.clocktower.engine.Effects
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Identity
 import com.clocktower.engine.NightMarkers
+import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.engine.RenderedToken
@@ -409,18 +410,15 @@ private fun CircleView(
         if (state.phase != Phase.NIGHT) {
             emptyMap()
         } else {
-            val steps = if (state.cycle == 1) {
-                viewModel.gameData.nightOrder.firstNight(state, viewModel::characterById)
-            } else {
-                viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
-            }
-            val acting = steps.filter { it.id !in NightMarkers.all && it.playerIds.isNotEmpty() }
-            val slotIndex = acting.mapIndexed { index, step -> step.id to index + 1 }.toMap()
+            // WP2 redirect: NightPlan.build replaces the deleted NightOrder.
+            val steps = NightPlan.build(state, viewModel::characterById).steps
+            val acting = steps.filter { it.slotId !in NightMarkers.all && it.playerIds.isNotEmpty() }
+            val slotIndex = acting.mapIndexed { index, step -> step.slotId to index + 1 }.toMap()
             val out = LinkedHashMap<Long, Int>()
             for (p in state.players) {
                 val roles = Identity.actingRoles(state, viewModel::characterById, p)
                 val n = roles.mapNotNull { slotIndex[it.slotId] ?: slotIndex[it.abilityId] }.minOrNull()
-                    ?: acting.firstOrNull { p.id in it.playerIds }?.let { slotIndex[it.id] }
+                    ?: acting.firstOrNull { p.id in it.playerIds }?.let { slotIndex[it.slotId] }
                 if (n != null) out[p.id] = n
             }
             out

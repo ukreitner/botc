@@ -16,12 +16,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
@@ -49,14 +49,15 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameState
-import com.clocktower.engine.InfoCalc
-import com.clocktower.engine.StatusEffects
 import com.clocktower.engine.GuideShow
+import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.NightGuide
 import com.clocktower.engine.NightMarkers
-import com.clocktower.engine.NightOrderStep
+import com.clocktower.engine.NightPlan
+import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Player
+import com.clocktower.engine.StatusEffects
 import com.clocktower.engine.Team
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
@@ -81,12 +82,10 @@ fun NightScreen(
     onOpenShowTool: () -> Unit = {},
 ) {
     val isFirstNight = state.cycle == 1
-    val steps = remember(state.players, state.fabledIds, state.cycle, state.demonBluffIds) {
-        if (isFirstNight) {
-            viewModel.gameData.nightOrder.firstNight(state, viewModel::characterById)
-        } else {
-            viewModel.gameData.nightOrder.otherNight(state, viewModel::characterById)
-        }
+    // WP2 redirect: the sheet is NightPlan.build(state) — a pure function of
+    // tonight's state. WP8 replaces this screen with the registry-driven one.
+    val steps = remember(state) {
+        NightPlan.build(state, viewModel::characterById).steps
     }
     var expandedId by rememberSaveable(state.cycle) {
         mutableStateOf(steps.firstOrNull { it.id !in state.nightStepsDone }?.id)
@@ -462,7 +461,7 @@ private fun GuideShowDialog(
 private fun QuickResolutions(
     viewModel: GameViewModel,
     state: GameState,
-    step: NightOrderStep,
+    step: NightStep,
 ) {
     val holder = step.playerIds.firstOrNull()?.let { state.player(it) } ?: return
     fun teamOf(p: Player): Team? = viewModel.characterById(p.characterId)?.team
@@ -690,7 +689,7 @@ private fun ResolutionPicker(
 private fun NightStepRow(
     viewModel: GameViewModel,
     state: GameState,
-    step: NightOrderStep,
+    step: NightStep,
     done: Boolean,
     expanded: Boolean,
     onExpand: () -> Unit,
@@ -770,7 +769,7 @@ private fun NightStepRow(
 private fun StepDetailPanel(
     viewModel: GameViewModel,
     state: GameState,
-    step: NightOrderStep,
+    step: NightStep,
     onShow: (ShowCard) -> Unit,
 ) {
     Column(

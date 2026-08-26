@@ -12,7 +12,7 @@ class GameData(
 ) {
     private val byId: Map<String, Character> = characters.associateBy { it.id }
 
-    val nightOrder = NightOrder(firstNightOrder, otherNightOrder)
+    /** Night order lists live on [NightPlan] now; WP2 deleted `NightOrder`. */
 
     fun character(id: String): Character? = byId[Character.normalizeId(id)]
 

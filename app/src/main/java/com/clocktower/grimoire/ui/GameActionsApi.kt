@@ -4,6 +4,7 @@ import com.clocktower.engine.Alignment
 import com.clocktower.engine.Bluffs
 import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.Character
+import com.clocktower.engine.DayRules
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.Decisions
@@ -18,6 +19,9 @@ import com.clocktower.engine.KillCause
 import com.clocktower.engine.Ledger
 import com.clocktower.engine.LedgerEntry
 import com.clocktower.engine.LedgerKind
+import com.clocktower.engine.InfoCalc
+import com.clocktower.engine.InfoResult
+import com.clocktower.engine.NightInput
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Nomination
 import com.clocktower.engine.NominationTrigger
@@ -33,6 +37,7 @@ import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.Tokens
 import com.clocktower.engine.Verdict
 import com.clocktower.engine.DayRules
+import com.clocktower.engine.StepKey
 import kotlin.random.Random
 
 /**
@@ -125,6 +130,27 @@ interface GameActionsApi {
     // ---- WP1: effects, status, deaths ----
 
     // ---- WP2: night ----
+
+    /**
+     * Tonight's sheet. Pure and cheap: rebuild it on every recomposition rather
+     * than caching, so an insertion appears the moment state changes (I6).
+     */
+    fun nightPlan(state: GameState): NightPlan = NightPlan.build(state, lookup)
+
+    /** Applies what the storyteller entered on one night step, and ticks it. */
+    fun resolveNightStep(key: StepKey, input: NightInput) =
+        update { NightPlan.resolve(it, lookup, key, input) }
+
+    /** Ticks or un-ticks one row by its [StepKey.token]. */
+    fun toggleNightStep(key: StepKey) = update { NightPlan.toggleDone(it, key.token) }
+
+    /** The information one step computes, typed, with the lies it may be told with. */
+    fun nightInfo(
+        state: GameState,
+        characterId: String,
+        holderId: Long?,
+        targets: List<Long> = emptyList(),
+    ): InfoResult? = InfoCalc.compute(state, lookup, characterId, holderId, targets)
 
     // ---- WP3: day, ledger, execution ----
 

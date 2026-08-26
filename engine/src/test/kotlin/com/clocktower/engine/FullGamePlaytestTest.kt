@@ -314,16 +314,12 @@ class FullGamePlaytestTest {
             assertEquals(Phase.NIGHT, state.phase)
             assertEquals(night.cycle, state.cycle)
 
-            val sheet = if (night.cycle == 1) {
-                data.nightOrder.firstNight(state, data::character)
-            } else {
-                data.nightOrder.otherNight(state, data::character)
-            }
+            val sheet = NightPlan.build(state, data::character).steps
             val recordedSheetIds = night.actions
                 .filterNot { it.stepId.startsWith("MANUAL:") }
                 .map { it.stepId }
             assertEquals(
-                sheet.map { it.id },
+                sheet.map { it.slotId },
                 recordedSheetIds,
                 "${scenario.title} night ${night.cycle}: every night-sheet row must be recorded in order",
             )
@@ -876,7 +872,7 @@ class FullGamePlaytestTest {
                     "mathematician",
                     "Otis",
                     "No abilities had malfunctioned; Otis was shown 0.",
-                    info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "Count abilities", informationShown = "0", caveatContains = "Track malfunctions"),
+                    info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "malfunctioned since dawn", informationShown = "0"),
                 ),
                 action(NightMarkers.DAWN, "Storyteller", "Dawn: no deaths."),
             ),
@@ -950,7 +946,7 @@ class FullGamePlaytestTest {
                     info = InfoCheck("oracle", "Farah", engineHeadlineContains = "2 dead", informationShown = "1", caveatContains = "POISONED"),
                 ),
                 action("seamstress", "Luz", "Luz had spent her once-per-game ability; skipped."),
-                action("mathematician", "Otis", "One malfunction (poisoned Oracle) was tracked; Otis was shown 1.", info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "Count abilities", informationShown = "1")),
+                action("mathematician", "Otis", "One malfunction (poisoned Oracle) was tracked; Otis was shown 1.", info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "malfunctioned since dawn", informationShown = "1")),
                 action(NightMarkers.DAWN, "Storyteller", "Dawn: announced Esme's death."),
             ),
             setOf("Juno", "Cleo", "Esme"),
@@ -1009,7 +1005,7 @@ class FullGamePlaytestTest {
                 action("towncrier", "Juno", "Juno remained dead; true result YES because Gio nominated.", info = InfoCheck("towncrier", "Juno", engineHeadlineContains = "YES", informationShown = "SKIPPED (dead)", caveatContains = "dead")),
                 action("oracle", "Farah", "Two dead evil players remained; poisoned Farah was shown 3.", info = InfoCheck("oracle", "Farah", engineHeadlineContains = "2 dead", informationShown = "3", caveatContains = "POISONED")),
                 action("seamstress", "Luz", "Spent ability; skipped."),
-                action("mathematician", "Otis", "Dreamer and Oracle both malfunctioned; Otis was shown 2.", info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "Count abilities", informationShown = "2")),
+                action("mathematician", "Otis", "Dreamer and Oracle both malfunctioned; Otis was shown 2.", info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "malfunctioned since dawn", informationShown = "2")),
                 action(NightMarkers.DAWN, "Storyteller", "Dawn: announced Kai's death."),
             ),
             setOf("Juno", "Cleo", "Esme", "Ivan", "Kai"),
@@ -1049,7 +1045,7 @@ class FullGamePlaytestTest {
                 action("towncrier", "Juno", "No Minion nominated on day 3; dead Juno would have learned NO.", info = InfoCheck("towncrier", "Juno", engineHeadlineContains = "NO", informationShown = "SKIPPED (dead)", caveatContains = "dead")),
                 action("oracle", "Farah", "Three dead players were evil; poisoned Farah was shown 2.", info = InfoCheck("oracle", "Farah", engineHeadlineContains = "3 dead", informationShown = "2", caveatContains = "POISONED")),
                 action("seamstress", "Luz", "Spent ability; skipped."),
-                action("mathematician", "Otis", "Dreamer and Oracle malfunctioned; Otis was shown 2.", info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "Count abilities", informationShown = "2")),
+                action("mathematician", "Otis", "Dreamer and Oracle malfunctioned; Otis was shown 2.", info = InfoCheck("mathematician", "Otis", engineHeadlineContains = "malfunctioned since dawn", informationShown = "2")),
                 action(NightMarkers.DAWN, "Storyteller", "Dawn: announced Hana's death."),
             ),
             setOf("Juno", "Cleo", "Esme", "Ivan", "Kai", "Gio", "Hana"),
@@ -1119,7 +1115,7 @@ class FullGamePlaytestTest {
                     "Dorian",
                     "Dorian chose Cora and Leo and learned 1 woke due to an ability.",
                     targets = listOf("Cora", "Leo"),
-                    info = InfoCheck("chambermaid", "Dorian", listOf("Cora", "Leo"), "1 of the 2", "1", "Approximation"),
+                    info = InfoCheck("chambermaid", "Dorian", listOf("Cora", "Leo"), "1 of the 2", "1", "own-ability wakes only"),
                 ),
                 action(NightMarkers.DAWN, "Storyteller", "Dawn: no deaths."),
             ),

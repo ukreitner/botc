@@ -107,11 +107,22 @@ sealed interface Ref {
 
     @Serializable data object AllTargets : Ref
 
+    /**
+     * The seat this ability chose on its previous wake, read from the ledger —
+     * the Pukka's standing victim, the Shabaloth's regurgitation candidates.
+     */
     @Serializable data object PreviousTarget : Ref
 
     @Serializable data class TargetN(val index: Int) : Ref
 
     @Serializable data object TownsfolkNeighbourOfTarget : Ref
+
+    /**
+     * One concrete seat, resolved by the registry lambda that built the effect
+     * (WP2 addition). A rule holding `NightContext` can already see the whole
+     * grimoire, so "the seat carrying my token" needs no new sealed member.
+     */
+    @Serializable data class Seat(val playerId: Long) : Ref
 }
 
 /** What a night action does once it resolves. Interpreted by `NightPlan.resolve`. */
@@ -136,6 +147,14 @@ sealed interface NightEffect {
         val cause: DeathCause = DeathCause.DEMON_KILL,
         /** false => unstoppable (the Pukka's poisoning itself, Fabled effects). */
         val respectProtection: Boolean = true,
+        /**
+         * This death resolves an attack made on an EARLIER night (the Pukka's
+         * standing victim), so tonight's "the Demon cannot kill" suppression does
+         * not reach it: *"the Pukka does not wake to attack tonight, but a player
+         * still dies because of the Pukka's attack during the previous night"*.
+         * Everything else — protection, triggers, attribution — is unchanged.
+         */
+        val deferred: Boolean = false,
     ) : NightEffect
 
     @Serializable

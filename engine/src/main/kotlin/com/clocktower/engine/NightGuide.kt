@@ -80,6 +80,15 @@ object NightGuide {
     fun forStep(abilityId: String, style: WakeStyle): GuideNight? =
         forStep(abilityId, style == WakeStyle.FIRST_NIGHT)
 
+    /**
+     * The run-book for one row of tonight's sheet: the ABILITY's book, not the
+     * slot's, so a Boffin-granted Demon row shows the granted character's
+     * instructions and a `StepVariant.FIRST` re-run shows the first-night ones.
+     * Markers fall back to their slot, which is where their entry lives.
+     */
+    fun forStep(step: NightStep): GuideNight? =
+        forStep(step.abilityId, step.style) ?: forStep(step.slotId, step.style)
+
     /** The day / setup / reference channels, for the seat sheet and the script tab. */
     fun channel(characterId: String, channel: String): GuideNight? {
         val entry = entries[characterId] ?: return null
