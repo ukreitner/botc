@@ -113,3 +113,5 @@ Wave 6 LAUNCHED: (A) UI integration — DayScreen onDusk/onOpenSeat wiring in Ga
 Wave 7 (after C merges): schema pass. Wave 8: WP12 pass 2 → final verify → push.
 W6A DONE + MERGED (3 commits). All CI gates LIVE (view-model gate flipped; day-package id gate promoted into SourceGatesTest). Suite 755/0/5 (remaining skips = BmrSessionPlaytestTest DA + Pukka fixtures → WP12 pass 2); uicheck 81; web green. Note: BriefingSheet.onItem is (BriefingItem) -> Boolean (ticks consumed lines in place); `execute:` has no shell handler by design (dusk sheet's primary button does it).
 Waiting on W6C (data pass) → then Wave 7 schema pass.
+W6C DONE + MERGED (5 commits; overlay gained nightOrder + reminders delta blocks; 81/102 night order; 23 spentLabels; 297 guide channels). Suite 758/0/5; regen --check + patch-night-guide --check pass; uicheck 81; web green. bigwig reminders rejected (wiki names none); lycanthrope Faux Paw characterId is a placer gap (WP2 PlaceToken.characterId), not data.
+Wave 7 LAUNCHED: schema pass (single Opus agent, engine-wide, priorities (a)–(i) in the PAUSED checklist + D66–D70 + stopgap deletion).
