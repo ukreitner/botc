@@ -226,23 +226,33 @@ fun GameShell(
                     IconButton(enabled = canRedo, onClick = { viewModel.redo() }) {
                         Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Redo")
                     }
-                    if (compactTopBar) {
-                        FilledTonalIconButton(onClick = onPhaseButton) {
-                            Icon(
-                                imageVector = if (state.phase == Phase.NIGHT) {
-                                    Icons.Filled.WbSunny
-                                } else {
-                                    Icons.Filled.DarkMode
-                                },
-                                contentDescription = phaseActionLabel,
-                            )
-                        }
-                    } else {
-                        FilledTonalButton(
-                            onClick = onPhaseButton,
-                            modifier = Modifier.padding(horizontal = 4.dp),
-                        ) {
-                            Text(phaseActionLabel)
+                    // C-18 / ux/day-screen §I: the phase button moves OFF the
+                    // top bar for the day. Dusk is the most destructive control
+                    // in the app and it had two paths — this unlabelled moon
+                    // icon and the Dusk card's [Everyone, eyes closed ▸] — so
+                    // the icon went. Setup ("Begin night") and the night
+                    // ("Dawn") keep theirs; the night sheet's own last card is
+                    // a duplicate the storyteller has to scroll to, and setup
+                    // has no other entry point at all.
+                    if (state.phase != Phase.DAY) {
+                        if (compactTopBar) {
+                            FilledTonalIconButton(onClick = onPhaseButton) {
+                                Icon(
+                                    imageVector = if (state.phase == Phase.NIGHT) {
+                                        Icons.Filled.WbSunny
+                                    } else {
+                                        Icons.Filled.DarkMode
+                                    },
+                                    contentDescription = phaseActionLabel,
+                                )
+                            }
+                        } else {
+                            FilledTonalButton(
+                                onClick = onPhaseButton,
+                                modifier = Modifier.padding(horizontal = 4.dp),
+                            ) {
+                                Text(phaseActionLabel)
+                            }
                         }
                     }
                     IconButton(onClick = { showMenu = true }) {
