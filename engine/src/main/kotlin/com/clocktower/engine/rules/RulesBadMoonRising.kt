@@ -28,6 +28,8 @@ import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
+import com.clocktower.engine.Registration
+import com.clocktower.engine.SeatPredicate
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -531,30 +533,59 @@ private fun courtier(): CharacterRule {
  * FIRST-night step tonight, and writes the pending dawn announcement — "X is
  * alive again", never why (lead D7).
  *
- * Team is judged on the TRUE character, so a dead Lunatic or Drunk is an Outsider
- * and is not offered.
+ * THE SPEND IS UNCONDITIONAL (W7b). "Once per game… choose a dead player: IF
+ * they are a Townsfolk, they are resurrected" — the ability is used the moment
+ * they point, and only the resurrection is conditional. Pointing at a dead
+ * Outsider is a legal, wasted use, so the picker no longer refuses one: the
+ * `TOWNSFOLK` constraint is gone, `MarkSpent` moved to `onResolve` (which runs
+ * on any pick and never on a head-shake), and the resurrection sits behind
+ * `When(REGISTERS_TOWNSFOLK)`.
+ *
+ * `REGISTERS_TOWNSFOLK`, not the true team: a Spy the storyteller has ruled to
+ * register as a Townsfolk comes back (lead D10/D32), while a dead Lunatic or
+ * Drunk registers Outsider and stays dead. The `detail` line names the dead
+ * seats that would actually come back, which is the soft warning the schema has
+ * no field for.
  */
 private fun professor() = CharacterRule(
     id = "professor",
     otherNight = NightRule(
         gate = Gates.all(Gates.aliveHolder, Gates.notSpent()),
         prompt = "The Professor shakes their head, or points at a dead player. Only a " +
-            "Townsfolk comes back. Announce it at dawn, after the deaths — never say why.",
+            "Townsfolk comes back — but pointing at anyone SPENDS the ability. Announce it " +
+            "at dawn, after the deaths — never say why.",
+        detail = { ctx ->
+            val comingBack = ctx.state.seats
+                .filter { !it.alive && Team.TOWNSFOLK in Registration.registersAs(ctx.state, ctx.lookup, it) }
+                .joinToString { it.name }
+            if (comingBack.isEmpty()) {
+                "No dead player registers as a Townsfolk right now: any pick is a wasted use."
+            } else {
+                "Would come back: $comingBack. Anyone else is a wasted use."
+            }
+        },
         action = {
             ChoosePlayers(
                 sourceId = "professor",
                 prompt = "WHO DID THEY CHOOSE?",
                 min = 0,
                 max = 1,
-                constraints = listOf(TargetConstraint.DEAD, TargetConstraint.TOWNSFOLK),
+                constraints = listOf(TargetConstraint.DEAD),
                 sort = TargetSort.DEAD_FIRST,
                 allowNone = true,
-                noneLabel = "Shook their head — no choice",
+                noneLabel = "Shook their head — no choice, and nothing is spent",
                 perTarget = listOf(
-                    NightEffect.MarkSpent("professor"),
-                    NightEffect.Resurrect(on = Ref.Target),
-                    NightEffect.PlaceToken("professor", "Alive", Ref.Target),
+                    NightEffect.When(
+                        predicate = SeatPredicate.REGISTERS_TOWNSFOLK,
+                        on = Ref.Target,
+                        then = listOf(
+                            NightEffect.Resurrect(on = Ref.Target),
+                            NightEffect.PlaceToken("professor", "Alive", Ref.Target),
+                        ),
+                    ),
                 ),
+                // Any pick spends; a head-shake runs `onNone` and never this.
+                onResolve = listOf(NightEffect.MarkSpent("professor")),
             )
         },
     ),

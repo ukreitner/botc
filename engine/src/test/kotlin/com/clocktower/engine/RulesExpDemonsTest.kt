@@ -344,10 +344,20 @@ class RulesExpDemonsTest {
             2,
         )
         val row = assertNotNull(step(state, "alhadikhia"))
-        assertIs<Sequence>(row.action)
+        val ritual = assertIs<Sequence>(row.action)
+        // One pick stage, then one independent live/die answer per chosen seat.
+        assertEquals(4, ritual.stages.size)
+        assertEquals(3, ritual.stages.count { it is Options })
 
         // When it chooses P2, P3, P4 and all three answer "live",
-        state = resolve(state, row, NightInput(playerIds = listOf(1L, 2L, 3L), yes = true))
+        state = resolve(
+            state,
+            row,
+            NightInput(
+                playerIds = listOf(1L, 2L, 3L),
+                optionIds = listOf("live", "live", "alllive"),
+            ),
+        )
 
         // Then the 1 | 2 | 3 tokens are on those seats in pick order,
         assertTrue(tokenOn(state, 1L, "alhadikhia", "1"))
@@ -369,21 +379,90 @@ class RulesExpDemonsTest {
     }
 
     @Test
-    fun `not everyone chose to live so the deaths are resolved one at a time`() {
+    fun `each of the three answers resolves on its own`() {
         var state = atNight(
             game("alhadikhia", "chef", "empath", "undertaker", "washerwoman", "librarian", "butler"),
             2,
         )
         val row = assertNotNull(step(state, "alhadikhia"))
-        state = resolve(state, row, NightInput(playerIds = listOf(1L, 2L, 3L), yes = false))
 
-        assertEquals(0, state.deaths.size, "the all-live rule did not fire")
-        assertNotNull(
-            state.prompts.lastOrNull {
+        // The 1st chose to die, the 2nd and 3rd to live: one death, no prompt.
+        state = resolve(
+            state,
+            row,
+            NightInput(
+                playerIds = listOf(1L, 2L, 3L),
+                optionIds = listOf("die", "live", "live"),
+            ),
+        )
+
+        assertEquals(1, state.deaths.size, "only the seat that chose to die dies")
+        assertEquals(1L, state.deaths.single().playerId)
+        assertEquals(DeathCause.DEMON_KILL, state.deaths.single().cause)
+        assertTrue(assertNotNull(state.player(2L)).alive)
+        assertTrue(assertNotNull(state.player(3L)).alive)
+        assertTrue(
+            state.prompts.none {
                 it.sourceId == "alhadikhia" && it.kind == PromptKind.RESOLVE_KILL
             },
-            "each answer is one kill attempt, so protections are surfaced per victim",
+            "the answers are the resolution — nothing is deferred to a prompt",
         )
+    }
+
+    @Test
+    fun `a dead player who chooses to live comes back`() {
+        var state = atNight(
+            game("alhadikhia", "chef", "empath", "undertaker", "washerwoman", "librarian", "butler"),
+            2,
+        )
+        state = GameActions.kill(state, 2L, DeathCause.STORYTELLER, lookup)
+        assertFalse(assertNotNull(state.player(2L)).alive)
+
+        val row = assertNotNull(step(state, "alhadikhia"))
+        state = resolve(
+            state,
+            row,
+            NightInput(
+                playerIds = listOf(1L, 2L, 3L),
+                optionIds = listOf("live", "live", "die"),
+            ),
+        )
+
+        assertTrue(assertNotNull(state.player(2L)).alive, "\"live\" revives a dead pick")
+        // A LIVING pick answering "live" is left alone — no bogus resurrection.
+        assertTrue(assertNotNull(state.player(1L)).alive)
+        assertTrue(state.deaths.none { it.playerId == 1L })
+        assertFalse(assertNotNull(state.player(3L)).alive)
+    }
+
+    @Test
+    fun `a Monk protects the Al-Hadikhia's victim one target at a time`() {
+        var state = atNight(
+            game("alhadikhia", "chef", "empath", "undertaker", "washerwoman", "librarian", "butler"),
+            2,
+        )
+        state = Effects.place(
+            state = state,
+            target = 1L,
+            kind = EffectKind.SAFE_FROM_DEMON,
+            sourceCharacterId = "monk",
+            sourcePlayerId = null,
+            until = Until.DAWN,
+            label = "Protected",
+        ).state
+
+        val row = assertNotNull(step(state, "alhadikhia"))
+        state = resolve(
+            state,
+            row,
+            NightInput(
+                playerIds = listOf(1L, 2L, 3L),
+                optionIds = listOf("die", "die", "live"),
+            ),
+        )
+
+        assertTrue(assertNotNull(state.player(1L)).alive, "protected — one attempt, refused")
+        assertFalse(assertNotNull(state.player(2L)).alive, "the next answer still lands")
     }
 
     @Test
@@ -845,7 +924,7 @@ class RulesExpDemonsTest {
         assertIs<StepGate.Skip>(assertNotNull(step(quiet, "yaggababble")).gate)
 
         // Said three times: up to three may die, and fewer is legal.
-        var loud = Decisions.set(quiet, "yaggababble.said", "3")
+        var loud = Counters.set(quiet, Counters.YAGGABABBLE_SAID, 3)
         val row = assertNotNull(step(loud, "yaggababble"))
         val action = assertIs<ChoosePlayers>(row.action)
         assertEquals(3, action.max)
@@ -855,10 +934,13 @@ class RulesExpDemonsTest {
         loud = resolve(loud, row, NightInput(playerIds = listOf(1L, 2L)))
         assertEquals(2, loud.deaths.size)
         assertTrue(loud.deaths.all { it.killerCharacterId == "yaggababble" })
+        // The day's tally is SPENT at the step: it never carries into a second
+        // night (lead D72).
+        assertEquals(0, Counters.get(loud, Counters.YAGGABABBLE_SAID))
 
         // Poisoned RIGHT NOW: nobody dies, however often the phrase was said.
         val poisoned = Effects.place(
-            state = Decisions.set(quiet, "yaggababble.said", "3"),
+            state = Counters.set(quiet, Counters.YAGGABABBLE_SAID, 3),
             target = 0L,
             kind = EffectKind.POISONED,
             sourceCharacterId = "poisoner",
@@ -868,5 +950,36 @@ class RulesExpDemonsTest {
         ).state
         val skip = assertIs<StepGate.Skip>(assertNotNull(step(poisoned, "yaggababble")).gate)
         assertTrue(skip.reason.isNotEmpty())
+    }
+
+    @Test
+    fun `every public utterance bumps the Yaggababble's counter through its day ability`() {
+        var state = game("yaggababble", "chef", "empath", "undertaker", "washerwoman")
+        state = Decisions.set(state, "yaggababble.phrase", "at the end of the day")
+        state = GameActions.advancePhase(state, lookup) // NIGHT 1 -> DAY 1
+
+        val offer = DayAbilities.forState(state, lookup).first { it.sourceId == "yaggababble" }
+        assertEquals(Counters.YAGGABABBLE_SAID, offer.ability.counterKey)
+        assertTrue(offer.available)
+
+        repeat(2) { state = DayAbilities.use(state, lookup, "yaggababble") }
+        assertEquals(2, Counters.get(state, Counters.YAGGABABBLE_SAID))
+        assertEquals(
+            2,
+            state.ledger.count { it.sourceId == "yaggababble" && it.kind == LedgerKind.STATEMENT },
+        )
+
+        // A dead Yaggababble says nothing that counts.
+        val dead = GameActions.kill(state, 0L, DeathCause.EXECUTION, lookup)
+        assertFalse(DayAbilities.forState(dead, lookup).first { it.sourceId == "yaggababble" }.available)
+        assertEquals(
+            2,
+            Counters.get(DayAbilities.use(dead, lookup, "yaggababble"), Counters.YAGGABABBLE_SAID),
+        )
+
+        // The night step reads the tally back: two utterances, up to two victims.
+        state = GameActions.advancePhase(state, lookup) // DAY 1 -> NIGHT 2
+        val action = assertIs<ChoosePlayers>(assertNotNull(step(state, "yaggababble")).action)
+        assertEquals(2, action.max)
     }
 }

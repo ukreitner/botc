@@ -51,6 +51,35 @@ data class ChoosePlayerAndCharacter(
     val onNone: List<NightEffect> = emptyList(),
 ) : NightAction
 
+/**
+ * N (seat, character) pairs in ONE answer — the Engineer's rebuild.
+ *
+ * "Once per game, at night, choose which Minions or which Demon is in play" is
+ * several seats and several characters at once, which [ChoosePlayerAndCharacter]
+ * (exactly one pair) cannot carry. The answer arrives as
+ * `NightInput.assignments`; [perPair] is applied once per pair, in pick order,
+ * with `Ref.Target` addressing that pair's seat and an empty `characterId` /
+ * `abilityId` resolving to that pair's character.
+ */
+@Serializable
+data class ChoosePlayersAndCharacters(
+    override val sourceId: String,
+    override val prompt: String,
+    val min: Int = 1,
+    val max: Int = 3,
+    val playerConstraints: List<TargetConstraint> = emptyList(),
+    val pool: CharacterPool,
+    val sort: TargetSort = TargetSort.SEAT_ORDER,
+    val requireNotInPlay: Boolean = false,
+    val allowNone: Boolean = true,
+    val noneLabel: String = "They chose nobody",
+    /** Applied per pair, IN PICK ORDER, re-deriving state between each. */
+    val perPair: List<NightEffect> = emptyList(),
+    val onResolve: List<NightEffect> = emptyList(),
+    /** The head-shake: "they rebuilt nothing". Never runs [onResolve]. */
+    val onNone: List<NightEffect> = emptyList(),
+) : NightAction
+
 /** Organ Grinder, Po head-shake, Professor pass. */
 @Serializable
 data class YesNo(
@@ -86,6 +115,21 @@ data class ActionOption(
     val id: String,
     val label: String,
     val detail: String = "",
+    /**
+     * The seats this branch is ABOUT — the High Priestess's pick.
+     *
+     * `NightPlan.resolve` adopts them as the step's targets when the input names
+     * none of its own, so `Ref.Target` addresses them and the CHOICE ledger row
+     * records who was chosen. Without it an answer set built out of seats would
+     * resolve to a bare option id and the log would forget the seat.
+     */
+    val targetIds: List<Long> = emptyList(),
+    /**
+     * The characters this branch NAMES — the Pixie's in-play Townsfolk. Adopted
+     * as the step's `characterIds` exactly as [targetIds] is, so an empty
+     * `PlaceToken.characterId` resolves to it and the CHOICE row records it.
+     */
+    val characterIds: List<String> = emptyList(),
     val effects: List<NightEffect> = emptyList(),
 )
 
@@ -149,13 +193,23 @@ enum class SeatPredicate {
     IS_ALIVE, IS_DEAD,
 
     /** Registration, not the true team: a Recluse ruled evil answers yes (lead D32). */
-    REGISTERS_MINION, REGISTERS_DEMON, REGISTERS_EVIL,
+    REGISTERS_MINION, REGISTERS_DEMON, REGISTERS_EVIL, REGISTERS_TOWNSFOLK,
 
     /** The seat's own ability works right now. */
     HAS_ABILITY,
 
     /** The seat is drunk, poisoned or has no ability. */
     IS_IMPAIRED,
+
+    /**
+     * The seat has been drunk, poisoned or ability-less at ANY moment tonight —
+     * `GameState.nightImpaired` (lead D72).
+     *
+     * "…if they ARE OR BECOME drunk or poisoned tonight" is a high-water mark,
+     * not a point-in-time query: a Courtier's target who sobered up by the time
+     * the step resolves still answers yes.
+     */
+    WAS_IMPAIRED_TONIGHT,
 
     /** This seat is the one holding the step (Barber's self-swap whitelist). */
     IS_SOURCE,
@@ -359,4 +413,14 @@ sealed interface NightEffect {
      */
     @Serializable
     data class MarkConsumed(val ledgerId: Long) : NightEffect
+
+    /**
+     * Writes one [GameState.counters] entry (lead D72).
+     *
+     * A tally the night spends has to be zeroed by the step that spends it —
+     * the Yaggababble's "for each time you said it publicly TODAY". The key is
+     * supplied by the registry row, so no character id ever appears here.
+     */
+    @Serializable
+    data class SetCounter(val key: String, val value: Int = 0) : NightEffect
 }

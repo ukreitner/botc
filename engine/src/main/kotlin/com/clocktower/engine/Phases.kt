@@ -80,8 +80,14 @@ object Phases {
         briefings: BriefingSource = DEFAULT_BRIEFINGS,
     ): GameState = when (state.phase) {
         Phase.SETUP ->
-            Effects.reconcile(state, lookup)
-                .copy(phase = Phase.NIGHT, cycle = 1, nightStepsDone = emptySet())
+            Effects.reconcile(state, lookup).let {
+                it.copy(
+                    phase = Phase.NIGHT,
+                    cycle = 1,
+                    nightStepsDone = emptySet(),
+                    nightImpaired = impairedNow(it, lookup),
+                )
+            }
 
         Phase.NIGHT -> {
             // 1. The dawn briefing is computed while the grimoire still holds
@@ -90,7 +96,14 @@ object Phases {
             var next = sweep(state, Until.DAWN)
             next = Tokens.advanceCountdowns(next, Until.DAWN)
             next = Effects.reconcile(next, lookup)
-            next.copy(phase = Phase.DAY, lastDawn = dawn ?: next.lastDawn)
+            // The Acrobat's watermark is cleared only AFTER the briefing has
+            // been computed from it (lead D72): a dawn report may still say who
+            // was drunk or poisoned tonight.
+            next.copy(
+                phase = Phase.DAY,
+                lastDawn = dawn ?: next.lastDawn,
+                nightImpaired = emptySet(),
+            )
         }
 
         Phase.DAY -> {
@@ -103,7 +116,14 @@ object Phases {
                 cycle = state.cycle + 1,
                 nightStepsDone = emptySet(),
                 lastDusk = dusk ?: next.lastDusk,
+                // "are OR BECOME drunk or poisoned tonight" — a seat that walked
+                // into the night already impaired counts from the first moment.
+                nightImpaired = impairedNow(next, lookup),
             )
         }
     }
+
+    /** Every seat whose ability is not working right now — the dusk seed of D72. */
+    private fun impairedNow(state: GameState, lookup: (String) -> Character?): Set<Long> =
+        state.seats.filter { Status.isImpaired(state, lookup, it.id) }.map { it.id }.toSet()
 }

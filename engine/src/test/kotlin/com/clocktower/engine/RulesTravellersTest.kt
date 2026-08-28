@@ -146,6 +146,105 @@ class RulesTravellersTest {
     }
 
     @Test
+    fun `the Beggar spends a vote token on every execution vote and none on an exile`() {
+        var state = game(tb, "imp", "poisoner", "monk", "washerwoman", "beggar")
+        val beggar = seatOf(state, "beggar").id
+        val imp = seatOf(state, "imp").id
+        val monk = seatOf(state, "monk").id
+        state = GameActions.advancePhase(state, lookup) // NIGHT 1 -> DAY 1
+
+        assertEquals(1, assertNotNull(state.player(beggar)).voteTokens)
+        assertEquals(1, DayRules.voteRules(state, lookup, isExile = false).weightOf(beggar))
+
+        // An EXILE costs nothing: "they support exiles freely".
+        state = DayRules.record(
+            state,
+            lookup,
+            Nomination(
+                day = 1,
+                nominatorId = monk,
+                nomineeId = beggar,
+                voterIds = listOf(beggar),
+                isExile = true,
+            ),
+            force = true,
+        )
+        assertEquals(1, assertNotNull(state.player(beggar)).voteTokens, "an exile spends nothing")
+
+        // An EXECUTION vote spends one.
+        state = DayRules.record(
+            state,
+            lookup,
+            Nomination(day = 1, nominatorId = monk, nomineeId = imp, voterIds = listOf(beggar)),
+            force = true,
+        )
+        assertEquals(0, assertNotNull(state.player(beggar)).voteTokens)
+
+        // With an empty hoard the hand no longer counts.
+        val rules = DayRules.voteRules(state, lookup, isExile = false)
+        assertEquals(0, rules.weightOf(beggar))
+        assertTrue(rules.reasons.any { "no vote token" in it })
+        // …and an exile is still free.
+        assertEquals(1, DayRules.voteRules(state, lookup, isExile = true).weightOf(beggar))
+    }
+
+    @Test
+    fun `a dead player gives the Beggar their token and the Beggar learns their alignment`() {
+        var state = game(tb, "imp", "poisoner", "monk", "washerwoman", "beggar")
+        val beggar = seatOf(state, "beggar").id
+        val poisoner = seatOf(state, "poisoner").id
+        val monk = seatOf(state, "monk").id
+        state = GameActions.advancePhase(state, lookup) // NIGHT 1 -> DAY 1
+
+        val offer = DayAbilities.forState(state, lookup).first { it.sourceId == "beggar" }
+        assertFalse(offer.available, "nobody is dead yet")
+
+        state = GameActions.kill(state, poisoner, DeathCause.EXECUTION, lookup)
+        assertTrue(DayAbilities.forState(state, lookup).first { it.sourceId == "beggar" }.available)
+
+        state = DayRules.giveVoteToken(state, lookup, donorId = poisoner, beggarId = beggar)
+        assertEquals(2, assertNotNull(state.player(beggar)).voteTokens)
+        assertEquals(0, assertNotNull(state.player(poisoner)).voteTokens)
+        assertTrue(
+            assertNotNull(state.player(poisoner)).ghostVoteUsed,
+            "a vote token given away is a vote not cast",
+        )
+        val gift = assertNotNull(
+            state.player(beggar)?.reminders?.firstOrNull {
+                Tokens.key(it) == Tokens.key("beggar", "Token")
+            },
+        )
+        assertEquals(poisoner, gift.targetPlayerId)
+        val told = assertNotNull(
+            state.ledger.lastOrNull { it.kind == LedgerKind.TOLD && it.sourceId == "beggar" },
+        )
+        assertEquals("evil", told.shown)
+
+        // A LIVING donor, a second gift from the same emptied seat and a
+        // non-Beggar recipient are all refused, unchanged.
+        assertEquals(state, DayRules.giveVoteToken(state, lookup, donorId = poisoner, beggarId = beggar))
+        assertEquals(state, DayRules.giveVoteToken(state, lookup, donorId = monk, beggarId = beggar))
+        assertEquals(state, DayRules.giveVoteToken(state, lookup, donorId = beggar, beggarId = monk))
+    }
+
+    @Test
+    fun `the Bureaucrat's weight still applies to the vote the Beggar pays for`() {
+        var state = game(tb, "imp", "poisoner", "monk", "washerwoman", "bureaucrat", "beggar")
+        val beggar = seatOf(state, "beggar").id
+
+        state = resolve(state, "bureaucrat", NightInput(playerIds = listOf(beggar)))
+        state = GameActions.advancePhase(state, lookup) // NIGHT 1 -> DAY 1
+
+        assertEquals(3, DayRules.voteRules(state, lookup, isExile = false).weightOf(beggar))
+        state = state.updatePlayer(beggar) { it.copy(voteTokens = 0) }
+        assertEquals(
+            0,
+            DayRules.voteRules(state, lookup, isExile = false).weightOf(beggar),
+            "with no token to spend the ×3 has nothing to multiply",
+        )
+    }
+
+    @Test
     fun `the Bureaucrat marks a seat and that seat's vote counts three`() {
         var state = game(tb, "imp", "poisoner", "monk", "washerwoman", "bureaucrat")
         val bureaucrat = seatOf(state, "bureaucrat").id

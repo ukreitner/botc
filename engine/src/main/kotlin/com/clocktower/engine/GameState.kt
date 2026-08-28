@@ -65,6 +65,15 @@ data class Player(
     val alive: Boolean = true,
     /** Dead players hold one ghost vote until they spend it. */
     val ghostVoteUsed: Boolean = false,
+    /**
+     * Physical vote tokens this seat holds (lead D72).
+     *
+     * Everyone starts with exactly one and nothing but the Beggar ever looks:
+     * a Beggar spends one to vote on an execution, and a dead player may hand
+     * theirs over (`DayRules.giveVoteToken`), which is the Beggar's hoard and
+     * the donor's last vote at the same time.
+     */
+    val voteTokens: Int = 1,
     val isTraveller: Boolean = false,
     /** True once a Traveller has left the game: no seat, no vote, no threshold. */
     val leftGame: Boolean = false,
@@ -198,12 +207,29 @@ data class GameState(
     val bluffSets: Map<String, List<String>> = emptyMap(),
     /** Setup choices and secrets that must survive the whole game. See [Decisions]. */
     val decisions: Map<String, String> = emptyMap(),
+    /**
+     * Per-game integer tallies, keyed like [decisions] (lead D72). The
+     * Yaggababble's utterance count is the first; anything that has to be
+     * counted rather than decided belongs here. See [Counters].
+     */
+    val counters: Map<String, Int> = emptyMap(),
     /** Day the storyteller has declared final (Ferryman, Angel, Fiddler). */
     val finalDayCycle: Int? = null,
 
     // ---- night progress ----
     /** Holds [StepKey.token] values. Degrades to bare ability ids for simple steps. */
     val nightStepsDone: Set<String> = emptySet(),
+    /**
+     * Every seat that has been drunk, poisoned or ability-less at ANY moment
+     * tonight — the Acrobat's high-water mark (lead D72).
+     *
+     * Seeded at dusk from the seats already impaired, added to by
+     * `Effects.reconcile` every time the night applies a new impairment, and
+     * cleared at dawn once the briefing has been computed. A point-in-time
+     * `Status.isImpaired` cannot answer "or BECOME drunk or poisoned tonight",
+     * which is why this is stored rather than derived.
+     */
+    val nightImpaired: Set<Long> = emptySet(),
 
     // ---- computed-and-frozen briefings ----
     /** The dawn briefing, computed BEFORE tokens were swept, so saves are re-openable. */
@@ -296,4 +322,25 @@ object Decisions {
 
     fun clear(state: GameState, key: String): GameState =
         state.copy(decisions = state.decisions - key)
+}
+
+/**
+ * Typed accessors over [GameState.counters] (lead D72). Keys are stable and
+ * namespaced by character id, exactly like [Decisions].
+ */
+object Counters {
+    /** How many times the Yaggababble said their phrase publicly today. */
+    const val YAGGABABBLE_SAID = "yaggababble.said"
+
+    fun get(state: GameState, key: String): Int = state.counters[key] ?: 0
+
+    fun set(state: GameState, key: String, value: Int): GameState =
+        state.copy(counters = state.counters + (key to value))
+
+    /** Adds [by] (which may be negative) and never stores a negative total. */
+    fun bump(state: GameState, key: String, by: Int = 1): GameState =
+        set(state, key, (get(state, key) + by).coerceAtLeast(0))
+
+    fun clear(state: GameState, key: String): GameState =
+        state.copy(counters = state.counters - key)
 }

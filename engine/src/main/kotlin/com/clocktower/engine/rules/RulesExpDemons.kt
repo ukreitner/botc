@@ -1,5 +1,9 @@
 package com.clocktower.engine.rules
 
+import com.clocktower.engine.ActionOption
+import com.clocktower.engine.BriefingItem
+import com.clocktower.engine.BriefingKind
+import com.clocktower.engine.BriefingSeverity
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.CardOffer
 import com.clocktower.engine.Character
@@ -8,12 +12,13 @@ import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
+import com.clocktower.engine.Counters
+import com.clocktower.engine.DayAbility
 import com.clocktower.engine.DayRule
 import com.clocktower.engine.DayRules
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.DeathEvent
 import com.clocktower.engine.DeathTrigger
-import com.clocktower.engine.Decisions
 import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
 import com.clocktower.engine.ExecutionConsequence
@@ -21,17 +26,20 @@ import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.ExecutionRecord
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.JinxRule
 import com.clocktower.engine.NightAction
 import com.clocktower.engine.NightContext
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
+import com.clocktower.engine.Options
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.Registration
+import com.clocktower.engine.SeatPredicate
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.Setup
 import com.clocktower.engine.ShowCardSpec
@@ -87,12 +95,20 @@ internal val EXP_DEMON_RULES: List<CharacterRule> = listOf(
  * chooses to live or die, but if all live, all die."
  *
  * The dilemma IS the sequencing, so the row is a [Sequence]: pick the three in
- * order (they take the 1 / 2 / 3 tokens), then answer the one question the
- * engine can settle on its own — "did all three choose to live?" — because that
- * is the branch that kills all three at once. The individual "I choose to die"
- * deaths are one attempt each and are handed to the kill sheet as a prompt, so
- * every Monk / Soldier / Innkeeper / Lleech outcome is surfaced per victim
- * rather than auto-cancelled.
+ * order (they take the 1 / 2 / 3 tokens), then answer live-or-die for each in
+ * turn. W7b made the three answers INDEPENDENT — `NightInput.optionIds` carries
+ * one per [Options] stage — so the row no longer has to collapse them into a
+ * single "did all three choose to live?" yes/no and hand the rest to a prompt.
+ *
+ * Each answer resolves as it is given, in order, which is how the table plays
+ * it: a first victim's death is on the board before the second is asked. Every
+ * death goes through `Deaths.attempt`, so each Monk / Soldier / Innkeeper /
+ * Lleech outcome is surfaced per victim rather than auto-cancelled.
+ *
+ * Dead players are legal picks and "live" REVIVES one — guarded by
+ * `When(IS_DEAD)` so choosing to live is a no-op for someone already alive.
+ * "If all live, all die" is the third stage's own third answer: by then the
+ * storyteller knows the other two, and it kills all three at once.
  */
 private fun alHadikhia() = CharacterRule(
     id = "alhadikhia",
@@ -103,7 +119,8 @@ private fun alHadikhia() = CharacterRule(
         gate = Gates.all(Gates.aliveHolder, Gates.notExorcised),
         prompt = "Say SILENCE BEGINS. The Al-Hadikhia may choose 3 players. Wake each in " +
             "order, ask 'do you choose to live?', announce the answer, then wake the next. " +
-            "Say THE SILENCE HAS ENDED. A dead player who chooses to live comes back.",
+            "Say THE SILENCE HAS ENDED. A dead player who chooses to live comes back. If the " +
+            "third also chose to live and so did the other two, tap ALL THREE DIE.",
         action = { alHadikhiaRitual() },
         cards = {
             listOf(
@@ -137,9 +154,65 @@ private fun alHadikhia() = CharacterRule(
     ),
 )
 
+/** Option ids of one Al-Hadikhia live/die answer. */
+private const val AH_LIVE = "live"
+private const val AH_DIE = "die"
+private const val AH_ALL_LIVE = "alllive"
+
+/**
+ * One chosen player's answer. [index] is their place in the pick order, so the
+ * effects address `Ref.TargetN(index)` and nothing depends on `scope.current`.
+ *
+ * The LAST stage carries the extra "…and so did the other two" branch: that is
+ * the first moment the storyteller knows the whole answer.
+ */
+private fun alHadikhiaAnswer(index: Int, ordinal: String, last: Boolean = false): NightAction =
+    Options(
+        sourceId = "alhadikhia",
+        prompt = "DID THE $ordinal CHOSEN PLAYER CHOOSE TO LIVE?",
+        options = buildList {
+            add(
+                ActionOption(
+                    id = AH_DIE,
+                    label = "They chose to DIE",
+                    detail = "One kill attempt: protections and the Innkeeper still apply.",
+                    effects = listOf(
+                        NightEffect.Attack(Ref.TargetN(index), DeathCause.DEMON_KILL),
+                    ),
+                ),
+            )
+            add(
+                ActionOption(
+                    id = AH_LIVE,
+                    label = "They chose to LIVE",
+                    detail = "A DEAD player who chooses to live comes back.",
+                    effects = listOf(
+                        NightEffect.When(
+                            predicate = SeatPredicate.IS_DEAD,
+                            on = Ref.TargetN(index),
+                            then = listOf(NightEffect.Resurrect(Ref.TargetN(index))),
+                        ),
+                    ),
+                ),
+            )
+            if (last) {
+                add(
+                    ActionOption(
+                        id = AH_ALL_LIVE,
+                        label = "They chose to LIVE — and so did the other two: ALL THREE DIE",
+                        detail = "\"…but if all live, all die.\" One attempt each.",
+                        effects = listOf(
+                            NightEffect.Attack(Ref.AllTargets, DeathCause.DEMON_KILL),
+                        ),
+                    ),
+                )
+            }
+        },
+    )
+
 private fun alHadikhiaRitual(): NightAction = Sequence(
     sourceId = "alhadikhia",
-    prompt = "THREE PLAYERS IN ORDER — THEN THE ALL-LIVE QUESTION",
+    prompt = "THREE PLAYERS IN ORDER — THEN ONE LIVE/DIE ANSWER EACH",
     stages = listOf(
         ChoosePlayers(
             sourceId = "alhadikhia",
@@ -167,23 +240,9 @@ private fun alHadikhiaRitual(): NightAction = Sequence(
                 ),
             ),
         ),
-        YesNo(
-            sourceId = "alhadikhia",
-            prompt = "DID ALL THREE CHOOSE TO LIVE?",
-            yesLabel = "All three live — so ALL THREE DIE",
-            noLabel = "At least one chose to die",
-            onYes = listOf(NightEffect.Attack(Ref.AllTargets, DeathCause.DEMON_KILL)),
-            onNo = listOf(
-                NightEffect.QueuePrompt(
-                    at = BriefingSlot.NOW,
-                    kind = PromptKind.RESOLVE_KILL,
-                    sourceId = "alhadikhia",
-                    title = "Resolve the Al-Hadikhia one target at a time: each who chose to " +
-                        "die dies (protections apply); a DEAD target who chose to live is " +
-                        "brought back.",
-                ),
-            ),
-        ),
+        alHadikhiaAnswer(0, "1ST"),
+        alHadikhiaAnswer(1, "2ND"),
+        alHadikhiaAnswer(2, "3RD", last = true),
     ),
 )
 
@@ -336,10 +395,14 @@ private fun leviathan() = CharacterRule(
     // Lead D19: only active when the jinxed character is on the script. Each
     // gives the Leviathan a nightly choice its own ability text never mentions.
     jinxRules = mapOf(
-        "banshee" to leviathanJinxChoice("The Banshee dies AND gains their ability."),
-        "farmer" to leviathanJinxChoice("The Farmer uses their ability and does NOT die."),
-        "ravenkeeper" to leviathanJinxChoice("The Ravenkeeper uses their ability and does NOT die."),
-        "sage" to leviathanJinxChoice("The Sage uses their ability and does NOT die."),
+        "banshee" to JinxRule(leviathanJinxChoice("The Banshee dies AND gains their ability.")),
+        "farmer" to JinxRule(
+            leviathanJinxChoice("The Farmer uses their ability and does NOT die."),
+        ),
+        "ravenkeeper" to JinxRule(
+            leviathanJinxChoice("The Ravenkeeper uses their ability and does NOT die."),
+        ),
+        "sage" to JinxRule(leviathanJinxChoice("The Sage uses their ability and does NOT die.")),
     ),
     // "If MORE THAN 1 good player is executed, evil wins" — the count has to be
     // able to reach two. The official data lists one copy, so the second mark
@@ -957,6 +1020,12 @@ private fun riotNomination(
  * nights offer up to `charges` victims — and fewer, or none, is legal. The
  * sobriety check is at RESOLUTION time, not speaking time, which is the opposite
  * of what most storytellers assume, so it is on the step.
+ *
+ * W7b: the utterance tally is `GameState.counters["yaggababble.said"]` (lead
+ * D72), added to by the day ability below every time the storyteller hears the
+ * phrase, and zeroed by the night step that spends it — "for each time you said
+ * it publicly TODAY" is a per-day count, not a running total. The phrase itself
+ * stays a `decisions` secret.
  */
 private fun yaggababble() = CharacterRule(
     id = "yaggababble",
@@ -987,7 +1056,44 @@ private fun yaggababble() = CharacterRule(
         prompt = "The Yaggababble is not woken. Up to <charges> players may die and YOU choose " +
             "who — or fewer, or none. Sobriety is judged NOW, not when the phrase was said.",
         action = { ctx -> yaggababbleKill(ctx) },
+        banner = { ctx ->
+            val said = chargesOf(ctx.state)
+            if (said == 0) "" else "Said the phrase $said time(s) yesterday."
+        },
+        // `pending` runs on EVERY resolve, including a Reduced (Exorcised) one,
+        // so the day's tally is spent whether or not anybody died.
+        pending = { listOf(NightEffect.SetCounter(Counters.YAGGABABBLE_SAID, 0)) },
         wakeCounts = WakeCount.NONE,
+    ),
+    day = DayRule(
+        ability = DayAbility(
+            label = "Said the phrase in public",
+            recordsAs = "yaggababble",
+            counterKey = Counters.YAGGABABBLE_SAID,
+            // Every utterance counts as it happens; whether it KILLS is judged
+            // at the step, on tonight's sobriety, not now.
+            available = { _, _, holder -> holder.alive },
+        ),
+        briefing = { ctx ->
+            if (ctx.slot != BriefingSlot.DAY_START) {
+                emptyList()
+            } else {
+                val phrase = phraseOf(ctx.state)
+                listOf(
+                    BriefingItem(
+                        key = "yaggababble:${ctx.holder.id}:${ctx.state.cycle}",
+                        kind = BriefingKind.STANDING_FACT,
+                        severity = BriefingSeverity.ACTION,
+                        sourceId = "yaggababble",
+                        text = "${ctx.holder.name} is the Yaggababble. Tap “Said the phrase in " +
+                            "public” every time you hear " +
+                            (if (phrase.isEmpty()) "their phrase" else "“$phrase”") +
+                            " today — tonight up to that many players may die.",
+                        playerId = ctx.holder.id,
+                    ),
+                )
+            }
+        },
     ),
 )
 
@@ -1211,18 +1317,14 @@ private fun minionsWanted(state: GameState): Int {
     return runCatching { Setup.distributionFor(residents).minions }.getOrDefault(0)
 }
 
-/**
- * FOLLOWUPS(WP2): there is no `GameState.secrets` map and no day-time utterance
- * counter, so the phrase and the count live in `decisions` until one exists.
- */
+/** The secret phrase itself is a storyteller decision, not a tally. */
 private const val YAGG_PHRASE = "yaggababble.phrase"
-private const val YAGG_SAID = "yaggababble.said"
-private const val YAGG_SPENT = "yaggababble.spent"
 
 private fun phraseOf(state: GameState): String = state.decisions[YAGG_PHRASE].orEmpty()
 
-private fun chargesOf(state: GameState): Int {
-    val said = Decisions.int(state, YAGG_SAID) ?: 0
-    val spent = Decisions.int(state, YAGG_SPENT) ?: 0
-    return (said - spent).coerceAtLeast(0)
-}
+/**
+ * How many players may die tonight: the number of times the phrase was said
+ * publicly TODAY (lead D72). The night step zeroes it as it spends it, so the
+ * count never carries into a second night.
+ */
+private fun chargesOf(state: GameState): Int = Counters.get(state, Counters.YAGGABABBLE_SAID)
