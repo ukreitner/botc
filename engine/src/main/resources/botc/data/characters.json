@@ -303,7 +303,9 @@
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
-  "reminders": [],
+  "reminders": [
+   "Token"
+  ],
   "remindersGlobal": []
  },
  {
@@ -329,7 +331,9 @@
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
-  "reminders": [],
+  "reminders": [
+   "No Ability"
+  ],
   "remindersGlobal": []
  },
  {
@@ -485,10 +489,10 @@
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
-  "reminders": [
+  "reminders": [],
+  "remindersGlobal": [
    "Everyone Is Drunk"
-  ],
-  "remindersGlobal": []
+  ]
  },
  {
   "id": "pacifist",
@@ -903,8 +907,8 @@
   "team": "townsfolk",
   "ability": "Once per game, at night, choose a good character: gain that ability. If this character is in play, they are drunk.",
   "setup": false,
-  "firstNightReminder": "The Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is the Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
-  "otherNightReminder": "If the Philosopher has not used their ability: the Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is the Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
+  "firstNightReminder": "The Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is The Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
+  "otherNightReminder": "If the Philosopher has not used their ability: the Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is The Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
   "reminders": [
    "Drunk"
   ],
@@ -922,8 +926,11 @@
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "If the Sage was killed by a Demon: Point to two players, one of which is that Demon.",
-  "reminders": [],
-  "remindersGlobal": []
+  "reminders": [
+   "Woke"
+  ],
+  "remindersGlobal": [],
+  "spentLabel": "Woke"
  },
  {
   "id": "savant",
@@ -944,8 +951,8 @@
   "team": "townsfolk",
   "ability": "Once per game, at night, choose 2 players (not yourself): you learn if they are the same alignment.",
   "setup": false,
-  "firstNightReminder": "The Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players , nod 'yes' or shake 'no' for whether they are of same alignment.",
-  "otherNightReminder": "If the Seamstress has not yet used their ability: the Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players , nod 'yes' or shake 'no' for whether they are of same alignment.",
+  "firstNightReminder": "The Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players, nod 'yes' or shake 'no' for whether they are of same alignment.",
+  "otherNightReminder": "If the Seamstress has not yet used their ability: the Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players, nod 'yes' or shake 'no' for whether they are of same alignment.",
   "reminders": [
    "No Ability"
   ],
@@ -962,6 +969,7 @@
   "firstNightReminder": "The Snake Charmer points to a player. If that player is the Demon: swap the Demon and Snake Charmer character and alignments. Wake each player to inform them of their new role and alignment. The new Snake Charmer is poisoned.",
   "otherNightReminder": "The Snake Charmer points to a player. If that player is the Demon: swap the Demon and Snake Charmer character and alignments. Wake each player to inform them of their new role and alignment. The new Snake Charmer is poisoned.",
   "reminders": [
+   "Poisoned",
    "Poisoned"
   ],
   "remindersGlobal": []
@@ -974,7 +982,7 @@
   "ability": "Each night*, you learn if a Minion nominated today.",
   "setup": false,
   "firstNightReminder": "",
-  "otherNightReminder": "Nod 'yes' or shake head 'no' for whether a Minion nominated today. Place the 'Minion not nominated' marker (remove 'Minion nominated', if any).",
+  "otherNightReminder": "Nod 'yes' or shake head 'no' for whether a Minion nominated today. Place the 'Minions Not Nominated' marker (remove 'Minion Nominated', if any).",
   "reminders": [
    "Minions Not Nominated",
    "Minion Nominated"
@@ -1029,6 +1037,7 @@
   "firstNightReminder": "",
   "otherNightReminder": "Choose a player that is drunk.",
   "reminders": [
+   "Drunk",
    "Drunk"
   ],
   "remindersGlobal": []
@@ -1718,8 +1727,8 @@
   "team": "outsider",
   "ability": "On your 1st night, choose a player (not yourself): you become their alignment (you don't know which) even if drunk or poisoned.",
   "setup": false,
-  "firstNightReminder": "The Ogre chooses a player.",
-  "otherNightReminder": "",
+  "firstNightReminder": "The Ogre chooses a player, but NOT themself. Place the 'Friend' reminder on that player. If that player registers as evil, the Ogre becomes evil — turn the Ogre's character token upside down. The Ogre is never told which alignment they became, so give no signal either way. This works even if the Ogre is drunk or poisoned.",
+  "otherNightReminder": "An Ogre who has just entered play. The Ogre chooses a player, but NOT themself. Place the 'Friend' reminder on that player. If that player registers as evil, the Ogre becomes evil. Give no signal either way — this works even if the Ogre is drunk or poisoned.",
   "reminders": [
    "Friend"
   ],
@@ -1732,7 +1741,7 @@
   "team": "outsider",
   "ability": "When you die, the Storyteller gains a Minion ability.",
   "setup": false,
-  "firstNightReminder": "",
+  "firstNightReminder": "If the Plague Doctor died, the Storyteller gained a Minion ability. If you haven't done this yet, do so now.",
   "otherNightReminder": "If the Plague Doctor died, the Storyteller gained a Minion ability. If you haven't done this yet, do so now.",
   "reminders": [
    "Storyteller Ability"
@@ -1775,7 +1784,7 @@
   "ability": "Each Minion gets 3 bluffs.",
   "setup": false,
   "firstNightReminder": "Wake each Minion. Show the 'These characters are not in play' token. Show 3 not-in-play character tokens.",
-  "otherNightReminder": "",
+  "otherNightReminder": "A Minion has not been given their bluffs yet and a Snitch is in play. Wake them, show the 'These characters are not in play' token and 3 not-in-play character tokens. The Marionette is never woken and gets nothing.",
   "reminders": [],
   "remindersGlobal": []
  },
@@ -1801,7 +1810,9 @@
   "firstNightReminder": "Wake the Boffin and the Demon. Show the 'This character selected you' & Boffin tokens, then the not-in-play good character token.",
   "otherNightReminder": "",
   "reminders": [],
-  "remindersGlobal": []
+  "remindersGlobal": [
+   "Demon Has This Ability"
+  ]
  },
  {
   "id": "boomdandy",
@@ -1812,7 +1823,9 @@
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
-  "reminders": [],
+  "reminders": [
+   "Exploded"
+  ],
   "remindersGlobal": []
  },
  {
@@ -1912,7 +1925,9 @@
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
-  "reminders": [],
+  "reminders": [
+   "Used Today"
+  ],
   "remindersGlobal": []
  },
  {
@@ -1927,9 +1942,11 @@
   "reminders": [
    "Night 1",
    "Night 2",
-   "Night 3"
+   "Night 3",
+   "No Ability"
   ],
-  "remindersGlobal": []
+  "remindersGlobal": [],
+  "spentLabel": "No Ability"
  },
  {
   "id": "vizier",
@@ -1940,7 +1957,9 @@
   "setup": false,
   "firstNightReminder": "Announce which player is the Vizier.",
   "otherNightReminder": "",
-  "reminders": [],
+  "reminders": [
+   "No Ability"
+  ],
   "remindersGlobal": []
  },
  {
@@ -1951,8 +1970,9 @@
   "ability": "On your 1st night, look at the Grimoire & choose a player: they are poisoned. 1 good player knows a Widow is in play.",
   "setup": false,
   "firstNightReminder": "Show the Grimoire for as long as the Widow needs. The Widow chooses a player. Put the Widow to sleep. Wake the player marked 'Know' & show the Widow token.",
-  "otherNightReminder": "",
+  "otherNightReminder": "A Widow who has just entered play. Show the Grimoire for as long as the Widow needs. The Widow chooses a player: they are poisoned. Put the Widow to sleep. Wake the player marked 'Know' & show the Widow token.",
   "reminders": [
+   "Poisoned",
    "Poisoned",
    "Know"
   ],
@@ -1969,9 +1989,11 @@
   "otherNightReminder": "Do whatever needs to be done to satisfy the Wizard's ability.",
   "reminders": [
    "?",
-   "?"
+   "?",
+   "Wish Granted"
   ],
-  "remindersGlobal": []
+  "remindersGlobal": [],
+  "spentLabel": "Wish Granted"
  },
  {
   "id": "wraith",
@@ -2010,7 +2032,7 @@
   "ability": "Each night*, you may choose 3 players (all players learn who): each silently chooses to live or die, but if all live, all die.",
   "setup": false,
   "firstNightReminder": "",
-  "otherNightReminder": "The Al-Hadikhia chooses 3 players. In order, wake each target. They nod or shake their head. Put them to sleep before waking the next target.",
+  "otherNightReminder": "The Al-Hadikhia may choose 3 players and all players learn who — DEAD players are legal targets. Mark them '1', '2', '3'. In order, wake each one and ask whether they choose to live. A player who chooses to live has their shroud removed, so a dead one is ALIVE again; a player who chooses to die dies. Put each back to sleep before waking the next. If all three chose to live, all three die instead.",
   "reminders": [
    "1",
    "2",
@@ -2062,6 +2084,7 @@
    "Day 3",
    "Day 4",
    "Day 5",
+   "Good Player Executed",
    "Good Player Executed"
   ],
   "remindersGlobal": []
@@ -2092,7 +2115,8 @@
   "otherNightReminder": "The Lleech chooses a player.",
   "reminders": [
    "Dead",
-   "Poisoned"
+   "Poisoned",
+   "Host"
   ],
   "remindersGlobal": []
  },
@@ -2208,7 +2232,9 @@
   "reminders": [
    "Protected",
    "Protected",
-   "Something Bad"
+   "Something Bad",
+   "No Ability",
+   "Can't Vote"
   ],
   "remindersGlobal": []
  },
@@ -2221,7 +2247,11 @@
   "setup": false,
   "firstNightReminder": "Announce which players are affected by the Buddhist.",
   "otherNightReminder": "",
-  "reminders": [],
+  "reminders": [
+   "Silent",
+   "Silent",
+   "Silent"
+  ],
   "remindersGlobal": []
  },
  {
@@ -2259,7 +2289,9 @@
   "setup": false,
   "firstNightReminder": "",
   "otherNightReminder": "",
-  "reminders": [],
+  "reminders": [
+   "Used"
+  ],
   "remindersGlobal": []
  },
  {
@@ -2327,7 +2359,9 @@
   "firstNightReminder": "",
   "otherNightReminder": "",
   "reminders": [
-   "Something Bad"
+   "Something Bad",
+   "No Ability",
+   "No Vote"
   ],
   "remindersGlobal": []
  },

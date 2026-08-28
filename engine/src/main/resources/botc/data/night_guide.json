@@ -1633,6 +1633,10 @@
   "day": {
    "instructions": "The Golem may nominate only ONCE all game. When they do, if the nominee is not the Demon, that player dies immediately. Mark May Not Nominate afterwards. A drunk or poisoned Golem kills nobody but still spends the nomination.",
    "shows": []
+  },
+  "reference": {
+   "instructions": "The Golem's kill is NOT an execution: it does not use up the day's execution, and the Saint, Devil's Advocate, Fearmonger and Virgin all sit it out. The nomination itself still happens and is still voted on.",
+   "shows": []
   }
  },
  "hatter": {
@@ -1655,6 +1659,10 @@
   }
  },
  "heretic": {
+  "day": {
+   "instructions": "Apply the Heretic as the VERY LAST step of the win check, after every other ability has resolved: whoever has just won, loses, and whoever has just lost, wins. It works while the Heretic is dead and is suppressed only while the Heretic is drunk or poisoned. Work the answer out before you announce anything.",
+   "shows": []
+  },
   "reference": {
    "instructions": "Whoever wins, LOSES, and whoever loses, wins - applied as the very last step of the win check. It works while the Heretic is dead, and is suppressed while the Heretic is drunk or poisoned.",
    "shows": []
@@ -1663,6 +1671,10 @@
  "hermit": {
   "setup": {
    "instructions": "[-0 or -1 Outsider] - decide which before filling the bag, and write it down.",
+   "shows": []
+  },
+  "day": {
+   "instructions": "The Hermit holds every Outsider ability on the script, including the ones that act in daylight: the Golem's single nomination, the Puzzlemaster's guess, the Damsel's guess, the Klutz's choice on death, the Politician's end-of-game switch and the Zealot's obligation to vote. Run each of them for the Hermit as if they were that Outsider, using the Hermit's own 1, 2 and 3 reminders where the real Outsider is also in play. A once-per-game ability the Hermit spends is spent for the Hermit only.",
    "shows": []
   },
   "reference": {
@@ -1674,21 +1686,37 @@
   "first": {
    "instructions": "Wake the Ogre and have them point to a player other than themself, then put them back to sleep. Place the Friend reminder on the chosen player: the Ogre becomes that player's alignment but does not learn which alignment it is, so give no signal. This works even if the Ogre is drunk or poisoned. If the Ogre pointed to an evil player, turn the Ogre's character token upside down - they are now evil. The Friend reminder is an optional rule; under the base rule the Ogre's alignment simply becomes the chosen player's.",
    "shows": []
+  },
+  "other": {
+   "instructions": "Only for an Ogre who has just ENTERED PLAY. The Ogre points at a player who is NOT themself; mark that player Friend. If that player registers as evil, the Ogre becomes evil - turn the Ogre's character token upside down. The Ogre is never told which alignment they became, so give no signal either way. This works even if the Ogre is drunk or poisoned.",
+   "shows": []
   }
  },
  "plaguedoctor": {
+  "first": {
+   "instructions": "Almost always skipped: nobody has died yet on the first night. It is here for the one case that can happen - a Plague Doctor killed before the first night ended (an Angel's 'something bad', a storyteller death, a house rule). If the Plague Doctor is dead and you have not taken a Minion ability yet, choose one now and keep it secret forever. A Plague Doctor who died drunk or poisoned gives you nothing, even if they are cured later.",
+   "shows": []
+  },
   "other": {
    "instructions": "Only act if the Plague Doctor has died and you have not yet gained a Minion ability. Choose a Minion character (usually not in play) and gain its ability yourself as Storyteller, placing the Storyteller Ability reminder to track it; if the ability affects setup or ongoing play, apply it as sensibly as possible. Do not tell the players which ability you gained. If the gained ability acts at night, add a night token for it to the night sheet and run it at that character's usual position every night from now on. If the Plague Doctor was drunk or poisoned when they died, you gain no ability.",
    "shows": []
   }
  },
  "politician": {
+  "day": {
+   "instructions": "At the END of the game, before you announce who won, decide whether the Politician was the player most responsible for their own team losing. If they were, they change alignment and win with the other team instead - even if they are dead, and even though nobody was told. Decide it then, not earlier, and say so out loud when you announce the result.",
+   "shows": []
+  },
   "reference": {
    "instructions": "If the Politician was the player most responsible for their own team losing, they change alignment and win instead, even if dead. Decide it at the end of the game, not before.",
    "shows": []
   }
  },
  "puzzlemaster": {
+  "setup": {
+   "instructions": "Before the first night, choose which player is drunk because of the Puzzlemaster and mark them with the Puzzlemaster's Drunk reminder. It may be the Puzzlemaster themself. They are drunk from now on and stay drunk even after the Puzzlemaster dies. Tell nobody.",
+   "shows": []
+  },
   "day": {
    "instructions": "One player is drunk because of the Puzzlemaster - mark them. Once per game the Puzzlemaster may publicly guess who it is: tell them who the Demon is, but if the guess was wrong, name a wrong player instead. Mark Guess Used either way.",
    "shows": []
@@ -1706,12 +1734,20 @@
     }
    ]
   },
+  "other": {
+   "instructions": "Only when a Minion is still owed bluffs - a Snitch or a Minion entered play after the first night. Wake that Minion, show the THESE CHARACTERS ARE NOT IN PLAY token and three not-in-play character tokens of their own. The Marionette is never woken and gets nothing; the Demon gets an extra three instead.",
+   "shows": []
+  },
   "setup": {
    "instructions": "Each Minion gets 3 not-in-play character tokens of their own as bluffs - choose them before the first night. With a Marionette in play, the Marionette gets none and the Demon gets an extra 3 instead.",
    "shows": []
   }
  },
  "zealot": {
+  "day": {
+   "instructions": "While 5 or more players are alive, the Zealot MUST raise their hand on every nomination. Watch for it on each vote and remind them at the table rather than penalising them. The obligation holds even while the Zealot is drunk or poisoned - it is a rule about the player, not an ability.",
+   "shows": []
+  },
   "reference": {
    "instructions": "If 5 or more players are alive, the Zealot MUST vote on every nomination. Remind them at the table rather than penalising them.",
    "shows": []
@@ -1930,6 +1966,17 @@
      "label": "To good player",
      "kind": "token",
      "text": "THIS CHARACTER IS IN PLAY",
+     "token": "self"
+    }
+   ]
+  },
+  "other": {
+   "instructions": "Only for a Widow who has just ENTERED PLAY - a Pit-Hag, Summoner or Kazali made one tonight. 'On your 1st night' means their first night as the Widow, so run the whole first-night step now: show them the Grimoire for as long as they need (cover anything a jinx hides - a fellow Widow's Know token, and the Demon's and Magician's tokens if a Magician is in play), let them point at a player, mark that player Poisoned, then wake the good player marked Know and show them the Widow token. A Widow who has already seen the Grimoire never sees it again.",
+   "shows": [
+    {
+     "label": "To the Know player",
+     "kind": "token",
+     "text": "",
      "token": "self"
     }
    ]

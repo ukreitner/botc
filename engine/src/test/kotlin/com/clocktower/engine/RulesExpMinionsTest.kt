@@ -576,9 +576,11 @@ class RulesExpMinionsTest {
 
         state = next(next(state))
         assertTrue(Status.isImpaired(state, lookup, 2L), "the poison lasts until the Widow dies")
-        // FILED TO WP5: `widow` is missing from night_and_jinxes.json's otherNight
-        // list, so a mid-game Widow gets no step at all. The registry row is ready.
-        assertNull(step(state, "widow"), "no otherNight slot exists yet — WP5 data gap")
+        // WP6C put `widow` into the otherNight order, so a mid-game Widow now has
+        // a step. This Widow has already chosen, so the row is present and skipped
+        // rather than absent.
+        val other = assertIs<StepGate.Skip>(assertNotNull(step(state, "widow")).gate)
+        assertTrue("1st night" in other.reason, other.reason)
     }
 
     @Test

@@ -2371,6 +2371,116 @@ ENTRIES = {
 
 
 # ---------------------------------------------------------------------------
+# 9. Wave 6C (FOLLOWUPS §"From Wave 4 registry agents").
+#
+#    (a) The four night-order rows `tools/app-overlay.json` adds because the
+#        official sheet has none: a mid-game Widow / Ogre / Snitch and a
+#        night-1 Plague Doctor death.  `regen-data.py` and `validate()` both
+#        require a `first`/`other` channel exactly when the id is in the
+#        matching order list, so these are not optional.
+#    (b) The six characters WP7-EXP-O reported with no run-book for the
+#        channel where their whole ability lives.  There is no `end` channel
+#        in the schema (ARCHITECTURE §2.14 / `NightGuideEntry`), so the
+#        end-of-game work goes in `day`, which is where the storyteller is
+#        standing when it happens.
+# ---------------------------------------------------------------------------
+
+W6C = {
+    "widow": {
+        "other": night(
+            "Only for a Widow who has just ENTERED PLAY - a Pit-Hag, Summoner or Kazali "
+            "made one tonight. 'On your 1st night' means their first night as the Widow, "
+            "so run the whole first-night step now: show them the Grimoire for as long as "
+            "they need (cover anything a jinx hides - a fellow Widow's Know token, and the "
+            "Demon's and Magician's tokens if a Magician is in play), let them point at a "
+            "player, mark that player Poisoned, then wake the good player marked Know and "
+            "show them the Widow token. A Widow who has already seen the Grimoire never "
+            "sees it again.",
+            [{"label": "To the Know player", "kind": "token", "text": "", "token": "self"}],
+        )
+    },
+    "ogre": {
+        "other": night(
+            "Only for an Ogre who has just ENTERED PLAY. The Ogre points at a player who is "
+            "NOT themself; mark that player Friend. If that player registers as evil, the "
+            "Ogre becomes evil - turn the Ogre's character token upside down. The Ogre is "
+            "never told which alignment they became, so give no signal either way. This "
+            "works even if the Ogre is drunk or poisoned."
+        )
+    },
+    "snitch": {
+        "other": night(
+            "Only when a Minion is still owed bluffs - a Snitch or a Minion entered play "
+            "after the first night. Wake that Minion, show the THESE CHARACTERS ARE NOT IN "
+            "PLAY token and three not-in-play character tokens of their own. The Marionette "
+            "is never woken and gets nothing; the Demon gets an extra three instead."
+        )
+    },
+    "plaguedoctor": {
+        "first": night(
+            "Almost always skipped: nobody has died yet on the first night. It is here for "
+            "the one case that can happen - a Plague Doctor killed before the first night "
+            "ended (an Angel's 'something bad', a storyteller death, a house rule). If the "
+            "Plague Doctor is dead and you have not taken a Minion ability yet, choose one "
+            "now and keep it secret forever. A Plague Doctor who died drunk or poisoned "
+            "gives you nothing, even if they are cured later."
+        )
+    },
+    "hermit": {
+        "day": night(
+            "The Hermit holds every Outsider ability on the script, including the ones that "
+            "act in daylight: the Golem's single nomination, the Puzzlemaster's guess, the "
+            "Damsel's guess, the Klutz's choice on death, the Politician's end-of-game "
+            "switch and the Zealot's obligation to vote. Run each of them for the Hermit as "
+            "if they were that Outsider, using the Hermit's own 1, 2 and 3 reminders where "
+            "the real Outsider is also in play. A once-per-game ability the Hermit spends "
+            "is spent for the Hermit only."
+        )
+    },
+    "golem": {
+        "reference": night(
+            "The Golem's kill is NOT an execution: it does not use up the day's execution, "
+            "and the Saint, Devil's Advocate, Fearmonger and Virgin all sit it out. The "
+            "nomination itself still happens and is still voted on."
+        )
+    },
+    "puzzlemaster": {
+        "setup": night(
+            "Before the first night, choose which player is drunk because of the "
+            "Puzzlemaster and mark them with the Puzzlemaster's Drunk reminder. It may be "
+            "the Puzzlemaster themself. They are drunk from now on and stay drunk even "
+            "after the Puzzlemaster dies. Tell nobody."
+        )
+    },
+    "politician": {
+        "day": night(
+            "At the END of the game, before you announce who won, decide whether the "
+            "Politician was the player most responsible for their own team losing. If they "
+            "were, they change alignment and win with the other team instead - even if they "
+            "are dead, and even though nobody was told. Decide it then, not earlier, and "
+            "say so out loud when you announce the result."
+        )
+    },
+    "zealot": {
+        "day": night(
+            "While 5 or more players are alive, the Zealot MUST raise their hand on every "
+            "nomination. Watch for it on each vote and remind them at the table rather than "
+            "penalising them. The obligation holds even while the Zealot is drunk or "
+            "poisoned - it is a rule about the player, not an ability."
+        )
+    },
+    "heretic": {
+        "day": night(
+            "Apply the Heretic as the VERY LAST step of the win check, after every other "
+            "ability has resolved: whoever has just won, loses, and whoever has just lost, "
+            "wins. It works while the Heretic is dead and is suppressed only while the "
+            "Heretic is drunk or poisoned. Work the answer out before you announce anything."
+        )
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
 
@@ -2433,6 +2543,11 @@ def apply(guide, problems):
             entry.setdefault(channel, {"instructions": text, "shows": []})
 
     for cid, channels in ENTRIES.items():
+        entry = guide.setdefault(cid, {})
+        for channel, value in channels.items():
+            entry.setdefault(channel, value)
+
+    for cid, channels in W6C.items():
         entry = guide.setdefault(cid, {})
         for channel, value in channels.items():
             entry.setdefault(channel, value)

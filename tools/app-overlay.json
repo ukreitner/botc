@@ -1,5 +1,151 @@
 {
- "_comment": "The app's own fields, merged over The Pandemonium Institute's official roles.json by tools/regen-data.py. `characters` holds per-id extras: the app's verbose storyteller night prose (kept over the official terse strings per data-accuracy P3 #18) and `spentLabel` (lead D49). `manualOverrides` holds field-level corrections applied AFTER the official data, each of which must be justified in tools/DATA.md.",
+ "_comment": "The app's half of the character-data merge (see tools/DATA.md). `nightOrder` inserts the rows the official nightsheet omits, `reminders` records the app-side reminder deltas on top of the official lists, `manualOverrides` is the raw field-level escape hatch, and `characters` carries the app's verbose night prose plus `spentLabel`.",
+ "nightOrder": {
+  "firstNight": [
+   {
+    "id": "plaguedoctor",
+    "after": "pixie",
+    "why": "The official sheet has no first-night Plague Doctor row, so a Plague Doctor who dies before the first night ends (a storyteller or Fabled death) leaves the storyteller with no step to take the Minion ability. The registry row is gated on 'dead and not taken yet', so it is silent in every ordinary game. Placed where the other-night sheet puts it: immediately before huntsman/damsel."
+   }
+  ],
+  "otherNight": [
+   {
+    "id": "widow",
+    "after": "poisoner",
+    "why": "'On your 1st night' means the night the Widow ENTERS PLAY. The wiki's own example is a Pit-Hag turning themselves into the Widow on night 3, who then sees the Grimoire and poisons that night. The official sheet has no other-night row, so that Widow had no step. Same slot as on the first night: straight after the Poisoner."
+   },
+   {
+    "id": "snitch",
+    "after": "scarletwoman",
+    "why": "A Snitch or a Minion created mid-game still owes three bluffs, and the official sheet has no other-night Snitch row. Placed before summoner/lunatic, mirroring its first-night position straight after MINION INFO."
+   },
+   {
+    "id": "ogre",
+    "after": "spy",
+    "why": "'On your 1st night' again: an Ogre created mid-game picks their friend on the night they enter play. Same neighbours as on the first night — after the Spy, before the High Priestess."
+   }
+  ]
+ },
+ "reminders": {
+  "angel": {
+   "add": [
+    "No Ability",
+    "Can't Vote"
+   ],
+   "why": "The wiki's SOMETHING BAD token stands for 'poisoned, or mad, or can't vote today'. Poisoned and Mad already have generic storyteller tokens; the other two penalties the Angel's own page names had no label at all, so they could not be placed, expired or read (characters/angel.md §'Data changes')."
+  },
+  "beggar": {
+   "add": [
+    "Token"
+   ],
+   "why": "'If a dead player gives you their vote token, you learn their alignment' — the donation has to be visible in the grimoire and there is no official token for it (characters/beggar.md)."
+  },
+  "boffin": {
+   "addGlobal": [
+    "Demon Has This Ability"
+   ],
+   "why": "The wiki runs the Boffin by placing a SECOND CHARACTER TOKEN next to the Demon's. The app has no second-token slot, so the granted good ability is recorded as a global reminder on the Demon instead. Global, because it names a character that is not in play."
+  },
+  "boomdandy": {
+   "add": [
+    "Exploded"
+   ],
+   "why": "'Declare that the Boomdandy has exploded' — the explosion runs across a countdown and a finger vote, so the state has to survive between storyteller taps. No official token exists."
+  },
+  "buddhist": {
+   "add": [
+    "Silent",
+    "Silent",
+    "Silent"
+   ],
+   "why": "'Declare which players are Buddhists' — the veterans must be visible in the grimoire for the two silent minutes of every day. Three copies because more than one player is normally declared. Never an impairment (characters/buddhist.md)."
+  },
+  "doomsayer": {
+   "add": [
+    "Used"
+   ],
+   "why": "'Each living player may publicly choose (once per game)'. The spend is authoritatively FabledEntry.spentBy; the token is the grimoire's copy of it, one per game as characters/doomsayer.md specifies."
+  },
+  "gunslinger": {
+   "add": [
+    "No Ability"
+   ],
+   "why": "'Each day, after the 1st vote' — a once-per-DAY mark, so no spentLabel (D49); swept at dawn (characters/gunslinger.md)."
+  },
+  "hellslibrarian": {
+   "add": [
+    "No Ability",
+    "No Vote"
+   ],
+   "why": "Same as the Angel: the wiki lets the storyteller take a player's ability or vote for the day and the app had no label for either (characters/hellslibrarian.md §'Data changes')."
+  },
+  "leviathan": {
+   "copies": {
+    "Good Player Executed": 2
+   },
+   "why": "'If MORE THAN 1 good player is executed, evil wins' — the count has to be able to reach two. With one copy the second mark displaced the first and RulesExpDemons.goodExecutedMarks could never return 2."
+  },
+  "lleech": {
+   "add": [
+    "Host"
+   ],
+   "why": "Host-ness and the poison are separate facts: the official Soldier ruling has a host who is NOT poisoned. With only the Poisoned token the life-link and the impairment could not be told apart (characters/lleech.md P1 #5)."
+  },
+  "minstrel": {
+   "toGlobal": [
+    "Everyone Is Drunk"
+   ],
+   "why": "The Minstrel's token is a fact about the whole table, not about the seat it is drawn on (lead D9/D15: grimoireCentre). Moving it out of `reminders` keeps the seat token trays honest; `allReminders` is unchanged, so no rule moves."
+  },
+  "psychopath": {
+   "add": [
+    "Used Today"
+   ],
+   "why": "'Each day, before nominations' — the day tool had to key off a STATEMENT ledger row because no label existed. Once per DAY, so no spentLabel; swept at dawn."
+  },
+  "sage": {
+   "add": [
+    "Woke"
+   ],
+   "why": "The Sage wakes exactly once, on the night the Demon kills them, and must not wake again if they are resurrected and killed a second time. NightEffect.MarkSpent was writing a LABELLESS spent effect, invisible in the grimoire (characters/sage.md)."
+  },
+  "snakecharmer": {
+   "copies": {
+    "Poisoned": 2
+   },
+   "why": "Each swap poisons the NEW Snake Charmer permanently, and a second swap must not cure the first victim. One copy made the placement exclusive."
+  },
+  "summoner": {
+   "add": [
+    "No Ability"
+   ],
+   "why": "The summon is once per game and the Night 3 token is REMOVED when it fires, so the grimoire had nothing left to say the Summoner is done (characters/summoner.md §'Night 3')."
+  },
+  "sweetheart": {
+   "copies": {
+    "Drunk": 2
+   },
+   "why": "'1 player is drunk from now on', permanently and per Sweetheart death — a second Sweetheart (Pit-Hag) must not un-drunk the first victim."
+  },
+  "vizier": {
+   "add": [
+    "No Ability"
+   ],
+   "why": "The Courtier/Preacher jinx — 'if the Vizier loses their ability, they learn this, and cannot die during the day' — is a state the grimoire has to show, and the official set is empty."
+  },
+  "widow": {
+   "copies": {
+    "Poisoned": 2
+   },
+   "why": "The poison lasts until the Widow dies, so two Widows (a Pit-Hag made the second) hold two victims at once."
+  },
+  "wizard": {
+   "add": [
+    "Wish Granted"
+   ],
+   "why": "A DECLINED wish is not a spend; only a granted one is. The two '?' tokens track the wish's ongoing effects, not the spend, so there was no label for Gates.notSpent to read (characters/wizard.md P1 #3)."
+  }
+ },
  "manualOverrides": {},
  "characters": {
   "acrobat": {
@@ -9,7 +155,7 @@
    "firstNightReminder": "Show the 'You are' info token and a Minion token."
   },
   "alhadikhia": {
-   "otherNightReminder": "The Al-Hadikhia chooses 3 players. In order, wake each target. They nod or shake their head. Put them to sleep before waking the next target."
+   "otherNightReminder": "The Al-Hadikhia may choose 3 players and all players learn who — DEAD players are legal targets. Mark them '1', '2', '3'. In order, wake each one and ask whether they choose to live. A player who chooses to live has their shroud removed, so a dead one is ALIVE again; a player who chooses to die dies. Put each back to sleep before waking the next. If all three chose to live, all three die instead."
   },
   "apprentice": {
    "firstNightReminder": "Show the Apprentice the 'You are' card, then a Townsfolk or Minion token. In the Grimoire, replace the Apprentice token with that character token, and put the Apprentice's 'Is the Apprentice' reminder by that character token."
@@ -249,7 +395,8 @@
    "otherNightReminder": "The No Dashii points to a player. That player dies."
   },
   "ogre": {
-   "firstNightReminder": "The Ogre chooses a player."
+   "firstNightReminder": "The Ogre chooses a player, but NOT themself. Place the 'Friend' reminder on that player. If that player registers as evil, the Ogre becomes evil — turn the Ogre's character token upside down. The Ogre is never told which alignment they became, so give no signal either way. This works even if the Ogre is drunk or poisoned.",
+   "otherNightReminder": "An Ogre who has just entered play. The Ogre chooses a player, but NOT themself. Place the 'Friend' reminder on that player. If that player registers as evil, the Ogre becomes evil. Give no signal either way — this works even if the Ogre is drunk or poisoned."
   },
   "ojo": {
    "otherNightReminder": "The Ojo chooses a character."
@@ -262,8 +409,8 @@
    "otherNightReminder": "The Organ Grinder either nods their head yes to be drunk, or shakes their head no to be sober."
   },
   "philosopher": {
-   "firstNightReminder": "The Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is the Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
-   "otherNightReminder": "If the Philosopher has not used their ability: the Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is the Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
+   "firstNightReminder": "The Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is The Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
+   "otherNightReminder": "If the Philosopher has not used their ability: the Philosopher either shows a 'no' head signal, or points to a good character on their sheet. If they chose a character: Swap the out-of-play character token with the Philosopher token and add the 'Is The Philosopher' reminder. If the character is in play, place the drunk marker by that player.",
    "spentLabel": "Is The Philosopher"
   },
   "pithag": {
@@ -273,7 +420,8 @@
    "firstNightReminder": "Show the Townsfolk character token marked 'Mad'."
   },
   "plaguedoctor": {
-   "otherNightReminder": "If the Plague Doctor died, the Storyteller gained a Minion ability. If you haven't done this yet, do so now."
+   "otherNightReminder": "If the Plague Doctor died, the Storyteller gained a Minion ability. If you haven't done this yet, do so now.",
+   "firstNightReminder": "If the Plague Doctor died, the Storyteller gained a Minion ability. If you haven't done this yet, do so now."
   },
   "po": {
    "otherNightReminder": "If the Po chose no-one the previous night: The Po points to three players. Otherwise: The Po either shows the 'no' head signal, or points to a player. Chosen players die."
@@ -311,7 +459,8 @@
    "otherNightReminder": "Change the Riot reminder token to the relevant day. If it is night 3, you may wake the Minions. Show the 'You are' & Riot tokens."
   },
   "sage": {
-   "otherNightReminder": "If the Sage was killed by a Demon: Point to two players, one of which is that Demon."
+   "otherNightReminder": "If the Sage was killed by a Demon: Point to two players, one of which is that Demon.",
+   "spentLabel": "Woke"
   },
   "sailor": {
    "firstNightReminder": "The Sailor points to a living player. Either the Sailor, or the chosen player, is drunk.",
@@ -321,8 +470,8 @@
    "otherNightReminder": "If the Scarlet Woman became the Demon today: Show the 'You are' card, then the Demon token."
   },
   "seamstress": {
-   "firstNightReminder": "The Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players , nod 'yes' or shake 'no' for whether they are of same alignment.",
-   "otherNightReminder": "If the Seamstress has not yet used their ability: the Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players , nod 'yes' or shake 'no' for whether they are of same alignment.",
+   "firstNightReminder": "The Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players, nod 'yes' or shake 'no' for whether they are of same alignment.",
+   "otherNightReminder": "If the Seamstress has not yet used their ability: the Seamstress either shows a 'no' head signal, or points to two other players. If the Seamstress chose players, nod 'yes' or shake 'no' for whether they are of same alignment.",
    "spentLabel": "No Ability"
   },
   "shabaloth": {
@@ -336,7 +485,8 @@
    "otherNightReminder": "The Snake Charmer points to a player. If that player is the Demon: swap the Demon and Snake Charmer character and alignments. Wake each player to inform them of their new role and alignment. The new Snake Charmer is poisoned."
   },
   "snitch": {
-   "firstNightReminder": "Wake each Minion. Show the 'These characters are not in play' token. Show 3 not-in-play character tokens."
+   "firstNightReminder": "Wake each Minion. Show the 'These characters are not in play' token. Show 3 not-in-play character tokens.",
+   "otherNightReminder": "A Minion has not been given their bluffs yet and a Snitch is in play. Wake them, show the 'These characters are not in play' token and 3 not-in-play character tokens. The Marionette is never woken and gets nothing."
   },
   "spy": {
    "firstNightReminder": "Show the Grimoire to the Spy for as long as they need.",
@@ -347,7 +497,8 @@
   },
   "summoner": {
    "firstNightReminder": "Show the 'These characters are not in play' token. Show 3 not-in-play good character tokens.",
-   "otherNightReminder": "Change the Summoner reminder token to the relevant night. If it is night 3, the Summoner chooses a player & a Demon character. Put the Summoner to sleep. Wake the target. Show the 'You are' and Demon tokens & give a thumbs-down."
+   "otherNightReminder": "Change the Summoner reminder token to the relevant night. If it is night 3, the Summoner chooses a player & a Demon character. Put the Summoner to sleep. Wake the target. Show the 'You are' and Demon tokens & give a thumbs-down.",
+   "spentLabel": "No Ability"
   },
   "sweetheart": {
    "otherNightReminder": "Choose a player that is drunk."
@@ -360,7 +511,7 @@
    "otherNightReminder": "The Tinker might die."
   },
   "towncrier": {
-   "otherNightReminder": "Nod 'yes' or shake head 'no' for whether a Minion nominated today. Place the 'Minion not nominated' marker (remove 'Minion nominated', if any)."
+   "otherNightReminder": "Nod 'yes' or shake head 'no' for whether a Minion nominated today. Place the 'Minions Not Nominated' marker (remove 'Minion Nominated', if any)."
   },
   "toymaker": {
    "otherNightReminder": "If it is a night when a Demon attack could end the game, and the Demon is marked \"Final night: No Attack,\" then the Demon does not act tonight. (Do not wake them.)"
@@ -384,11 +535,15 @@
    "firstNightReminder": "Show the character token of a Townsfolk in play. Point to two players, one of which is that character."
   },
   "widow": {
-   "firstNightReminder": "Show the Grimoire for as long as the Widow needs. The Widow chooses a player. Put the Widow to sleep. Wake the player marked 'Know' & show the Widow token."
+   "firstNightReminder": "Show the Grimoire for as long as the Widow needs. The Widow chooses a player. Put the Widow to sleep. Wake the player marked 'Know' & show the Widow token.",
+   "otherNightReminder": "A Widow who has just entered play. Show the Grimoire for as long as the Widow needs. The Widow chooses a player: they are poisoned. Put the Widow to sleep. Wake the player marked 'Know' & show the Widow token."
   },
   "witch": {
    "firstNightReminder": "The Witch points to a player. If that player nominates tomorrow they die immediately.",
    "otherNightReminder": "If there are 4 or more players alive: The Witch points to a player. If that player nominates tomorrow they die immediately."
+  },
+  "wizard": {
+   "spentLabel": "Wish Granted"
   },
   "xaan": {
    "firstNightReminder": "If X is 1, mark the Xaan with the 'X' reminder token.",

@@ -341,6 +341,16 @@ private fun leviathan() = CharacterRule(
         "ravenkeeper" to leviathanJinxChoice("The Ravenkeeper uses their ability and does NOT die."),
         "sage" to leviathanJinxChoice("The Sage uses their ability and does NOT die."),
     ),
+    // "If MORE THAN 1 good player is executed, evil wins" — the count has to be
+    // able to reach two. The official data lists one copy, so the second mark
+    // displaced the first and `goodExecutedMarks` could never return 2 (WP6C
+    // data change).
+    tokens = listOf(
+        TokenRule(
+            "leviathan", "Good Player Executed", effect = null, until = Until.FOREVER,
+            copies = 2, grimoireCentre = true,
+        ),
+    ),
 )
 
 private fun leviathanJinxChoice(effect: String) = NightRule(
@@ -572,6 +582,12 @@ private fun lilMonstaNight(ctx: NightContext): NightAction {
 private fun lleech() = CharacterRule(
     id = "lleech",
     killCause = DeathCause.DEMON_KILL,
+    // The life-link, kept apart from the poison so the official Soldier ruling
+    // ("not poisoned, but becomes the host") is expressible. It outlives the
+    // Lleech: the link is what decides whether the Lleech may die at all.
+    tokens = listOf(
+        TokenRule("lleech", "Host", effect = null, until = Until.FOREVER, endsWithSource = false),
+    ),
     standing = StandingRule("lleech") { state, holder, _ ->
         val host = hostOf(state) ?: return@StandingRule emptyList()
         listOf(
@@ -687,6 +703,15 @@ private fun lleechHostChoice(): NightAction = ChoosePlayers(
     constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED),
     sort = TargetSort.ALIVE_FIRST,
     perTarget = listOf(
+        // Host FIRST: it is the life-link, and it is the one the Soldier ruling
+        // keeps when the poison is waived (WP6C added the label).
+        NightEffect.PlaceToken(
+            sourceId = "lleech",
+            label = "Host",
+            on = Ref.Target,
+            kind = EffectKind.MARKER,
+            until = Until.FOREVER,
+        ),
         NightEffect.PlaceToken(
             sourceId = "lleech",
             label = "Poisoned",
@@ -1070,20 +1095,25 @@ private fun hasCharges(): WakePredicate = WakePredicate { ctx ->
 }
 
 /**
- * The Lleech's host: the seat carrying `lleech/Poisoned`, as an effect or as a
+ * The Lleech's host: the seat carrying `lleech/Host`, as an effect or as a
  * hand-placed token. Read from raw state — this runs inside the status query.
  *
- * FOLLOWUPS(WP5): `characters.json` has no `Host` reminder, so host-ness and the
- * poison cannot be separated (the official Soldier ruling wants them to be).
+ * WP6C added the `Host` label so host-ness and the poison are separate facts:
+ * the official Soldier ruling has a host who is NOT poisoned, and until now the
+ * only marker was the poison itself. `lleech/Poisoned` stays a fallback so a
+ * game saved before the label existed still resolves its host.
  */
 private fun hostOf(state: GameState): Long? {
-    val key = Tokens.key("lleech", "Poisoned")
-    state.effects.firstOrNull { Tokens.key(it.sourceCharacterId, it.label) == key }
-        ?.let { return it.targetId }
-    state.effects.firstOrNull {
+    for (label in listOf("Host", "Poisoned")) {
+        val key = Tokens.key("lleech", label)
+        state.effects.firstOrNull { Tokens.key(it.sourceCharacterId, it.label) == key }
+            ?.let { return it.targetId }
+        state.players.firstOrNull { p -> p.reminders.any { Tokens.key(it) == key } }
+            ?.let { return it.id }
+    }
+    return state.effects.firstOrNull {
         Character.normalizeId(it.sourceCharacterId) == "lleech" && it.kind == EffectKind.POISONED
-    }?.let { return it.targetId }
-    return state.players.firstOrNull { p -> p.reminders.any { Tokens.key(it) == key } }?.id
+    }?.targetId
 }
 
 private fun isThisLleech(holder: Player): Boolean =

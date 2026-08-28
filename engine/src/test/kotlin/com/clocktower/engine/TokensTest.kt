@@ -75,8 +75,38 @@ class TokensTest {
         assertEquals(3, Tokens.rule("vigormortis", "Has Ability")!!.copies)
         assertEquals(3, Tokens.rule("vigormortis", "Poisoned")!!.copies)
         assertEquals(2, Tokens.rule("nodashii", "Poisoned")!!.copies)
-        assertEquals(1, Tokens.rule("leviathan", "Good Player Executed")!!.copies)
+        // WP6C: "more than 1 good player is executed" has to be able to reach
+        // two, so the app carries two copies where the official list has one.
+        assertEquals(2, Tokens.rule("leviathan", "Good Player Executed")!!.copies)
         assertNotNull(Tokens.rule("minstrel", "Everyone Is Drunk"))
+    }
+
+    @Test
+    fun `the WP6C reminder additions are declared in data and in the registry`() {
+        // Every label the app added on top of the official reminder lists
+        // (tools/app-overlay.json `reminders`). The two parity tests above
+        // already pin that each is really in `characters.json` with this copy
+        // count; this one pins that the rule exists at all, because a token
+        // nobody declared is a token the grimoire cannot place.
+        for (k in listOf("buddhist" to "Silent", "doomsayer" to "Used", "beggar" to "Token",
+                "gunslinger" to "No Ability", "boffin" to "Demon Has This Ability",
+                "boomdandy" to "Exploded", "psychopath" to "Used Today", "vizier" to "No Ability",
+                "sage" to "Woke", "summoner" to "No Ability", "wizard" to "Wish Granted",
+                "lleech" to "Host", "angel" to "No Ability", "angel" to "Can't Vote",
+                "hellslibrarian" to "No Ability", "hellslibrarian" to "No Vote")) {
+            assertNotNull(Tokens.rule(k.first, k.second), "${k.first}/${k.second} has no TokenRule")
+        }
+        assertEquals(3, Tokens.rule("buddhist", "Silent")!!.copies)
+        assertFalse(Tokens.rule("buddhist", "Silent")!!.impairs, "silence is not an impairment")
+        assertEquals(2, Tokens.rule("widow", "Poisoned")!!.copies)
+        assertEquals(2, Tokens.rule("snakecharmer", "Poisoned")!!.copies)
+        assertEquals(2, Tokens.rule("sweetheart", "Drunk")!!.copies)
+        // The Minstrel's centre token moved to `remindersGlobal`; `allReminders`
+        // is unchanged, so the rule and its lifetime must not have moved.
+        assertTrue(
+            "Everyone Is Drunk" in assertNotNull(data.character("minstrel")).remindersGlobal,
+        )
+        assertEquals(Until.DUSK_AFTER_N_DAYS, Tokens.rule("minstrel", "Everyone Is Drunk")!!.until)
     }
 
     @Test
