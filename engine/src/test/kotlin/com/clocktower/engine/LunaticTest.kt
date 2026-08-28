@@ -335,8 +335,9 @@ class LunaticTest {
         // the seat-naming text out of `detail`, which is now always empty).
         assertTrue(who in info.banner + " " + info.prompt, "and in the row text: ${info.banner} | ${info.prompt}")
 
+        // The Minion point card (Fix B-7) sits on the same row; pick the Lunatic one.
         val offer = assertNotNull(
-            info.cards.firstOrNull { it.card is ShowCardSpec.PointCard },
+            info.cards.firstOrNull { (it.card as? ShowCardSpec.PointCard)?.characterId == "lunatic" },
             "a card to actually show it with: ${info.cards.map { it.label }}",
         )
         val card = assertIs<ShowCardSpec.PointCard>(offer.card)
