@@ -313,10 +313,22 @@ data class NightPlan(
                     ?: Status.hasAbility(state, lookup, holder.id)
                 )
 
+            // A seat running an ability it does not have (lead D70). Nothing the
+            // believed row declares may change the game — including its DEFERRED
+            // half, which is the one an Exorcised Demon would still run. A
+            // believed Pukka's standing victim must not die a night late.
+            val illusion = nightCtx.role?.alwaysFalse == true
+            val ownMark = illusionMarker(holder)
+
             // The deferred half is computed from the state BEFORE the choice lands,
             // and applied after it, so "poison the new target, then the old one
             // dies" is the order the rules ask for (lead D4).
-            val pending = nightRule?.pending?.invoke(nightCtx).orEmpty()
+            val declaredPending = nightRule?.pending?.invoke(nightCtx).orEmpty()
+            val pending = if (illusion) {
+                inert(declaredPending, keepMarkers = ownMark == null)
+            } else {
+                declaredPending
+            }
 
             val targets = resolvedTargets(state, lookup, step, action, input)
             // A per-pair answer names its characters in `assignments` and an
@@ -340,7 +352,14 @@ data class NightPlan(
             }
             if (choiceAllowed && action != null) {
                 next = applyAction(next, lookup, action, input, targets, scope)
-                next = fireOnChosen(next, state, lookup, step, targets)
+                // Nobody was chosen BY AN ABILITY here: a Goon a Lunatic pointed
+                // at was not chosen at all, so the reactive half stays asleep.
+                if (!illusion) next = fireOnChosen(next, state, lookup, step, targets)
+            }
+            if (illusion && ownMark != null) {
+                // The illusion is still drawn in the grimoire — and it is the
+                // BELIEVER'S own marker, never the believed character's.
+                next = applyEffects(next, lookup, listOf(ownMark), scope)
             }
             next = applyEffects(next, lookup, pending, scope)
 
@@ -597,7 +616,13 @@ data class NightPlan(
             val style = if (firstNightRules) WakeStyle.FIRST_NIGHT else WakeStyle.OTHER_NIGHT
             val character = ctx.lookup(role.abilityId)
             val rule = CharacterRules.of(role.abilityId, character)
-            val jinxed = jinxesOn(rule, ctx.scriptIds, firstNightRules)
+            // A believed ability is not on the script twice: nothing about it is
+            // real, so no jinx of the character they THINK they are can bite.
+            val jinxed = if (role.alwaysFalse) {
+                emptyList()
+            } else {
+                jinxesOn(rule, ctx.scriptIds, firstNightRules)
+            }
             val nightRule = jinxOver(rule.nightRule(firstNightRules), rule, jinxed)
             val holder = ctx.holder(role)
             val nightCtx = ctx.nightContext(role, holder, firstNightRules)
@@ -605,7 +630,15 @@ data class NightPlan(
                 nightRule == null -> StepGate.Skip("no ability on this night")
                 else -> nightRule.gate.gate(ctx.wakeContext(role, holder))
             }
-            val action = nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
+            val chosen = nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
+            // The picker shape is kept — a believed Shabaloth still takes two,
+            // a charged believed Po still takes three — and every consequence
+            // is stripped out of it.
+            val action = if (role.alwaysFalse) {
+                illusory(chosen, keepMarkers = illusionMarker(holder) == null)
+            } else {
+                chosen
+            }
             val name = character?.name ?: role.abilityId
             val sourceName = role.sourceId?.let { ctx.lookup(it)?.name ?: it }
             val badges = buildList {
@@ -655,6 +688,133 @@ data class NightPlan(
                 promptId = promptId,
                 wakeCounts = nightRule?.wakeCounts ?: WakeCount.ACT,
             )
+        }
+
+        // ---- the illusion: `ActingRole.alwaysFalse` (lead D70) -------------
+
+        /**
+         * The believed ability with every consequence removed.
+         *
+         * A Lunatic runs the BELIEVED Demon's registry row, a Drunk or a
+         * Marionette the row of whatever token they were handed. The storyteller
+         * must still run the real prompt — the picker shape (how many targets,
+         * which are legal, how they sort) is the whole illusion — but nothing it
+         * declares may CHANGE the game: no attack, no resurrection, no alignment
+         * change, no character change or swap, no granted ability, no queued
+         * prompt, no announcement, no counter and no once-per-game spend.
+         *
+         * Markers are the one exception, and only for a believer whose own row
+         * declares no [CharacterRule.illusionToken]:
+         *
+         *  - a Drunk-as-Monk still places `monk/Safe`, because a Spy reading the
+         *    grimoire must see an ordinary Monk. The token protects nobody —
+         *    `Status.roleWorks` returns false for an `alwaysFalse` role, so every
+         *    effect it sourced is dead on arrival — and that inertness is the
+         *    status model's job, not the planner's;
+         *  - a Lunatic declares `lunatic/Chosen`, so the believed Demon's own
+         *    markers go too and the Lunatic's three official ones are placed
+         *    instead. A "Dead" token from a kill that never happened would be a
+         *    lie the grimoire tells its own storyteller.
+         *
+         * Stripping the ACTION rather than filtering at apply time is what makes
+         * this visible: the screen renders a picker that carries no kill, and a
+         * test can read the shape it will run.
+         *
+         * [ShowInfo] is left alone deliberately. It carries no effects, and the
+         * truthful answer behind it is what the storyteller needs in order to lie
+         * — a drunk Empath's row must still compute the real count.
+         */
+        private fun illusory(action: NightAction?, keepMarkers: Boolean): NightAction? =
+            when (action) {
+                null -> null
+                is ChoosePlayers -> action.copy(
+                    prompt = illusionPrompt(action.prompt),
+                    // "Chose nobody" is always a legal answer for a believer: the
+                    // real Demon has to be told when the fake attack never came.
+                    allowNone = true,
+                    perTarget = inert(action.perTarget, keepMarkers),
+                    onResolve = inert(action.onResolve, keepMarkers),
+                    onNone = inert(action.onNone, keepMarkers),
+                )
+
+                is ChooseCharacter -> action.copy(
+                    prompt = illusionPrompt(action.prompt),
+                    allowNone = true,
+                    onResolve = inert(action.onResolve, keepMarkers),
+                    onNone = inert(action.onNone, keepMarkers),
+                )
+
+                is ChoosePlayerAndCharacter -> action.copy(
+                    prompt = illusionPrompt(action.prompt),
+                    onResolve = inert(action.onResolve, keepMarkers),
+                    onNone = inert(action.onNone, keepMarkers),
+                )
+
+                is ChoosePlayersAndCharacters -> action.copy(
+                    prompt = illusionPrompt(action.prompt),
+                    allowNone = true,
+                    perPair = inert(action.perPair, keepMarkers),
+                    onResolve = inert(action.onResolve, keepMarkers),
+                    onNone = inert(action.onNone, keepMarkers),
+                )
+
+                is YesNo -> action.copy(
+                    prompt = illusionPrompt(action.prompt),
+                    onYes = inert(action.onYes, keepMarkers),
+                    onNo = inert(action.onNo, keepMarkers),
+                )
+
+                is Options -> action.copy(
+                    prompt = illusionPrompt(action.prompt),
+                    options = action.options.map { it.copy(effects = inert(it.effects, keepMarkers)) },
+                    onNone = inert(action.onNone, keepMarkers),
+                )
+
+                // Every stage of the Al-Hadikhia's three-pick sequence, one at a time.
+                is Sequence ->
+                    action.copy(stages = action.stages.mapNotNull { illusory(it, keepMarkers) })
+
+                is ShowInfo -> action
+            }
+
+        /**
+         * [effects] with everything that changes the game removed. See [illusory]
+         * for why the markers may survive.
+         */
+        private fun inert(effects: List<NightEffect>, keepMarkers: Boolean): List<NightEffect> {
+            if (!keepMarkers) return emptyList()
+            return effects.mapNotNull { effect ->
+                when (effect) {
+                    is NightEffect.PlaceToken, is NightEffect.RemoveToken -> effect
+                    is NightEffect.When -> effect
+                        .copy(
+                            then = inert(effect.then, true),
+                            otherwise = inert(effect.otherwise, true),
+                        )
+                        .takeIf { it.then.isNotEmpty() || it.otherwise.isNotEmpty() }
+
+                    else -> null
+                }
+            }
+        }
+
+        private fun illusionPrompt(prompt: String): String =
+            if (prompt.isEmpty()) prompt else "$prompt (nothing happens)"
+
+        /**
+         * The mark a believer's fake choices leave INSTEAD of the believed
+         * ability's, declared by the believer's own registry row
+         * (`CharacterRule.illusionToken`).
+         *
+         * The Lunatic owns three official `Chosen` tokens and the grimoire is
+         * meant to show them; the Drunk and the Marionette declare none, so they
+         * keep drawing the ability they think they have. No character id appears
+         * here — the registry row is the whole statement.
+         */
+        private fun illusionMarker(holder: Player?): NightEffect.PlaceToken? {
+            val own = holder?.characterId?.let(Character::normalizeId) ?: return null
+            val token = CharacterRules.all[own]?.illusionToken ?: return null
+            return NightEffect.PlaceToken(token.sourceId, token.label, Ref.AllTargets)
         }
 
         /**
@@ -2042,6 +2202,10 @@ object Gates {
     /** Reads `Character.spentLabel` (lead D49) — never the "Once per game" text. */
     fun notSpent(): WakePredicate = WakePredicate { ctx ->
         val holder = ctx.holder ?: return@WakePredicate StepGate.Fire
+        // A believer has nothing to use up: the planner strips their `MarkSpent`
+        // along with every other effect, so a Lunatic who "used" a once-per-game
+        // Demon power last night must be offered it again tonight (lead D70).
+        if (ctx.role?.alwaysFalse == true) return@WakePredicate StepGate.Fire
         val ability = ctx.role?.abilityId ?: return@WakePredicate StepGate.Fire
         val label = ctx.lookup(ability)?.spentLabel.orEmpty()
         val key = if (label.isEmpty()) null else Tokens.key(ability, label)

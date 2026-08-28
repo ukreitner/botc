@@ -87,6 +87,22 @@ data class CharacterRule(
     val tokens: List<TokenRule> = emptyList(),
     val onDeath: List<DeathTrigger> = emptyList(),
 
+    // ---- believing you hold somebody else's ability (`ActingRole.alwaysFalse`) ----
+    /**
+     * The marker this character's FAKE choices leave on the board.
+     *
+     * A seat running an ability it does not have — a Lunatic, a Drunk or a
+     * Marionette shown a Demon token — has every effect of that ability dropped
+     * by the planner (lead D70). The Lunatic is the one character whose illusion
+     * is still drawn in the grimoire: the official `Chosen` ×3. The token is
+     * declared HERE, on the believer's own row, so `NightPlan` places it without
+     * ever naming a character.
+     *
+     * A row that declares none leaves nothing behind, which is exactly the Drunk
+     * and the Marionette: they own no marker in the official data.
+     */
+    val illusionToken: TokenRule? = null,
+
     // ---- day ----
     val day: DayRule? = null,
 
