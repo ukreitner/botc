@@ -52,6 +52,7 @@ import com.clocktower.grimoire.ui.screens.night.actionEffects
 import com.clocktower.grimoire.ui.screens.night.color
 import com.clocktower.grimoire.ui.screens.night.dimAlpha
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
+import com.clocktower.grimoire.ui.screens.night.nextToken
 import com.clocktower.grimoire.ui.screens.night.nightSp
 import com.clocktower.grimoire.ui.screens.night.openRowKey
 import com.clocktower.grimoire.ui.screens.night.openRowToken
@@ -116,10 +117,16 @@ fun NightScreen(
 
     // The button that finished a step also advances to the next one: ticking is
     // a consequence of doing, never a separate act (defect #7).
+    //
+    // NEXT means the next unfinished row BELOW the one just finished, not the
+    // first unfinished row on the sheet: a storyteller who jumped ahead and
+    // resolved a step was thrown backwards, from step 6 to step 4 on the
+    // night-1 Godfather and from step 5 to step 1 on the night-3 Exorcist
+    // (fix wave 1 Fix-D; playtest D, P2-20).
     LaunchedEffect(done, plan.steps.size, pendingDawn, state.cycle) {
         val token = activeToken
         if (token == null || token in done || plan.steps.none { it.key.token == token }) {
-            openRow = openRowKey(state.cycle, openingToken(plan.steps, done))
+            openRow = openRowKey(state.cycle, nextToken(plan.steps, done, token))
         }
         // The dawn card's button ticked its own row a frame ago; the phase
         // button now sees a finished sheet and raises the dawn briefing. If

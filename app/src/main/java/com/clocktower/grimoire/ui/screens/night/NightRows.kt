@@ -228,6 +228,43 @@ fun openingToken(steps: List<NightStep>, done: Set<String>): String? =
         ?: steps.lastOrNull()?.key?.token
 
 /**
+ * The row to open once the row [after] is finished: **the next unfinished row
+ * BELOW it**.
+ *
+ * Finishing a step and opening a sheet are two different questions and the
+ * screen used to answer both with [openingToken] — the first unfinished row on
+ * the whole sheet. So a storyteller who jumped ahead (tap a row in the
+ * collapsed list, or `[Run anyway]` on a gated one) and then resolved it was
+ * thrown BACKWARDS: the night-1 Godfather at step 6 landed on step 4, and
+ * playtest D's night-3 Exorcist at step 5 landed on step 1, needing four more
+ * presses to walk back (fix wave 1 Fix-D; playtest D, P2-20).
+ *
+ * The rows they stepped over are not lost: they stay `·` in the collapsed list
+ * and in the progress strip, and the dawn guard still refuses a night with
+ * anything outstanding.
+ *
+ * Two fallbacks to [openingToken]: nothing below is owed (so wrap round to
+ * whatever is still owed above), and — never silently — the closing card. Its
+ * primary is "OPEN THE DAY →", so "carry on" must not land there while any
+ * other row is still owed (playtest B P0 #2).
+ */
+fun nextToken(steps: List<NightStep>, done: Set<String>, after: String?): String? {
+    val index = steps.indexOfFirst { it.key.token == after }
+    if (index >= 0) {
+        val forward = steps.drop(index + 1).firstOrNull { it.required && it.key.token !in done }
+        if (forward != null) {
+            val nothingElseOwed = steps.none {
+                it.required && it.key.token !in done && it.key.token != forward.key.token
+            }
+            if (forward.key.token != steps.last().key.token || nothingElseOwed) {
+                return forward.key.token
+            }
+        }
+    }
+    return openingToken(steps, done)
+}
+
+/**
  * True when [prompt] is the question this row still owes — the engine raised it
  * from this row's ability (an Imp that killed itself owes a star pass).
  */

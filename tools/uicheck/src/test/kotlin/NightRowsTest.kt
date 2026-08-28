@@ -36,6 +36,7 @@ import com.clocktower.grimoire.ui.screens.night.gateBadge
 import com.clocktower.grimoire.ui.screens.night.isDestructive
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
 import com.clocktower.grimoire.ui.screens.night.mustNotShowTruth
+import com.clocktower.grimoire.ui.screens.night.nextToken
 import com.clocktower.grimoire.ui.screens.night.nightSp
 import com.clocktower.grimoire.ui.screens.night.offerAnswerText
 import com.clocktower.grimoire.ui.screens.night.openRowKey
@@ -452,6 +453,49 @@ class NightRowsTest {
         assertEquals(dawn.key.token, openingToken(steps, done = setOf(dusk.key.token)))
         assertEquals(dusk.key.token, openingToken(steps, done = emptySet()))
         assertNull(openingToken(emptyList(), done = emptySet()))
+    }
+
+    @Test
+    fun `finishing a step opens the next row BELOW it, never an earlier one`() {
+        // The night-1 Bad Moon Rising sheet the report was driven on.
+        val names = listOf(
+            "dusk", "minioninfo", "lunatic", "demoninfo", "sailor",
+            "godfather", "devilsadvocate", "pukka", "grandmother", "chambermaid", "dawn",
+        )
+        val steps = names.map { step(ability = it) }
+        fun token(name: String) = steps.first { it.abilityId == name }.key.token
+
+        // Steps 1-6 done, step 7 (Devil's Advocate) skipped over by hand: the
+        // Godfather at step 6 threw the sheet back to step 4, and the night-3
+        // Exorcist threw it back to step 1 (Fix-D; playtest D P2-20).
+        val doneThroughSix = names.take(6).map(::token).toSet()
+        assertEquals(token("devilsadvocate"), nextToken(steps, doneThroughSix, token("godfather")))
+
+        // Jump ahead to the Pukka, leaving the Devil's Advocate owed, and
+        // resolve it: the next row is the Grandmother, not the row above.
+        val jumped = doneThroughSix + token("pukka")
+        assertEquals(token("grandmother"), nextToken(steps, jumped, token("pukka")))
+
+        // Nothing left below: wrap round to whatever is still owed above.
+        val allButDa = names.filterNot { it == "devilsadvocate" }.map(::token).toSet()
+        assertEquals(token("devilsadvocate"), nextToken(steps, allButDa, token("chambermaid")))
+
+        // The closing card is never opened by "carry on" while anything else is
+        // owed — its primary opens the day (playtest B P0 #2).
+        val allButDaAndDawn = allButDa - token("dawn")
+        assertEquals(
+            token("devilsadvocate"),
+            nextToken(steps, allButDaAndDawn, token("chambermaid")),
+        )
+        // …and it IS opened once it is the only thing left.
+        val everythingButDawn = names.filterNot { it == "dawn" }.map(::token).toSet()
+        assertEquals(token("dawn"), nextToken(steps, everythingButDawn, token("chambermaid")))
+
+        // No current row (a fresh night, or one whose row the plan dropped):
+        // fall back to the sheet's opening row.
+        assertEquals(token("dusk"), nextToken(steps, emptySet(), after = null))
+        assertEquals(token("dusk"), nextToken(steps, emptySet(), after = "no-such-token"))
+        assertNull(nextToken(emptyList(), emptySet(), after = null))
     }
 
     @Test
