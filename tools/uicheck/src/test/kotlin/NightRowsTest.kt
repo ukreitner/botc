@@ -3,6 +3,7 @@ package com.clocktower.grimoire.uicheck
 import com.clocktower.engine.Answer
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.DeathCause
+import com.clocktower.engine.InfoObligation
 import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightPlan
@@ -33,7 +34,9 @@ import com.clocktower.grimoire.ui.screens.night.dimAlpha
 import com.clocktower.grimoire.ui.screens.night.gateBadge
 import com.clocktower.grimoire.ui.screens.night.isDestructive
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
+import com.clocktower.grimoire.ui.screens.night.mustNotShowTruth
 import com.clocktower.grimoire.ui.screens.night.nightSp
+import com.clocktower.grimoire.ui.screens.night.offerAnswerText
 import com.clocktower.grimoire.ui.screens.night.openRowKey
 import com.clocktower.grimoire.ui.screens.night.openRowToken
 import com.clocktower.grimoire.ui.screens.night.openingToken
@@ -183,6 +186,32 @@ class NightRowsTest {
         // must never promise a death the funnel has not decided on.
         val choice = KillOutcome.Choice(question = "Which of them dies?", options = emptyList())
         assertEquals("", deathHeadline(choice, "Fay"))
+    }
+
+    @Test
+    fun `an impaired holder's primary is not the true answer`() {
+        // The card says "! Eve is POISONED (Poisoner) — give false info."; the
+        // one gold button under it must not read SHOW "1" TO EVE.
+        assertTrue(mustNotShowTruth(InfoObligation.MUST_LIE, malfunctions = false))
+        assertTrue(mustNotShowTruth(InfoObligation.MAY_LIE, malfunctions = true))
+        assertFalse(mustNotShowTruth(InfoObligation.TRUTH, malfunctions = false))
+        assertFalse("a misregistration caveat is not the holder being impaired",
+            mustNotShowTruth(InfoObligation.MAY_LIE, malfunctions = false))
+
+        assertEquals(
+            "PICK WHAT TO SHOW — EVE IS IMPAIRED",
+            primaryLabel(answer = "", holder = "Eve", impairedHolder = "Eve"),
+        )
+        // Once a card is chosen the primary states THAT card, true or false.
+        assertEquals("SHOW “0” TO EVE", primaryLabel(answer = "0", holder = "Eve"))
+    }
+
+    @Test
+    fun `the answer inside an offer label survives both prefixes`() {
+        assertEquals("0", offerAnswerText("SHOW: 0"))
+        assertEquals("0", offerAnswerText("LIE · SHOW 0"))
+        assertEquals("BLUFFS", offerAnswerText("SHOW: BLUFFS"))
+        assertEquals("Player 1, Player 2", offerAnswerText("LIE · SHOW Player 1, Player 2"))
     }
 
     // ---- destructive primaries need a hold ---------------------------------

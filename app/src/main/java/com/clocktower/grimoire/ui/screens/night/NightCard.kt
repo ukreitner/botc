@@ -125,11 +125,19 @@ fun NightCard(
             null
         }
     }
-    val offers = remember(step.cards, info, state) {
-        (step.cards + info?.let { NightPlan.cardsFor(state, it) }.orEmpty())
+    val answerCards = remember(info, state) {
+        info?.let { NightPlan.cardsFor(state, it) }.orEmpty()
+    }
+    val offers = remember(step.cards, answerCards) {
+        (step.cards + answerCards)
             .map { UiOffer(it.label, it.card.asCard(), it.truthful, it.editable) }
             .distinctBy { it.label }
     }
+    // The card the primary button is PROMISING. `SHOW "0" TO CLEO` used to tick
+    // the row and advance without ever putting a card on screen or writing a
+    // `shown:` row, so the Chef got nothing and the sheet said the step was
+    // done (playtest B P1 #6).
+    val truthCard = remember(answerCards) { answerCards.firstOrNull { it.truthful }?.card?.asCard() }
     val answer = info?.let {
         answerLabel(
             it.answer,
@@ -165,16 +173,29 @@ fun NightCard(
         deathHeadline(outcome, state.player(id)?.name.orEmpty())
     }.trim(' ', '·')
 
+    // A card the storyteller has deliberately chosen from the offers. It, and
+    // not the computed truth, is then what the primary promises: for a poisoned
+    // holder the card itself says "give false info", and the one gold button
+    // must not be the true answer (playtest B P1 #9).
+    var chosen by remember(state.cycle, key.token, info) { mutableStateOf<UiOffer?>(null) }
+    val owesFalseInfo = info != null && mustNotShowTruth(info.obligation, info.abilityMalfunctions)
+    val shownAnswer = when {
+        chosen != null -> offerAnswerText(chosen!!.label)
+        owesFalseInfo -> ""
+        else -> answer
+    }
+
     val isDawn = step.slotId == NightMarkers.DAWN
     val label = primaryLabel(
         picked = pick.playerIds.mapNotNull { state.player(it)?.name },
         places = placedLabels(effects),
         deathLine = deathLine,
-        answer = answer,
+        answer = shownAnswer,
         holder = holderName,
         none = pick.none,
         skipped = skipped,
         dawn = isDawn,
+        impairedHolder = if (owesFalseInfo && chosen == null) holderName else "",
     )
 
     Surface(
@@ -322,7 +343,11 @@ fun NightCard(
                 CardOffers(
                     offers = offers,
                     recipientId = step.holderId,
-                    onShow = onShow,
+                    chosen = chosen,
+                    onShow = { offer ->
+                        chosen = offer
+                        onShow(offer.card, step.holderId, offer.truthful)
+                    },
                     onEdit = { editing = it },
                 )
             }
@@ -343,7 +368,7 @@ fun NightCard(
             } else if (!awaitingGate) {
                 PrimaryButton(
                     label = if (needsKillSheet) "RESOLVE THE DEATH…" else label,
-                    enabled = primaryEnabled(action, pick),
+                    enabled = primaryEnabled(action, pick) && !(owesFalseInfo && chosen == null),
                     holdMillis = if (isDestructive(effects) && !needsKillSheet) HOLD_CONFIRM_MILLIS else 0,
                     onConfirm = {
                         when {
@@ -352,6 +377,13 @@ fun NightCard(
                                     ?.let { onKillSheet(it.first, step.holderId) }
 
                             else -> {
+                                // A primary that says SHOW performs the showing:
+                                // the card goes up and the `shown:` row is
+                                // written, then the step is ticked (§B.7).
+                                val card = chosen?.card ?: truthCard.takeIf { !owesFalseInfo }
+                                if (shownAnswer.isNotBlank() && card != null) {
+                                    onShow(card, step.holderId, chosen?.truthful ?: true)
+                                }
                                 viewModel.resolveNightStep(
                                     key,
                                     NightInput(
@@ -541,7 +573,8 @@ fun outcomeDetail(outcome: KillOutcome): String = when (outcome) {
 private fun CardOffers(
     offers: List<UiOffer>,
     recipientId: Long?,
-    onShow: (ShowCard, Long?, Boolean) -> Unit,
+    chosen: UiOffer?,
+    onShow: (UiOffer) -> Unit,
     onEdit: (ShowCard) -> Unit,
 ) {
     FlowRow(
@@ -551,12 +584,13 @@ private fun CardOffers(
         for (offer in offers) {
             val tone = if (offer.truthful) Tone.ACTIVE else Tone.ALERT
             val card = offer.card
+            val picked = chosen?.label == offer.label
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(tone.color().copy(alpha = 0.16f))
+                    .background(tone.color().copy(alpha = if (picked) 0.38f else 0.16f))
                     .combinedClickable(
-                        onClick = { onShow(card, recipientId, offer.truthful) },
+                        onClick = { onShow(offer) },
                         onLongClick = { if (offer.editable) onEdit(card) },
                     )
                     .heightIn(min = 48.dp)
@@ -564,7 +598,7 @@ private fun CardOffers(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = offer.label,
+                    text = if (picked) "✓ ${offer.label}" else offer.label,
                     fontSize = NIGHT_MIN_SP.sp,
                     lineHeight = nightSp(18f).sp,
                     fontWeight = FontWeight.Bold,

@@ -5,6 +5,7 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.ChooseCharacter
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
+import com.clocktower.engine.InfoObligation
 import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.NightAction
 import com.clocktower.engine.NightEffect
@@ -287,10 +288,18 @@ fun primaryLabel(
     skipped: Boolean = false,
     /** The last row of the sheet opens the day. */
     dawn: Boolean = false,
+    /**
+     * Set to the holder's name when the engine says this information is owed
+     * FALSE and the storyteller has not picked a card yet. The one gold button
+     * must not be the true answer on a card that prints "give false info"
+     * (playtest B P1 #9).
+     */
+    impairedHolder: String = "",
 ): String {
     if (dawn) return "OPEN THE DAY →"
     if (none) return "THEY CHOSE NOBODY"
     if (deathLine.isNotBlank()) return deathLine.uppercase()
+    if (impairedHolder.isNotBlank()) return "PICK WHAT TO SHOW — ${impairedHolder.uppercase()} IS IMPAIRED"
     if (answer.isNotBlank()) {
         val shown = "SHOW “${answer.uppercase()}”"
         return if (holder.isBlank()) shown else "$shown TO ${holder.uppercase()}"
@@ -368,6 +377,21 @@ fun answerLabel(
     is Answer.Players -> answer.ids.joinToString(", ") { playerName(it) }
     is Answer.Message -> answer.text
 }
+
+/**
+ * True when the engine says this holder's information is owed FALSE: a Vortox
+ * forces it, or their own ability is not working (poisoned, drunk, no ability).
+ *
+ * The card already prints "! Eve is POISONED (Poisoner) — give false info."; the
+ * primary button beneath it used to be `SHOW "1" TO EVE`, the truth, in the one
+ * place a storyteller is trained to press without reading (playtest B P1 #9).
+ */
+fun mustNotShowTruth(obligation: InfoObligation, malfunctions: Boolean): Boolean =
+    obligation == InfoObligation.MUST_LIE || malfunctions
+
+/** The answer inside a card offer's label: "LIE · SHOW 0" and "SHOW: 0" -> "0". */
+fun offerAnswerText(label: String): String =
+    label.substringAfterLast("SHOW").trim().removePrefix(":").trim()
 
 /**
  * True when the primary button may fire: every ask has an answer, or the
