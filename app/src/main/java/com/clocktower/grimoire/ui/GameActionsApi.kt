@@ -591,19 +591,40 @@ interface GameActionsApi {
         update { Effects.suspend(it, effectId, suspended) }
 
     /**
-     * Removes whatever backs a rendered token: the effect if it has one,
+     * Removes whatever backs a rendered token: the STORED effect if it has one,
      * otherwise the matching storyteller free token on that seat.
+     *
+     * A hand-placed reminder projects into an effect, so the grimoire draws it
+     * from the effect and hands back an `effectId` — one that is generated on
+     * every query and is not in `state.effects` at all. Removing by that id did
+     * nothing and the reminder re-projected the token immediately, so `Remove`
+     * was a no-op for everything placed through `+ Token` (playtest D, P1-5).
      */
     fun removeRenderedToken(playerId: Long, token: RenderedToken) = update { state ->
         val effectId = token.effectId
-        if (effectId != null) {
+        if (effectId != null && Effects.isStored(state, effectId)) {
             Effects.remove(state, effectId)
         } else {
-            val key = Tokens.key(token.sourceId, token.label)
-            val index = state.player(playerId)?.reminders?.indexOfFirst { Tokens.key(it) == key } ?: -1
+            val index = Effects.reminderIndex(state, playerId, token.sourceId, token.label)
             if (index < 0) state else Effects.removeReminder(state, playerId, index)
         }
     }
+
+    /**
+     * Turns one rendered token over, or back — the same two-backings problem as
+     * [removeRenderedToken]. Use this rather than [suspendEffect] anywhere the
+     * token came off the grimoire.
+     */
+    fun suspendRenderedToken(playerId: Long, token: RenderedToken, suspended: Boolean) =
+        update { state ->
+            val effectId = token.effectId
+            if (effectId != null && Effects.isStored(state, effectId)) {
+                Effects.suspend(state, effectId, suspended)
+            } else {
+                val index = Effects.reminderIndex(state, playerId, token.sourceId, token.label)
+                if (index < 0) state else Effects.suspendReminder(state, playerId, index, suspended)
+            }
+        }
 
     /**
      * ONE placement semantic for the seat sheet, the token peek and the night
@@ -665,7 +686,10 @@ interface GameActionsApi {
         val index = state.player(fromPlayerId)?.reminders?.indexOfFirst { Tokens.key(it) == key } ?: -1
         val effectId = token.effectId
         when {
-            effectId != null ->
+            // Only a STORED effect can be re-targeted; one projected from a
+            // hand-placed reminder is regenerated on every query, so moving it
+            // by id did nothing at all (the same defect as P1-5).
+            effectId != null && Effects.isStored(state, effectId) ->
                 state.copy(
                     effects = state.effects.map {
                         if (it.id == effectId) it.copy(targetId = toPlayerId) else it

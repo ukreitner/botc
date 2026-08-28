@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -628,5 +629,72 @@ class EffectsTest {
         state = p.state
         assertEquals(1L, p.displaced?.targetId, "the oldest copy is displaced, not lost")
         assertEquals(2, state.effects.count { it.label == "Safe" })
+    }
+
+    // ---- playtest D P1-5: a hand-placed token that projects into an effect ----
+
+    @Test
+    fun `a hand-placed token renders from a projected effect that is not stored`() {
+        var state = game("imp", "poisoner", "empath", "chef", "mayor")
+        val seat = state.seat("empath")
+        state = Effects.addReminder(state, seat, PlacedReminder(Tokens.STORYTELLER_SOURCE, "Drunk"))
+
+        val token = Effects.rendered(state, lookup, seat).single { it.label == "Drunk" }
+        val effectId = assertNotNull(token.effectId, "it is drawn from the effect it projects into")
+        assertFalse(
+            Effects.isStored(state, effectId),
+            "and that effect is derived on every query, not stored: ${state.effects}",
+        )
+
+        // Removing it by effect id is the bug: nothing changes and the reminder
+        // re-projects the token on the next read.
+        val byId = Effects.remove(state, effectId)
+        assertTrue(
+            Effects.rendered(byId, lookup, seat).any { it.label == "Drunk" },
+            "the token comes straight back",
+        )
+
+        // Taking the REMINDER off is what actually removes it.
+        val index = Effects.reminderIndex(state, seat, Tokens.STORYTELLER_SOURCE, "Drunk")
+        assertTrue(index >= 0)
+        val removed = Effects.removeReminder(state, seat, index)
+        assertTrue(
+            Effects.rendered(removed, lookup, seat).none { it.label == "Drunk" },
+            "no tokens on this seat: ${Effects.rendered(removed, lookup, seat).map { it.label }}",
+        )
+        assertFalse(Status.isImpaired(removed, lookup, seat), "and the seat is sober again")
+    }
+
+    @Test
+    fun `suspending a hand-placed token turns it over without losing it`() {
+        var state = game("imp", "poisoner", "empath", "chef", "mayor")
+        val seat = state.seat("empath")
+        state = Effects.addReminder(state, seat, PlacedReminder(Tokens.STORYTELLER_SOURCE, "Drunk"))
+        assertTrue(Status.isImpaired(state, lookup, seat))
+
+        val index = Effects.reminderIndex(state, seat, Tokens.STORYTELLER_SOURCE, "Drunk")
+        val turned = Effects.suspendReminder(state, seat, index, true)
+
+        val token = Effects.rendered(turned, lookup, seat).single { it.label == "Drunk" }
+        assertTrue(token.suspended, "the token is still drawn, turned over")
+        assertFalse(Status.isImpaired(turned, lookup, seat), "and its rule stops applying")
+
+        val restored = Effects.suspendReminder(turned, seat, index, false)
+        assertFalse(Effects.rendered(restored, lookup, seat).single { it.label == "Drunk" }.suspended)
+        assertTrue(Status.isImpaired(restored, lookup, seat), "Restore puts the rule back")
+    }
+
+    @Test
+    fun `an engine-placed effect is stored, so removing it by id still works`() {
+        var state = game("imp", "poisoner", "empath", "chef", "mayor")
+        val seat = state.seat("empath")
+        state = state.poison("poisoner", seat)
+        val token = Effects.rendered(state, lookup, seat).single { it.label == "Poisoned" }
+        val effectId = assertNotNull(token.effectId)
+        assertTrue(Effects.isStored(state, effectId))
+        assertTrue(
+            Effects.rendered(Effects.remove(state, effectId), lookup, seat)
+                .none { it.label == "Poisoned" },
+        )
     }
 }

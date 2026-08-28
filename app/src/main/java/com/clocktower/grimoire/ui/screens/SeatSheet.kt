@@ -353,7 +353,9 @@ private fun SeatActions(
                 StatusRow(
                     viewModel = viewModel,
                     token = token,
-                    onSuspend = { token.effectId?.let { viewModel.suspendEffect(it, !token.suspended) } },
+                    onSuspend = {
+                        viewModel.suspendRenderedToken(player.id, token, !token.suspended)
+                    },
                     onRemove = { viewModel.removeRenderedToken(player.id, token) },
                 )
             }
@@ -546,7 +548,9 @@ private fun StatusRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (token.effectId != null) {
+        // A derived token has no physical counterpart to turn over — everything
+        // else does, hand-placed reminders included (playtest D, P1-5).
+        if (!token.derived) {
             TextButton(onClick = onSuspend, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text(if (token.suspended) "Restore" else "Suspend")
             }

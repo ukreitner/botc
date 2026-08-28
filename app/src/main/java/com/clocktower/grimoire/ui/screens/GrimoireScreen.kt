@@ -1182,8 +1182,18 @@ private fun TokenPeek(
                         Column {
                             TokenLine(viewModel, token)
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                token.effectId?.let { id ->
-                                    TextButton(onClick = { viewModel.suspendEffect(id, !token.suspended) }) {
+                                // A derived token has no physical counterpart to
+                                // turn over; everything else does (P1-5).
+                                if (!token.derived) {
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.suspendRenderedToken(
+                                                playerId,
+                                                token,
+                                                !token.suspended,
+                                            )
+                                        },
+                                    ) {
                                         Text(if (token.suspended) "Restore" else "Suspend")
                                     }
                                 }
