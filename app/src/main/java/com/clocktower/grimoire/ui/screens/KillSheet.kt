@@ -52,7 +52,9 @@ import com.clocktower.engine.Player
 import com.clocktower.engine.StatusEffects
 import com.clocktower.engine.Team
 import com.clocktower.grimoire.ui.GameViewModel
-import com.clocktower.grimoire.ui.components.overlayBottomPadding
+import com.clocktower.grimoire.ui.components.OverlayInsets
+import com.clocktower.grimoire.ui.components.rememberOverlayInsets
+import com.clocktower.grimoire.ui.components.sheetActionPadding
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.PoisonGreen
 import com.clocktower.grimoire.ui.theme.ShieldBlue
@@ -102,6 +104,11 @@ fun KillSheet(
     LaunchedEffect(target == null) { if (target == null) onDismiss() }
     if (target == null) return
 
+    // C-17: measured OUTSIDE the sheet. A `ModalBottomSheet` reports its insets
+    // as already consumed, so nothing inside it can see the home indicator —
+    // and `audit` on this sheet as it opened reported the button under it as
+    // "CENTRE UNTAPPABLE".
+    val insets = rememberOverlayInsets()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         KillSheetBody(
@@ -112,6 +119,7 @@ fun KillSheet(
             lockCause = lockCause,
             initialKillerId = initialKillerId,
             title = title,
+            insets = insets,
             onDismiss = onDismiss,
             onRecorded = onRecorded,
         )
@@ -124,6 +132,7 @@ fun defaultCause(state: GameState): DeathCause =
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+@Suppress("LongParameterList")
 private fun KillSheetBody(
     viewModel: GameViewModel,
     state: GameState,
@@ -132,6 +141,7 @@ private fun KillSheetBody(
     lockCause: Boolean,
     initialKillerId: Long?,
     title: String?,
+    insets: OverlayInsets,
     onDismiss: () -> Unit,
     onRecorded: (KillOutcome) -> Unit,
 ) {
@@ -165,40 +175,134 @@ private fun KillSheetBody(
         onDismiss()
     }
 
+    // C-17: the sheet is TWO halves — the cause/preview/overrides scroll, and
+    // the buttons that actually record the death do not. "Record the death"
+    // used to be the last child of one long scrolling column, so a sheet
+    // opening on a seat with a couple of protections put its own primary
+    // action below the fold and `ui.py audit` reported it untappable.
+    // `weight(1f, fill = false)` keeps a short sheet short.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = overlayBottomPadding()),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 20.dp),
     ) {
-        Text(
-            title ?: "${target.name} dies",
-            style = MaterialTheme.typography.headlineSmall,
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                title ?: "${target.name} dies",
+                style = MaterialTheme.typography.headlineSmall,
+            )
 
-        // ---- cause ----
-        Text("Cause", style = MaterialTheme.typography.titleSmall)
-        for (option in causeOptions(target)) {
-            val selected = cause == option.cause
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .clickable(enabled = !lockCause) { cause = option.cause },
-            ) {
-                RadioButton(
-                    selected = selected,
-                    onClick = if (lockCause) null else ({ cause = option.cause }),
+            // ---- cause ----
+            Text("Cause", style = MaterialTheme.typography.titleSmall)
+            for (option in causeOptions(target)) {
+                val selected = cause == option.cause
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable(enabled = !lockCause) { cause = option.cause },
+                ) {
+                    RadioButton(
+                        selected = selected,
+                        onClick = if (lockCause) null else ({ cause = option.cause }),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(option.label, style = MaterialTheme.typography.bodyLarge)
+                        if (option.detail.isNotEmpty()) {
+                            Text(
+                                option.detail,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ---- who killed them ----
+            if (cause.wantsKiller) {
+                Text("Killed by", style = MaterialTheme.typography.titleSmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = killerId == null,
+                        onClick = { killerId = null },
+                        label = { Text("not recorded") },
+                    )
+                    for (p in state.seats) {
+                        if (p.id == target.id) continue
+                        val c = viewModel.characterById(p.characterId)
+                        FilterChip(
+                            selected = killerId == p.id,
+                            onClick = { killerId = p.id },
+                            label = { Text("${p.name}${c?.let { " · ${it.name}" } ?: ""}") },
+                        )
+                    }
+                }
+            }
+            if (cause == DeathCause.STORYTELLER) {
+                OutlinedTextField(
+                    value = why,
+                    onValueChange = { why = it },
+                    label = { Text("Why (recorded as a ruling)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
+            }
+
+            HorizontalDivider()
+
+            // ---- what the funnel decided ----
+            Text("What happens", style = MaterialTheme.typography.titleSmall)
+            OutcomeLine(outcome)
+
+            // ---- protections and triggers, split by whether they bear on THIS cause ----
+            if (applies.isNotEmpty()) {
+                Text(
+                    "Applies to this death",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = ShieldBlue,
+                )
+                for (note in applies) NoteLine(note, relevant = true)
+            }
+            if (irrelevant.isNotEmpty()) {
+                Text(
+                    "Not relevant to this cause",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                for (note in irrelevant) NoteLine(note, relevant = false)
+            }
+
+            // ---- overrides ----
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
+                Switch(checked = ignoresProtection, onCheckedChange = { ignoresProtection = it })
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(option.label, style = MaterialTheme.typography.bodyLarge)
-                    if (option.detail.isNotEmpty()) {
+                    Text("Nothing can prevent this", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "The Assassin, and any storyteller override.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (cause == DeathCause.DEMON_KILL) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Switch(checked = uncertain, onCheckedChange = { uncertain = it })
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Uncertain Demon kill", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            option.detail,
+                            "Lil' Monsta, Legion, Riot, Yaggababble, Al-Hadikhia — the wiki " +
+                                "does not rule whether the Sage and the Grandmother fire.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -207,167 +311,93 @@ private fun KillSheetBody(
             }
         }
 
-        // ---- who killed them ----
-        if (cause.wantsKiller) {
-            Text("Killed by", style = MaterialTheme.typography.titleSmall)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(
-                    selected = killerId == null,
-                    onClick = { killerId = null },
-                    label = { Text("not recorded") },
-                )
-                for (p in state.seats) {
-                    if (p.id == target.id) continue
-                    val c = viewModel.characterById(p.characterId)
-                    FilterChip(
-                        selected = killerId == p.id,
-                        onClick = { killerId = p.id },
-                        label = { Text("${p.name}${c?.let { " · ${it.name}" } ?: ""}") },
-                    )
+        // ---- the buttons, pinned inside the safe area. ----
+        // Every one of them goes through Deaths.attempt.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+                .sheetActionPadding(insets),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            HorizontalDivider()
+
+            val choice = outcome as? KillOutcome.Choice
+            if (choice != null) {
+                Text(choice.question, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+                for (option in choice.options) {
+                    Button(
+                        onClick = { apply(option.id) },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    ) { Text(option.label) }
                 }
-            }
-        }
-        if (cause == DeathCause.STORYTELLER) {
-            OutlinedTextField(
-                value = why,
-                onValueChange = { why = it },
-                label = { Text("Why (recorded as a ruling)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+            } else {
+                when (outcome) {
+                    is KillOutcome.Dies -> Button(
+                        onClick = { apply() },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    ) { Text("Record the death") }
 
-        HorizontalDivider()
+                    is KillOutcome.Prevented -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { apply() },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                        ) { Text(savedByLabel(outcome.by?.sourceCharacterId, viewModel::characterById)) }
+                        OutlinedButton(
+                            onClick = { ignoresProtection = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("They die anyway") }
+                    }
 
-        // ---- what the funnel decided ----
-        Text("What happens", style = MaterialTheme.typography.titleSmall)
-        OutcomeLine(outcome)
+                    is KillOutcome.Spends -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { apply() },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                        ) {
+                            Text(savedByLabel(outcome.sourceId, viewModel::characterById) + " — spends it")
+                        }
+                        OutlinedButton(
+                            onClick = { ignoresProtection = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("They die anyway") }
+                    }
 
-        // ---- protections and triggers, split by whether they bear on THIS cause ----
-        if (applies.isNotEmpty()) {
-            Text(
-                "Applies to this death",
-                style = MaterialTheme.typography.titleSmall,
-                color = ShieldBlue,
-            )
-            for (note in applies) NoteLine(note, relevant = true)
-        }
-        if (irrelevant.isNotEmpty()) {
-            Text(
-                "Not relevant to this cause",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            for (note in irrelevant) NoteLine(note, relevant = false)
-        }
+                    is KillOutcome.RegistersDead -> Button(
+                        onClick = { apply() },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                    ) { Text("They register as dead") }
 
-        // ---- overrides ----
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
-            Switch(checked = ignoresProtection, onCheckedChange = { ignoresProtection = it })
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Nothing can prevent this", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "The Assassin, and any storyteller override.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        if (cause == DeathCause.DEMON_KILL) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 48.dp)) {
-                Switch(checked = uncertain, onCheckedChange = { uncertain = it })
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Uncertain Demon kill", style = MaterialTheme.typography.bodyMedium)
-                    Text(
-                        "Lil' Monsta, Legion, Riot, Yaggababble, Al-Hadikhia — the wiki " +
-                            "does not rule whether the Sage and the Grandmother fire.",
-                        style = MaterialTheme.typography.bodySmall,
+                    is KillOutcome.Redirect -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(outcome.reason, style = MaterialTheme.typography.bodyMedium)
+                        for (id in outcome.to) {
+                            Button(
+                                onClick = {
+                                    viewModel.attemptDeath(id, killCause)
+                                    onRecorded(outcome)
+                                    onDismiss()
+                                },
+                                modifier = Modifier.fillMaxWidth().height(56.dp),
+                            ) { Text("${state.player(id)?.name ?: "?"} dies instead") }
+                        }
+                        if (!outcome.mandatory) {
+                            OutlinedButton(
+                                onClick = { apply(Deaths.OPTION_DIES) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("${target.name} dies after all") }
+                        }
+                    }
+
+                    KillOutcome.AlreadyDead -> Text(
+                        "${target.name} is already dead — a dead player cannot die again.",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+
+                    is KillOutcome.Choice -> Unit // handled above
                 }
             }
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
         }
-
-        HorizontalDivider()
-
-        // ---- the buttons. Every one of them goes through Deaths.attempt. ----
-        val choice = outcome as? KillOutcome.Choice
-        if (choice != null) {
-            Text(choice.question, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            for (option in choice.options) {
-                Button(
-                    onClick = { apply(option.id) },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) { Text(option.label) }
-            }
-        } else {
-            when (outcome) {
-                is KillOutcome.Dies -> Button(
-                    onClick = { apply() },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) { Text("Record the death") }
-
-                is KillOutcome.Prevented -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { apply() },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) { Text(savedByLabel(outcome.by?.sourceCharacterId, viewModel::characterById)) }
-                    OutlinedButton(
-                        onClick = { ignoresProtection = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("They die anyway") }
-                }
-
-                is KillOutcome.Spends -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { apply() },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) {
-                        Text(savedByLabel(outcome.sourceId, viewModel::characterById) + " — spends it")
-                    }
-                    OutlinedButton(
-                        onClick = { ignoresProtection = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("They die anyway") }
-                }
-
-                is KillOutcome.RegistersDead -> Button(
-                    onClick = { apply() },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) { Text("They register as dead") }
-
-                is KillOutcome.Redirect -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(outcome.reason, style = MaterialTheme.typography.bodyMedium)
-                    for (id in outcome.to) {
-                        Button(
-                            onClick = {
-                                viewModel.attemptDeath(id, killCause)
-                                onRecorded(outcome)
-                                onDismiss()
-                            },
-                            modifier = Modifier.fillMaxWidth().height(56.dp),
-                        ) { Text("${state.player(id)?.name ?: "?"} dies instead") }
-                    }
-                    if (!outcome.mandatory) {
-                        OutlinedButton(
-                            onClick = { apply(Deaths.OPTION_DIES) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("${target.name} dies after all") }
-                    }
-                }
-
-                KillOutcome.AlreadyDead -> Text(
-                    "${target.name} is already dead — a dead player cannot die again.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                is KillOutcome.Choice -> Unit // handled above
-            }
-        }
-        TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
     }
 }
 

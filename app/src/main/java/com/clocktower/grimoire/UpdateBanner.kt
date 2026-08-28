@@ -2,6 +2,7 @@ package com.clocktower.grimoire
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -56,9 +57,43 @@ object UpdateManager {
 
     private var checked = false
 
-    /** One check per process; local dev builds (BUILD_SHA == "dev") skip it. */
+    /**
+     * True on an Android emulator (goldfish/ranchu/QEMU), by the properties the
+     * emulator image sets and a device never does.
+     *
+     * The playtest harness drives real, CI-signed debug APKs on headless
+     * emulators with the network up, so the banner appeared on first launch and
+     * took ~126 px off the bottom of *every* screen — enough that
+     * `tools/emu/scenarios/C_day_repro` stopped finding "Start empty"
+     * (docs/audit/STATUS.md, HARNESS NOTE). A phone in a storyteller's hand is
+     * unaffected: this is checked only together with [BuildConfig.DEBUG], so a
+     * release build always asks, and the web build never compiles this file.
+     */
+    private val onEmulator: Boolean by lazy {
+        val fingerprint = Build.FINGERPRINT.orEmpty()
+        val hardware = Build.HARDWARE.orEmpty()
+        fingerprint.startsWith("generic") ||
+            fingerprint.startsWith("unknown") ||
+            fingerprint.contains("generic") ||
+            hardware.contains("goldfish") ||
+            hardware.contains("ranchu") ||
+            Build.BRAND.orEmpty().startsWith("generic") ||
+            Build.MODEL.orEmpty().contains("Emulator") ||
+            Build.MODEL.orEmpty().contains("Android SDK built for") ||
+            Build.PRODUCT.orEmpty().contains("sdk_gphone") ||
+            Build.PRODUCT.orEmpty() == "google_sdk"
+    }
+
+    /**
+     * One check per process; local dev builds (BUILD_SHA == "dev") skip it, and
+     * so does a debug build running on an emulator — see [onEmulator].
+     */
     fun checkOnce() {
         if (checked || BuildConfig.BUILD_SHA == "dev") return
+        if (BuildConfig.DEBUG && onEmulator) {
+            checked = true
+            return
+        }
         checked = true
         Thread {
             try {

@@ -19,10 +19,13 @@ import com.clocktower.engine.Seats
 import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.StepGate
 import com.clocktower.engine.WinCheck
+import com.clocktower.grimoire.ui.screens.DuskActions
 import com.clocktower.grimoire.ui.screens.PhaseFlow
 import com.clocktower.grimoire.ui.screens.PhaseRequest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -193,6 +196,59 @@ class PhaseFlowTest {
         assertEquals(
             WinCheck.duskCheck(state, lookup),
             dusk.advisories,
+        )
+    }
+
+    // ------------------------------------------------------------------
+    // DUSK SHEET BUTTONS — playtest C-16
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `with nobody on the block the primary records the no-execution and says so`() {
+        val label = DuskActions.confirmLabel(nextCycle = 4, onBlockName = null, executionSpent = false)
+        assertEquals("NO EXECUTION — BEGIN NIGHT 4 →", label)
+        assertTrue(
+            "the primary is the record (lead D30)",
+            DuskActions.confirmRecordsNoExecution(onBlockName = null, executionSpent = false),
+        )
+    }
+
+    @Test
+    fun `beginning the night without a record is offered, and is the secondary`() {
+        assertEquals(
+            "Begin night without recording",
+            DuskActions.secondaryLabel(onBlockName = null, executionSpent = false),
+        )
+        assertFalse(
+            "the secondary must NOT imply a no-execution",
+            DuskActions.secondaryRecordsNoExecution(onBlockName = null, executionSpent = false),
+        )
+    }
+
+    @Test
+    fun `with someone on the block the primary executes and the secondary records no execution`() {
+        assertEquals(
+            "EXECUTE BEA & BEGIN NIGHT",
+            DuskActions.confirmLabel(nextCycle = 3, onBlockName = "Bea", executionSpent = false),
+        )
+        assertFalse(
+            "an execution is not a no-execution",
+            DuskActions.confirmRecordsNoExecution(onBlockName = "Bea", executionSpent = false),
+        )
+        assertEquals("No execution", DuskActions.secondaryLabel("Bea", executionSpent = false))
+        assertTrue(DuskActions.secondaryRecordsNoExecution("Bea", executionSpent = false))
+    }
+
+    @Test
+    fun `a day that already has its record only begins the night`() {
+        assertEquals(
+            "BEGIN NIGHT 5 →",
+            DuskActions.confirmLabel(nextCycle = 5, onBlockName = null, executionSpent = true),
+        )
+        assertFalse(DuskActions.confirmRecordsNoExecution(onBlockName = null, executionSpent = true))
+        assertNull(
+            "nothing left to record, so no second button",
+            DuskActions.secondaryLabel(onBlockName = null, executionSpent = true),
         )
     }
 }

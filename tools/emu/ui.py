@@ -3,6 +3,7 @@
 
     ui.py <serial> dump                  compact semantics tree (raw XML written beside it)
     ui.py <serial> find <regex>          matching nodes + centre coords
+    ui.py <serial> absent <regex>        the inverse of find: fails if ANYTHING matches
     ui.py <serial> tap <regex>           tap centre of first match (refuses off-screen / inset taps)
     ui.py <serial> tapxy <x> <y>
     ui.py <serial> hold <regex> [ms]     press-and-hold (default 800 ms)
@@ -317,6 +318,27 @@ def cmd_find(serial, args):
         print(n.describe() + ("  << OFFSCREEN: " + why if why else ""))
 
 
+def cmd_absent(serial, args):
+    """The opposite of `find`: succeed only when NOTHING matches.
+
+    A scenario can assert that a control was taken away — the day's top-bar
+    Dusk button (C-18), a dismissed banner — which `find` cannot do, because a
+    scenario step that is *supposed* to fail is indistinguishable from a broken
+    one.
+    """
+    if not args:
+        fail("usage: absent <text-regex>", 2)
+    nodes, path = get_nodes(serial)
+    hits = match_nodes(nodes, args[0])
+    if hits:
+        print("ui.py: %r is still on screen (%d match(es)):" % (args[0], len(hits)), file=sys.stderr)
+        for n in hits:
+            print("  " + n.describe(), file=sys.stderr)
+        print("raw XML: %s" % path, file=sys.stderr)
+        sys.exit(1)
+    print("absent: no node matches %r" % args[0])
+
+
 def _resolve_tap_target(serial, pattern):
     nodes, path = get_nodes(serial)
     hits = match_nodes(nodes, pattern)
@@ -473,10 +495,21 @@ def cmd_audit(serial, args):
 
     clickable = [n for n in nodes if n.flag("clickable") and n.area > 0]
     screen_area = float(ins.w * ins.h)
+
+    # A sheet/dialog SCRIM: drawn from the physical top-left corner, the full
+    # width of the display, and its only job is "tap outside to dismiss". It is
+    # supposed to run under the status bar, and it has no meaningful centre —
+    # any point in it dismisses. The area rule below cannot see it when the
+    # sheet underneath is tall: a kill sheet that finally FITS leaves a 351 px
+    # strip, 15 % of the screen, which read as a clipped control.
+    def is_scrim(n):
+        x1, y1, x2, y2 = n.bounds
+        return x1 <= 0 and y1 <= 0 and x2 >= ins.w
+
     # Scrims, sheet backdrops and full-bleed containers legitimately run edge to edge.
     # For those only an untappable centre is a real defect; edge clipping matters for controls.
     def is_backdrop(n):
-        return n.area >= 0.40 * screen_area
+        return is_scrim(n) or n.area >= 0.40 * screen_area
     controls = [n for n in clickable if not is_backdrop(n)]
     print("\n%d clickable node(s) — %d control(s), %d full-bleed backdrop(s) ignored for clipping"
           % (len(clickable), len(controls), len(clickable) - len(controls)))
@@ -498,8 +531,11 @@ def cmd_audit(serial, args):
                 problems.append("left %dpx off the safe area" % (ins.left - x1))
             if x2 > ins.w - ins.right:
                 problems.append("right %dpx off the safe area" % (x2 - (ins.w - ins.right)))
+        # A full-bleed backdrop is still a defect when its own centre cannot be
+        # tapped — except for a scrim, whose centre is wherever the sheet below
+        # happened to leave room and which dismisses from any point.
         why_centre = ins.why_unsafe(cx, cy)
-        if why_centre:
+        if why_centre and not is_scrim(n):
             problems.append("CENTRE UNTAPPABLE: " + why_centre)
         if problems:
             unsafe.append((n, problems))
@@ -543,7 +579,8 @@ def cmd_audit(serial, args):
 
 
 COMMANDS = {
-    "dump": cmd_dump, "find": cmd_find, "tap": cmd_tap, "tapxy": cmd_tapxy,
+    "dump": cmd_dump, "find": cmd_find, "absent": cmd_absent,
+    "tap": cmd_tap, "tapxy": cmd_tapxy,
     "hold": cmd_hold, "swipe": cmd_swipe, "type": cmd_type, "back": cmd_back,
     "screenshot": cmd_screenshot, "wait": cmd_wait, "insets": cmd_insets,
     "audit": cmd_audit,
