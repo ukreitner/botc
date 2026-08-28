@@ -14,12 +14,15 @@ import com.clocktower.engine.Deaths
 import com.clocktower.engine.Decisions
 import com.clocktower.engine.Effects
 import com.clocktower.engine.Execution
+import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
+import com.clocktower.engine.ExecutionRecord
 import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Identity
 import com.clocktower.engine.KillCause
+import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.Ledger
 import com.clocktower.engine.LedgerEntry
 import com.clocktower.engine.LedgerKind
@@ -28,6 +31,8 @@ import com.clocktower.engine.InfoResult
 import com.clocktower.engine.NightInput
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Nomination
+import com.clocktower.engine.NominationCheck
+import com.clocktower.engine.NominationResult
 import com.clocktower.engine.NominationTrigger
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Phases
@@ -42,6 +47,7 @@ import com.clocktower.engine.Selection
 import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.Tokens
 import com.clocktower.engine.Verdict
+import com.clocktower.engine.VoteRules
 import com.clocktower.engine.StepKey
 import kotlin.random.Random
 
@@ -441,6 +447,104 @@ interface GameActionsApi {
     }
 
     // ---- WP9: day screen ----
+
+    /**
+     * The nomination pre-flight, recomputed on every chip tap so the ring's
+     * `NominationCheck` card is live (§3.2). Pure — nothing is written until
+     * the storyteller locks the vote in.
+     */
+    fun nominationCheck(state: GameState, nominatorId: Long?, nomineeId: Long?): NominationCheck =
+        DayRules.checkNomination(state, lookup, nominatorId, nomineeId)
+
+    /**
+     * The NOMINATION briefing for the pair the storyteller has TAPPED.
+     *
+     * `Briefings.at(..., NOMINATION)` defaults the pair to the last nomination
+     * already recorded today, which cannot be right for a "the 1st time you are
+     * nominated" rule — recording the nomination is what spends it. The day
+     * screen must call this per tap instead (WP6 merger note).
+     */
+    fun nominationBriefing(state: GameState, nominatorId: Long?, nomineeId: Long?): Briefing =
+        Briefings.forNomination(state, lookup, nominatorId, nomineeId)
+
+    /** The frozen-at-record vote rules: who may vote, the threshold, the weights. */
+    fun voteRules(state: GameState, isExile: Boolean): VoteRules =
+        DayRules.voteRules(state, lookup, isExile)
+
+    /** The weighted tally for these raw hands, with the Butler exception applied. */
+    fun voteTally(state: GameState, voterIds: List<Long>, isExile: Boolean): Int =
+        DayRules.tally(state, lookup, voterIds, isExile)
+
+    /** A sober living Organ Grinder: the whole Day tab goes secret. */
+    fun secretVoting(state: GameState): Boolean = DayRules.secretVoting(state, lookup)
+
+    /**
+     * What the execution funnel WOULD decide, from the same fifteen-step table
+     * it applies — so the dusk card can show the Devil's Advocate before the
+     * button is pressed, and can ask a `KillOutcome.Choice` first (D24).
+     */
+    fun executionPreview(state: GameState, playerId: Long): KillOutcome =
+        Deaths.killOutcome(state, lookup, playerId, KillCause(DeathCause.EXECUTION))
+
+    /**
+     * The same preview for an exile, which is a different cause entirely: no
+     * ability modifies it, it is never the day's execution, and no
+     * `ExecutionRecord` is written (lead D25/D58).
+     */
+    fun exilePreview(state: GameState, playerId: Long): KillOutcome = Deaths.killOutcome(
+        state,
+        lookup,
+        playerId,
+        KillCause(DeathCause.EXILE, sourceCharacterId = Ledger.Sources.STORYTELLER),
+    )
+
+    /** Today's execution record, including a declared "no execution" (lead D30). */
+    fun executionToday(state: GameState): ExecutionRecord? = DayRules.executionToday(state)
+
+    /** What the storyteller must confirm now that the execution has resolved. */
+    fun executionConsequences(
+        state: GameState,
+        record: ExecutionRecord,
+    ): List<ExecutionConsequence> = Execution.consequences(state, lookup, record)
+
+    /** True when the day is closed: an execution happened, or none will. */
+    fun nominationsClosed(state: GameState): Boolean = DayRules.nominationsClosed(state, lookup)
+
+    /**
+     * The zero-typing claim: "Ana claims to be the Empath", recorded as a
+     * STATEMENT with the character attached so a later ruling can read it.
+     */
+    fun recordClaim(speakerId: Long, characterId: String, text: String) = recordStatement(
+        speakerId = speakerId,
+        text = text,
+        sourceId = Ledger.Sources.CLAIM,
+        characterIds = listOf(characterId),
+    )
+
+    /**
+     * Withdraws a recorded nomination (ux/day-screen findings 16/17): the row
+     * becomes `WITHDRAWN`, so it stops counting towards the block and the
+     * highest tally, and any ghost vote it spent is handed back. One update, so
+     * one undo reverses the whole thing.
+     */
+    fun withdrawNomination(index: Int) = update { state ->
+        val nomination = state.nominations.getOrNull(index) ?: return@update state
+        if (nomination.result == NominationResult.WITHDRAWN) return@update state
+        var next = state.copy(
+            nominations = state.nominations.mapIndexed { i, n ->
+                if (i == index) n.copy(result = NominationResult.WITHDRAWN, votes = 0) else n
+            },
+        )
+        if (!nomination.isExile && nomination.voteRules?.spendsGhostVotes != false) {
+            for (voter in nomination.voterIds) {
+                val seat = next.player(voter) ?: continue
+                if (!seat.alive && seat.ghostVoteUsed) {
+                    next = next.updatePlayer(voter) { it.copy(ghostVoteUsed = false) }
+                }
+            }
+        }
+        next
+    }
 
     // ---- WP10: grimoire, seat sheet, kill sheet ----
 
