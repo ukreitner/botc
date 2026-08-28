@@ -36,6 +36,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -146,7 +147,10 @@ fun ShowCard.describe(nameOf: (String) -> String): String = when (this) {
     is ShowCard.AlignmentCard -> text.ifBlank { alignmentWord(evil) }
     is ShowCard.BluffsCard -> "not in play: " + characterIds.joinToString { nameOf(it) }
     is ShowCard.SheetCard -> "the character sheet"
-    is ShowCard.PointCard -> prefix + " " + playerNames.joinToString()
+    // The character is half the meaning: "ONE OF THESE PLAYERS IS THE Chef —
+    // Ana, Dan", never "…IS THE Ana, Dan" (playtest B P2 #16).
+    is ShowCard.PointCard ->
+        prefix + (characterId?.let { " " + nameOf(it) }.orEmpty()) + " — " + playerNames.joinToString()
     is ShowCard.MultiTokenCard -> prefix + " " + characterIds.joinToString { nameOf(it) }
 }
 
@@ -533,7 +537,13 @@ fun ShowToolSheet(
             .sortedWith(compareBy<Character> { it.team.ordinal }.thenBy { it.name })
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Fully expanded from the first frame: half-open, the sheet's own search
+    // field landed under the home indicator and `audit` called its centre
+    // untappable (playtest B P2 #20).
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()

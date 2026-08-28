@@ -374,7 +374,10 @@ fun answerLabel(
     is Answer.Count -> answer.n.toString()
     is Answer.YesNoAnswer -> if (answer.yes) "YES" else "NO"
     is Answer.Characters -> answer.ids.joinToString(", ") { characterName(it) }
-    is Answer.Players -> answer.ids.joinToString(", ") { playerName(it) }
+    is Answer.Players -> {
+        val names = answer.ids.joinToString(", ") { playerName(it) }
+        answer.characterId?.let { "${characterName(it)} — $names" } ?: names
+    }
     is Answer.Message -> answer.text
 }
 

@@ -974,34 +974,53 @@ data class NightPlan(
          * resolves the names and the seat numbers the card prints, so the engine
          * decides WHAT to show and the renderer only decides how it looks.
          */
-        fun cardsFor(state: GameState, result: InfoResult): List<CardOffer> = buildList {
-            cardFor(state, result.answer)
-                ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer)}", it, true)) }
+        fun cardsFor(
+            state: GameState,
+            result: InfoResult,
+            nameOf: (String) -> String = { it },
+        ): List<CardOffer> = buildList {
+            cardFor(state, result.answer, result.cardPrefix)
+                ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer, nameOf)}", it, true)) }
             for (alternative in result.alternatives) {
-                val card = cardFor(state, alternative) ?: continue
-                add(CardOffer("LIE · SHOW ${labelFor(state, alternative)}", card, false))
+                val card = cardFor(state, alternative, result.cardPrefix) ?: continue
+                add(CardOffer("LIE · SHOW ${labelFor(state, alternative, nameOf)}", card, false))
             }
         }
 
-        private fun labelFor(state: GameState, answer: Answer): String = when (answer) {
+        private fun labelFor(
+            state: GameState,
+            answer: Answer,
+            nameOf: (String) -> String = { it },
+        ): String = when (answer) {
             is Answer.Count -> answer.n.toString()
             is Answer.YesNoAnswer -> if (answer.yes) "YES" else "NO"
-            is Answer.Characters -> answer.ids.joinToString().uppercase()
-            is Answer.Players -> answer.ids
-                .mapNotNull { state.player(it)?.name }
-                .joinToString()
-                .ifEmpty { "THEM" }
+            is Answer.Characters -> answer.ids.joinToString { nameOf(it) }.uppercase()
+            // The character is what makes a "1 of 2 players" card mean
+            // anything: two offers that differ only in their token used to
+            // carry the SAME label (playtest B P2 #16).
+            is Answer.Players -> {
+                val names = answer.ids.mapNotNull { state.player(it)?.name }
+                    .joinToString().ifEmpty { "THEM" }
+                answer.characterId?.let { "${nameOf(it).uppercase()} — $names" } ?: names
+            }
             is Answer.Message -> answer.text.take(24).uppercase()
         }
 
-        private fun cardFor(state: GameState, answer: Answer): ShowCardSpec? = when (answer) {
+        private fun cardFor(
+            state: GameState,
+            answer: Answer,
+            prefix: String = "",
+        ): ShowCardSpec? = when (answer) {
             is Answer.Count -> ShowCardSpec.NumberCard(answer.n)
             is Answer.YesNoAnswer -> ShowCardSpec.Message(if (answer.yes) "YES" else "NO")
             is Answer.Characters -> when {
                 answer.ids.isEmpty() -> null
                 answer.ids.size == 1 ->
-                    ShowCardSpec.CharacterCard("THIS CHARACTER", answer.ids.first())
-                else -> ShowCardSpec.MultiTokenCard("THESE CHARACTERS", answer.ids)
+                    ShowCardSpec.CharacterCard(prefix.ifBlank { "THIS CHARACTER" }, answer.ids.first())
+                else -> ShowCardSpec.MultiTokenCard(
+                    prefix.ifBlank { "THESE CHARACTERS" },
+                    answer.ids,
+                )
             }
 
             is Answer.Players -> pointCard(state, answer)

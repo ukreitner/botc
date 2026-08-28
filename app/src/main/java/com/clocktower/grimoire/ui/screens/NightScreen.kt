@@ -296,12 +296,27 @@ private fun resultOf(state: GameState, step: NightStep): String {
         ?.takeIf { it.cycle == state.cycle }
     if (choice != null) {
         if (choice.text == NightPlan.NO_CHOICE) return "chose nobody"
-        val names = choice.targetIds.mapNotNull { state.player(it)?.name }
+        // A row that attacked says what HAPPENED, not merely who was pointed
+        // at: "→ Cleo" read the same whether the Monk saved her or not
+        // (playtest B P2 #14).
+        val attacked = actionEffects(step.action).any { it is NightEffect.Attack }
+        val names = choice.targetIds.mapNotNull { id ->
+            val name = state.player(id)?.name ?: return@mapNotNull null
+            if (!attacked) name else "$name ${fateOf(state, id)}"
+        }
         if (names.isNotEmpty()) return "→ ${names.joinToString()}"
     }
     val told = Memory.by(state, LedgerKind.TOLD, step.abilityId, step.holderId)
         .lastOrNull { it.cycle == state.cycle }
     return told?.shown?.takeIf { it.isNotBlank() }?.let { "shown: $it" }.orEmpty()
+}
+
+/** Did tonight's attack on [playerId] land? Read from the deaths, not the tokens. */
+private fun fateOf(state: GameState, playerId: Long): String {
+    val died = state.deaths.any {
+        it.playerId == playerId && it.day == state.cycle && it.atNight && !it.resurrected
+    }
+    return if (died) "died" else "survived"
 }
 
 /** One line of the collapsed sheet. Tapping it opens that step's card. */

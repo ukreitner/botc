@@ -49,6 +49,12 @@ data class InfoResult(
     val caveats: List<String> = emptyList(),
     /** True when the holder's ability is not working at all. */
     val abilityMalfunctions: Boolean = false,
+    /**
+     * The words above the token on a character card, when the physical info
+     * token says something more specific than "THIS CHARACTER" — the
+     * Undertaker's is "THIS CHARACTER DIED TODAY".
+     */
+    val cardPrefix: String = "",
 )
 
 /**
@@ -255,7 +261,14 @@ object InfoCalc {
                 else -> "${player.name} has no ability ($sourceName)."
             }
         }
-        if (!player.alive) notes += "${player.name} is dead — they normally don't act."
+        // …but not for a character whose ability is MEANT to fire from the
+        // grave. The Ravenkeeper's own card already says "dead — acts anyway",
+        // and the two lines contradicted each other (playtest B P2 #15).
+        val actsWhenDead =
+            CharacterRules.all[Character.normalizeId(player.characterId.orEmpty())]?.keepsAbilityWhenDead
+        if (!player.alive && actsWhenDead != true) {
+            notes += "${player.name} is dead — they normally don't act."
+        }
         return notes
     }
 
@@ -503,6 +516,9 @@ object InfoCalc {
             answer = Answer.Characters(listOfNotNull(characterId)),
             headline = "Show: ${character?.name ?: "?"}",
             detail = "${player?.name ?: "?"} was executed today",
+            // The physical info token reads "THIS CHARACTER DIED TODAY"; the
+            // card printed the generic half of it (playtest B P2 #17).
+            cardPrefix = "THIS CHARACTER DIED TODAY",
             caveats = player?.let { misregistrations(ctx, listOf(it)) } ?: emptyList(),
         )
     }

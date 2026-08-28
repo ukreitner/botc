@@ -126,7 +126,9 @@ fun NightCard(
         }
     }
     val answerCards = remember(info, state) {
-        info?.let { NightPlan.cardsFor(state, it) }.orEmpty()
+        info?.let { result ->
+            NightPlan.cardsFor(state, result) { id -> viewModel.characterById(id)?.name ?: id }
+        }.orEmpty()
     }
     val offers = remember(step.cards, answerCards) {
         (step.cards + answerCards)
@@ -138,6 +140,8 @@ fun NightCard(
     // `shown:` row, so the Chef got nothing and the sheet said the step was
     // done (playtest B P1 #6).
     val truthCard = remember(answerCards) { answerCards.firstOrNull { it.truthful }?.card?.asCard() }
+    val truthful = remember(offers) { offers.filter { it.truthful } }
+    val lies = remember(offers) { offers.filterNot { it.truthful } }
     val answer = info?.let {
         answerLabel(
             it.answer,
@@ -339,9 +343,26 @@ fun NightCard(
             }
 
             // ---- 8. pre-filled cards: tap shows, long-press edits ----
-            if (offers.isNotEmpty()) {
+            // A healthy Ravenkeeper was offered ONE truthful card and FIVE
+            // ember `LIE · SHOW …` chips filling three rows above the primary,
+            // with nothing to say why lying was being suggested (playtest B
+            // P2 #18). The lies come out only when the engine says one is
+            // owed, at most three of them, under a line that gives the reason;
+            // the rest stay one tap away in the drawer.
+            val liesOnCard = if (owesFalseInfo) lies.take(MAX_LIE_CHIPS) else emptyList()
+            if (liesOnCard.isNotEmpty()) {
+                Text(
+                    text = "SHOW ONE OF THESE INSTEAD — " +
+                        info?.caveats?.firstOrNull().orEmpty().ifBlank { "their ability is not working" },
+                    fontSize = NIGHT_MIN_SP.sp,
+                    lineHeight = nightSp(19f).sp,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                )
+            }
+            if (truthful.isNotEmpty() || liesOnCard.isNotEmpty()) {
                 CardOffers(
-                    offers = offers,
+                    offers = truthful + liesOnCard,
                     recipientId = step.holderId,
                     chosen = chosen,
                     onShow = { offer ->
@@ -434,6 +455,11 @@ fun NightCard(
                     step = step,
                     attacked = pick.playerIds,
                     hasAttack = attack != null,
+                    otherCards = lies - liesOnCard.toSet(),
+                    onShow = { offer ->
+                        chosen = offer
+                        onShow(offer.card, step.holderId, offer.truthful)
+                    },
                     onOpenShowTool = onOpenShowTool,
                     onKillSheet = onKillSheet,
                 )
@@ -611,17 +637,35 @@ private fun CardOffers(
 
 /** Two taps for the uncommon: alternates, the card catalogue, the run-book. */
 @Composable
+@Suppress("LongParameterList")
 private fun SecondaryDrawer(
     viewModel: GameViewModel,
     state: GameState,
     step: NightStep,
     attacked: List<Long>,
     hasAttack: Boolean,
+    otherCards: List<UiOffer>,
+    onShow: (UiOffer) -> Unit,
     onOpenShowTool: () -> Unit,
     onKillSheet: (Long, Long?) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider()
+        if (otherCards.isNotEmpty()) {
+            Text(
+                text = "FALSE INFO YOU COULD SHOW INSTEAD",
+                fontSize = NIGHT_MIN_SP.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            CardOffers(
+                offers = otherCards,
+                recipientId = step.holderId,
+                chosen = null,
+                onShow = onShow,
+                onEdit = {},
+            )
+        }
         NightChip(
             label = "show a card…",
             tone = Tone.NORMAL,
@@ -731,6 +775,9 @@ private fun TokenPlacer(viewModel: GameViewModel, state: GameState, step: NightS
         }
     }
 }
+
+/** How many false cards the card itself offers before the rest go in the drawer. */
+private const val MAX_LIE_CHIPS = 3
 
 /** Long-press on an offer: the free-text editor, no longer the default path. */
 @Composable
