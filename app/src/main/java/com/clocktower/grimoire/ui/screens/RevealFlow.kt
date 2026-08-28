@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
@@ -76,6 +77,13 @@ private val NEVER_TOLD_ALIGNMENT = setOf("ogre")
 
 /** How long a finger must stay down before a token is shown. */
 private const val HOLD_MILLIS = 700L
+
+/**
+ * Compose's own minimum touch target. A control SHORTER than this is silently
+ * expanded to it, which is how the roster's name chips came to overlap each
+ * other by 36 % (A-10); given it outright, they do not.
+ */
+private val MinTouchTarget = 48.dp
 
 /**
  * The requirement kinds that decide what a seat's own card SAYS.
@@ -309,7 +317,14 @@ private fun HandOutRoster(
         }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // A-10: the chips were 43 px tall with 6 dp of horizontal spacing
+            // and no vertical spacing at all, so Compose's 48 dp minimum touch
+            // target expanded each one into the row above — up to 36 % overlap,
+            // on a screen where a mis-tap shows the wrong player's character.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 for (seat in queue) {
                     val shown = seat.tokenShownAt != null
                     val isNext = seat.id == next?.id
@@ -317,9 +332,10 @@ private fun HandOutRoster(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
+                            .heightIn(min = MinTouchTarget)
                             .background(if (isNext) Twilight else Color.Transparent)
                             .clickable { onOpenSeat(seat.id) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                     ) {
                         Text(
                             when {
