@@ -500,7 +500,10 @@ object Setup {
                     issues += "${token.name} is a token, not a seat — it fills no seat in the bag"
                 }
             } else {
-                issues += "Bag has ${bag.size} characters for $playerCount players"
+                issues += "Bag has ${bag.size} " +
+                    (if (bag.size == 1) "character" else "characters") +
+                    " for $playerCount " +
+                    (if (playerCount == 1) "player" else "players")
             }
         }
         val modifiers = model.modifiers

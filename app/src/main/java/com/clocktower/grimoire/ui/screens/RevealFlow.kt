@@ -373,10 +373,8 @@ private fun HandOutRoster(
 
             // Paired hand-overs and everything else the first night still owes,
             // read straight off the declarative checklist — no character ids.
-            val pending = remember(state) {
-                SetupRequirements.unmet(state, viewModel::characterById)
-                    .filter { it.kind in HANDOVER_KINDS }
-            }
+            val unmet = remember(state) { SetupRequirements.unmet(state, viewModel::characterById) }
+            val pending = unmet.filter { it.kind in HANDOVER_KINDS }
             if (pending.isNotEmpty()) {
                 HorizontalDivider(Modifier.padding(vertical = 10.dp))
                 Text(
@@ -390,6 +388,18 @@ private fun HandOutRoster(
                         style = MaterialTheme.typography.bodySmall,
                         color = Parchment,
                         modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
+                // A-18: this list is deliberately the hand-over subset. Say so,
+                // rather than letting the storyteller believe it is everything.
+                val hidden = unmet.size - pending.size
+                if (hidden > 0) {
+                    Text(
+                        "+ $hidden more on the checklist — nothing to hand over for " +
+                            if (hidden == 1) "it." else "them.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }

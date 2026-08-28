@@ -53,6 +53,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,6 +114,8 @@ fun SetupScreen(
     var seatlessAck by rememberSaveable { mutableStateOf(false) }
     var outsiderBranch by rememberSaveable { mutableStateOf<Int?>(null) }
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    /** Filters the character list in card 3 (A-11). */
+    var bagQuery by rememberSaveable { mutableStateOf("") }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     // Seat indices marked as Travellers: they fill no distribution slot and are
     // dealt no token (setup-and-home #8). Saved as a List<Int>, because losing
@@ -298,8 +302,10 @@ fun SetupScreen(
                     index = 2,
                     title = "TABLE",
                     summary = buildString {
-                        append("$residentCount seats")
-                        if (travellerSeats.isNotEmpty()) append(" + ${travellerSeats.size} travellers")
+                        append(plural(residentCount, "seat"))
+                        if (travellerSeats.isNotEmpty()) {
+                            append(" + ${plural(travellerSeats.size, "traveller")}")
+                        }
                         if (validCount) append(" · ${distributionLabel(residentCount)}")
                     },
                     done = validCount,
@@ -349,6 +355,8 @@ fun SetupScreen(
                             seatlessNote = seatlessCandidates.firstOrNull()?.second?.note.orEmpty(),
                             seatlessAck = seatlessAck,
                             onSeatlessAck = { seatlessAck = it },
+                            query = bagQuery,
+                            onQuery = { bagQuery = it },
                             onRandomize = { keep ->
                                 val required = if (keep) bagIds else pinnedIds
                                 val bag = rollBag(
@@ -390,7 +398,15 @@ fun SetupScreen(
             }
             if (expanded == CARD_BAG && script != null && validCount) {
                 bagCharacterRows(
-                    characters = characters,
+                    // A-11: the pre-rewrite bag builder had a name search and
+                    // the rewrite lost it, so a 25-character import meant
+                    // scrolling a 25-row list to find one character. Names AND
+                    // abilities, exactly like the reference screen.
+                    characters = characters.filter { c ->
+                        bagQuery.isBlank() ||
+                            c.name.contains(bagQuery, ignoreCase = true) ||
+                            c.ability.contains(bagQuery, ignoreCase = true)
+                    },
                     bagIds = bagIds,
                     pinnedIds = pinnedIds,
                     bannedIds = bannedIds,
@@ -401,11 +417,14 @@ fun SetupScreen(
                 )
             }
 
-            // ---- 4 FABLED & HOUSE RULES --------------------------------------
+            // ---- 4 FABLED -----------------------------------------------------
+            // A-14: it was called "FABLED & HOUSE RULES" and held no house
+            // rules — the only one ("allow duplicates") lives with the bag it
+            // changes, in card 3.
             item("card-fabled") {
                 SetupCard(
                     index = 4,
-                    title = "FABLED & HOUSE RULES",
+                    title = "FABLED",
                     summary = if (fabledIds.isEmpty()) {
                         "none"
                     } else {
@@ -436,7 +455,10 @@ fun SetupScreen(
         // their combined height changed by 40-160 px every time the bag's
         // legality did — so ticking a character moved the row you were about to
         // tap next. Pinned below the list, they can grow and shrink freely.
+        // Only while the bag card is open: the strip belongs to the list it
+        // stops moving, and on the TABLE card it would just eat seat rows.
         BagStatus(
+            visible = expanded == CARD_BAG,
             branches = branches,
             branchOptions = targets[Team.OUTSIDER]?.counts.orEmpty(),
             outsiderBranch = outsiderBranch,
@@ -741,17 +763,31 @@ private fun TableCard(
                     ),
                     modifier = Modifier.weight(1f),
                 )
+                // A-12: this used to read "—" until you pressed it, so nothing
+                // on screen said what it did. It is always the word now, lit
+                // when the seat is one, and it says so out loud to a reader.
                 TextButton(
                     onClick = {
                         onTravellers(
                             if (isTraveller) travellerSeats - index else travellerSeats + index,
                         )
                     },
+                    modifier = Modifier.semantics {
+                        contentDescription = if (isTraveller) {
+                            "Seat ${index + 1} is a Traveller. Tap to make it an ordinary seat."
+                        } else {
+                            "Mark seat ${index + 1} as a Traveller"
+                        }
+                    },
                 ) {
                     Text(
-                        if (isTraveller) "TRAV" else "—",
+                        "TRAV",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isTraveller) AgedGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isTraveller) {
+                            AgedGold
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        },
                     )
                 }
                 IconButton(
@@ -807,6 +843,9 @@ private fun BagHeader(
     seatlessNote: String,
     seatlessAck: Boolean,
     onSeatlessAck: (Boolean) -> Unit,
+    /** Filters the character list below the card (A-11). */
+    query: String,
+    onQuery: (String) -> Unit,
     onRandomize: (keepCurrent: Boolean) -> Unit,
     onClear: () -> Unit,
 ) {
@@ -880,6 +919,22 @@ private fun BagHeader(
             OutlinedButton(onClick = { onRandomize(true) }) { Text("Fill the rest") }
             TextButton(onClick = onClear) { Text("Clear") }
         }
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQuery,
+            placeholder = { Text("Search characters and abilities") },
+            singleLine = true,
+            trailingIcon = if (query.isBlank()) {
+                null
+            } else {
+                {
+                    IconButton(onClick = { onQuery("") }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear the search")
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = allowDuplicates, onCheckedChange = onAllowDuplicates)
             Text(
@@ -942,6 +997,7 @@ private fun FabledPicker(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BagStatus(
+    visible: Boolean,
     branches: List<com.clocktower.engine.SetupModifier>,
     branchOptions: List<Int>,
     outsiderBranch: Int?,
@@ -950,6 +1006,7 @@ private fun BagStatus(
     warnings: List<String>,
     message: String?,
 ) {
+    if (!visible) return
     if (branches.isEmpty() && issues.isEmpty() && warnings.isEmpty() && message == null) return
     HorizontalDivider()
     Column(
@@ -1201,6 +1258,10 @@ private fun rollBag(
     // Last resort: no pins at all is still better than nothing.
     return if (required.isEmpty()) null else roll()
 }
+
+/** "1 seat" / "8 seats" — setup speaks English (A-13). */
+private fun plural(count: Int, singular: String, plural: String = singular + "s"): String =
+    "$count " + if (count == 1) singular else plural
 
 /** "1 outsider" / "2 outsiders" — the bag header speaks English (A-13). */
 private fun teamWord(team: Team, count: Int): String {

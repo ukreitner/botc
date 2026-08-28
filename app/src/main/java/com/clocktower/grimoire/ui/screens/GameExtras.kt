@@ -555,10 +555,18 @@ fun SetupChecklistSheet(
                                     MaterialTheme.colorScheme.onSurface
                                 },
                             )
+                            // A-15: a ticked row shows the ANSWER, not the
+                            // question it no longer asks — "✓ The Drunk
+                            // believes / Chambermaid".
+                            val given = if (ok) row.answer(state, lookup) else ""
                             Text(
-                                row.prompt,
+                                given.ifBlank { row.prompt },
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (given.isNotBlank()) {
+                                    AgedGold
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
