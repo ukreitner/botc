@@ -14,10 +14,13 @@
 #   ./emu.sh launch emulator-5554 --fresh
 #   ./scenario.py emulator-5554 A_fix_a8_lilmonsta_bag
 
-SCRIPT_JSON = (
-    "[{id:_meta,name:LM2},lilmonsta,washerwoman,librarian,investigator,chef,"
-    "empath,fortuneteller,undertaker,monk,butler,recluse,poisoner,spy,scarletwoman]"
-)
+# Typed in chunks: `adb shell input text` drops characters somewhere past
+# ~150 of them, and a mangled paste fails the import rather than the fix.
+SCRIPT_CHUNKS = [
+    "[{id:_meta,name:LM2},lilmonsta,washerwoman,librarian,",
+    "investigator,chef,empath,fortuneteller,undertaker,monk,",
+    "butler,recluse,poisoner,spy,scarletwoman]",
+]
 
 STEPS = [
     ("wait",       "New game"),
@@ -27,7 +30,11 @@ STEPS = [
     ("wait",       "Import script"),
     ("tapxy",      ["540", "1264"]),
     ("sleep",      0.6),
-    ("type",       SCRIPT_JSON),
+    ("type",       SCRIPT_CHUNKS[0]),
+    ("sleep",      0.5),
+    ("type",       SCRIPT_CHUNKS[1]),
+    ("sleep",      0.5),
+    ("type",       SCRIPT_CHUNKS[2]),
     ("sleep",      1.0),
     ("tap",        "^Import$"),
     ("sleep",      1.5),
