@@ -195,6 +195,41 @@ fun rowViews(
 }
 
 // ---------------------------------------------------------------------------
+// Which row is open — and which row a FRESH night opens on
+// ---------------------------------------------------------------------------
+
+/**
+ * The row a night sheet opens on: **the first unfinished required step**.
+ *
+ * The last row (the dawn card, whose primary button is "OPEN THE DAY →") is
+ * only ever the answer when every required row is already done — one tap on
+ * that button skips the whole night, so it must never be what a fresh night
+ * presents (playtest B P0 #2).
+ */
+fun openingToken(steps: List<NightStep>, done: Set<String>): String? =
+    steps.firstOrNull { it.required && it.key.token !in done }?.key?.token
+        ?: steps.lastOrNull()?.key?.token
+
+/**
+ * The open row, saved as `"<night>|<token>"`.
+ *
+ * `rememberSaveable(state.cycle)` is NOT enough on its own: it restores a saved
+ * value even when its key changed (Compose b/152014032), so the `DAWN` token
+ * left at the end of night 1 came back as night 2's open row — and every row
+ * below it was still pending. The night the token belongs to therefore travels
+ * WITH the value, and a token from another night reads as "nothing open".
+ */
+fun openRowKey(cycle: Int, token: String?): String = if (token.isNullOrBlank()) "" else "$cycle|$token"
+
+/** The token in [key], or null when it was saved on a different night. */
+fun openRowToken(key: String, cycle: Int): String? {
+    val separator = key.indexOf('|')
+    if (separator <= 0) return null
+    if (key.substring(0, separator).toIntOrNull() != cycle) return null
+    return key.substring(separator + 1).ifBlank { null }
+}
+
+// ---------------------------------------------------------------------------
 // The primary button
 // ---------------------------------------------------------------------------
 

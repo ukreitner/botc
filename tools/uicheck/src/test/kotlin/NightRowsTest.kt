@@ -34,6 +34,9 @@ import com.clocktower.grimoire.ui.screens.night.gateBadge
 import com.clocktower.grimoire.ui.screens.night.isDestructive
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
 import com.clocktower.grimoire.ui.screens.night.nightSp
+import com.clocktower.grimoire.ui.screens.night.openRowKey
+import com.clocktower.grimoire.ui.screens.night.openRowToken
+import com.clocktower.grimoire.ui.screens.night.openingToken
 import com.clocktower.grimoire.ui.screens.night.placedLabels
 import com.clocktower.grimoire.ui.screens.night.pointPrefix
 import com.clocktower.grimoire.ui.screens.night.primaryEnabled
@@ -294,6 +297,44 @@ class NightRowsTest {
         assertEquals(1, p.skipped)
         assertEquals("step 3 / 3", p.label)
         assertEquals(3, segmentTones(plan, setOf(a.key.token), c.key.token, emptySet()).size)
+    }
+
+    // ---- which row a night opens on ---------------------------------------
+
+    @Test
+    fun `a fresh night opens on its first unfinished row, never on Dawn`() {
+        val dusk = step(ability = "dusk")
+        val poisoner = step(ability = "poisoner")
+        val imp = step(ability = "imp")
+        val dawn = step(ability = "dawn")
+        val steps = listOf(dusk, poisoner, imp, dawn)
+
+        assertEquals(dusk.key.token, openingToken(steps, done = emptySet()))
+        assertEquals(imp.key.token, openingToken(steps, done = setOf(dusk.key.token, poisoner.key.token)))
+    }
+
+    @Test
+    fun `Dawn opens only once every required row is done`() {
+        val dusk = step(ability = "dusk")
+        val skipped = step(ability = "butler", gate = StepGate.Skip("dead — no ability"))
+        val dawn = step(ability = "dawn")
+        val steps = listOf(dusk, skipped, dawn)
+
+        // A gated-off row is done by definition and must not hold the sheet up.
+        assertEquals(dawn.key.token, openingToken(steps, done = setOf(dusk.key.token, dawn.key.token)))
+        assertEquals(dawn.key.token, openingToken(steps, done = setOf(dusk.key.token)))
+        assertEquals(dusk.key.token, openingToken(steps, done = emptySet()))
+        assertNull(openingToken(emptyList(), done = emptySet()))
+    }
+
+    @Test
+    fun `the open row carries the night it belongs to, so it cannot leak into the next one`() {
+        val saved = openRowKey(cycle = 1, token = "DAWN")
+        assertEquals("DAWN", openRowToken(saved, cycle = 1))
+        assertNull("night 1's DAWN is not night 2's open row", openRowToken(saved, cycle = 2))
+        assertEquals("", openRowKey(cycle = 2, token = null))
+        assertNull(openRowToken("", cycle = 2))
+        assertNull("a bare token is not a saved row", openRowToken("DAWN", cycle = 2))
     }
 
     // ---- the one picker ----------------------------------------------------

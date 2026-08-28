@@ -52,6 +52,9 @@ import com.clocktower.grimoire.ui.screens.night.color
 import com.clocktower.grimoire.ui.screens.night.dimAlpha
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
 import com.clocktower.grimoire.ui.screens.night.nightSp
+import com.clocktower.grimoire.ui.screens.night.openRowKey
+import com.clocktower.grimoire.ui.screens.night.openRowToken
+import com.clocktower.grimoire.ui.screens.night.openingToken
 import com.clocktower.grimoire.ui.screens.night.progress
 import com.clocktower.grimoire.ui.screens.night.rowViews
 import com.clocktower.grimoire.ui.screens.night.segmentTones
@@ -84,7 +87,13 @@ fun NightScreen(
     val plan = remember(state) { viewModel.nightPlan(state) }
     val done = state.nightStepsDone
 
-    var activeToken by rememberSaveable(state.cycle) { mutableStateOf<String?>(null) }
+    // "<night>|<token>", never a bare token: `rememberSaveable(state.cycle)`
+    // restores its saved value even when the key changed, so the DAWN row left
+    // over from the end of the previous night became night 2's opening card —
+    // one tap on "OPEN THE DAY →" and nobody was poisoned, protected or killed
+    // (playtest B P0 #2).
+    var openRow by rememberSaveable { mutableStateOf("") }
+    val activeToken = openRowToken(openRow, state.cycle)
     var listOpen by rememberSaveable { mutableStateOf(false) }
     var forced by remember(state.cycle) { mutableStateOf(emptySet<String>()) }
     var shown by remember { mutableStateOf<ShownCard?>(null) }
@@ -93,16 +102,15 @@ fun NightScreen(
     val listState = rememberLazyListState()
 
     val active = plan.steps.firstOrNull { it.key.token == activeToken }
-        ?: plan.steps.getOrNull(plan.cursor(done).takeIf { it >= 0 } ?: plan.steps.lastIndex)
+        ?: plan.steps.firstOrNull { it.key.token == openingToken(plan.steps, done) }
     val activeIndex = plan.steps.indexOfFirst { it.key.token == active?.key?.token }
 
     // The button that finished a step also advances to the next one: ticking is
     // a consequence of doing, never a separate act (defect #7).
-    LaunchedEffect(done, plan.steps.size, pendingDawn) {
+    LaunchedEffect(done, plan.steps.size, pendingDawn, state.cycle) {
         val token = activeToken
         if (token == null || token in done || plan.steps.none { it.key.token == token }) {
-            activeToken = plan.steps.firstOrNull { it.required && it.key.token !in done }?.key?.token
-                ?: plan.steps.lastOrNull()?.key?.token
+            openRow = openRowKey(state.cycle, openingToken(plan.steps, done))
         }
         // The dawn card's button ticked its own row a frame ago; the phase
         // button now sees a finished sheet and raises the dawn briefing. If
@@ -173,20 +181,23 @@ fun NightScreen(
                         },
                         onDawn = { pendingDawn = true },
                         onBack = {
-                            activeToken = plan.steps.getOrNull(index - 1)?.key?.token ?: activeToken
+                            openRow = openRowKey(
+                                state.cycle,
+                                plan.steps.getOrNull(index - 1)?.key?.token ?: activeToken,
+                            )
                         },
                         onSkip = {
                             viewModel.markNightStepDone(step.key)
-                            activeToken = plan.steps.getOrNull(index + 1)?.key?.token
+                            openRow = openRowKey(state.cycle, plan.steps.getOrNull(index + 1)?.key?.token)
                         },
                     )
                 } else {
                     NightRowLine(
                         row = row,
-                        onOpen = { activeToken = row.token },
+                        onOpen = { openRow = openRowKey(state.cycle, row.token) },
                         onRunAnyway = {
                             forced = forced + row.token
-                            activeToken = row.token
+                            openRow = openRowKey(state.cycle, row.token)
                         },
                     )
                 }
