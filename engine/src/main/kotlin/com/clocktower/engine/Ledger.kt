@@ -389,6 +389,21 @@ object Memory {
         beforeCycle: Int = state.cycle,
     ): LedgerEntry? = by(state, LedgerKind.CHOICE, sourceId, holderId).lastOrNull { it.cycle < beforeCycle }
 
+    /**
+     * The CHOICE one SEAT has already made tonight, whatever ability made it.
+     *
+     * By actor rather than by source: a Lunatic records their choice under the
+     * BELIEVED Demon's id (lead D70), so "what did that seat choose tonight?"
+     * cannot be asked with a character id. The Demon's briefing needs exactly
+     * this question, and only the seat is known to it.
+     */
+    fun choiceTonight(state: GameState, actorId: Long): LedgerEntry? = state.ledger.lastOrNull {
+        it.kind == LedgerKind.CHOICE &&
+            it.atNight &&
+            it.cycle == state.cycle &&
+            it.actorId == actorId
+    }
+
     /** Seats [sourceId] may NOT pick tonight because of a "different to last night" clause. */
     fun forbiddenTargets(state: GameState, sourceId: String, holderId: Long? = null): Set<Long> =
         lastChoice(state, sourceId, holderId)?.targetIds?.toSet().orEmpty()

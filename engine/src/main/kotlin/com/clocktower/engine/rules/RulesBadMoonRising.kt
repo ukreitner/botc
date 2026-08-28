@@ -1,7 +1,6 @@
 package com.clocktower.engine.rules
 
 import com.clocktower.engine.BriefingSlot
-import com.clocktower.engine.Character
 import com.clocktower.engine.ChosenContext
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
@@ -707,23 +706,49 @@ private fun goonAlreadyTriggered(ctx: ChosenContext): Boolean {
  * you choose at night."
  *
  * `Identity.derivedGrants` REPLACES the Lunatic's ability with the believed
- * Demon's, at the Lunatic's own slot and with `alwaysFalse = true`, so most games
- * run the BELIEVED Demon's registry row instead of this one — which is why every
- * BMR Demon row below routes an `alwaysFalse` holder through [placeboAction]:
- * the choices are recorded and marked, and nothing whatsoever happens.
+ * Demon's, at the Lunatic's own slot and with `alwaysFalse = true` (lead D70), so
+ * most games run the BELIEVED Demon's registry row instead of this one. Nothing
+ * in this file has to know that: `NightPlan` strips every `NightEffect` out of an
+ * `alwaysFalse` row, drops its deferred half, and places [illusionToken] on each
+ * pick — generically, for any believer of any ability, on any script.
  *
- * This row is the fallback for a Lunatic with no believed Demon chosen yet. The
- * bluffs and the fake Minions are WP4's `Bluffs.requirements` /
- * `SetupRequirements`, and the real Demon is shown the Lunatic on `DEMON_INFO`.
+ * This row is the fallback for a Lunatic with no believed Demon chosen yet, and
+ * it is a REAL role (nothing replaced it), so it carries its own harmless action.
+ * The bluffs and the fake Minions are WP4's `Bluffs.requirements` /
+ * `SetupRequirements`; [informsChoiceTo] is what puts tonight's picks on the real
+ * Demon's row and on `DEMON_INFO`.
  */
 private fun lunatic(): CharacterRule {
     val rule = NightRule(
         gate = Gates.aliveHolder,
         prompt = "Let the Lunatic act as the Demon they believe they are. Place their " +
             "Chosen markers. Nobody dies from this — nothing they do has any effect.",
-        action = { ctx -> placeboAction(ctx, "lunatic", max = 3) },
+        action = {
+            ChoosePlayers(
+                sourceId = "lunatic",
+                prompt = "WHO DID THEY CHOOSE? (nothing happens)",
+                min = 0,
+                max = 3,
+                constraints = listOf(
+                    TargetConstraint.ANY_LIVING_STATE,
+                    TargetConstraint.SELF_ALLOWED,
+                ),
+                sort = TargetSort.ALIVE_FIRST,
+                allowNone = true,
+                noneLabel = "They chose nobody",
+                perTarget = listOf(NightEffect.PlaceToken("lunatic", "Chosen", Ref.Target)),
+            )
+        },
     )
-    return CharacterRule(id = "lunatic", firstNight = rule, otherNight = rule)
+    return CharacterRule(
+        id = "lunatic",
+        firstNight = rule,
+        otherNight = rule,
+        // Three official Chosen tokens, swept at dawn (Tokens.BASE).
+        illusionToken = TokenRule("lunatic", "Chosen", null, Until.DAWN, copies = 3),
+        // "The Demon knows who you are & who you choose at night."
+        informsChoiceTo = Team.DEMON,
+    )
 }
 
 /**
@@ -1055,9 +1080,8 @@ private fun zombuul() = CharacterRule(
         ),
         prompt = "Nobody died today. The Zombuul points at any player — killing themselves " +
             "and hiding in plain sight is legal.",
-        action = { ctx ->
+        action = {
             demonAttack(
-                ctx = ctx,
                 sourceId = "zombuul",
                 deadLabel = "Dead",
                 min = 0,
@@ -1092,49 +1116,41 @@ private fun pukka(): CharacterRule {
         gate = Gates.all(Gates.aliveHolder, Gates.notExorcised),
         prompt = "The Pukka points at a player: that player is POISONED. The player " +
             "poisoned on the previous night dies now, still poisoned, then becomes healthy.",
-        action = { ctx ->
-            if (isPlacebo(ctx)) {
-                placeboAction(ctx, "pukka", max = 1)
-            } else {
-                ChoosePlayers(
-                    sourceId = "pukka",
-                    prompt = "WHO DID THEY CHOOSE?",
-                    min = 1,
-                    max = 1,
-                    constraints = listOf(
-                        TargetConstraint.ANY_LIVING_STATE,
-                        TargetConstraint.SELF_ALLOWED,
+        action = {
+            ChoosePlayers(
+                sourceId = "pukka",
+                prompt = "WHO DID THEY CHOOSE?",
+                min = 1,
+                max = 1,
+                constraints = listOf(
+                    TargetConstraint.ANY_LIVING_STATE,
+                    TargetConstraint.SELF_ALLOWED,
+                ),
+                sort = TargetSort.ALIVE_FIRST,
+                allowNone = true,
+                noneLabel = "They chose nobody",
+                perTarget = listOf(
+                    NightEffect.PlaceToken(
+                        sourceId = "pukka",
+                        label = "Poisoned",
+                        on = Ref.Target,
+                        kind = EffectKind.POISONED,
+                        until = Until.ON_SOURCE_STEP,
                     ),
-                    sort = TargetSort.ALIVE_FIRST,
-                    allowNone = true,
-                    noneLabel = "They chose nobody",
-                    perTarget = listOf(
-                        NightEffect.PlaceToken(
-                            sourceId = "pukka",
-                            label = "Poisoned",
-                            on = Ref.Target,
-                            kind = EffectKind.POISONED,
-                            until = Until.ON_SOURCE_STEP,
-                        ),
-                    ),
-                )
-            }
+                ),
+            )
         },
         pending = { ctx ->
-            if (isPlacebo(ctx)) {
-                emptyList()
-            } else {
-                standingVictims(ctx).flatMap { victim ->
-                    listOf(
-                        NightEffect.Attack(
-                            on = Ref.Seat(victim),
-                            cause = DeathCause.DEMON_KILL,
-                            deferred = true,
-                        ),
-                        NightEffect.PlaceToken("pukka", "Dead", Ref.Seat(victim)),
-                        NightEffect.RemoveToken("pukka", "Poisoned", Ref.Seat(victim)),
-                    )
-                }
+            standingVictims(ctx).flatMap { victim ->
+                listOf(
+                    NightEffect.Attack(
+                        on = Ref.Seat(victim),
+                        cause = DeathCause.DEMON_KILL,
+                        deferred = true,
+                    ),
+                    NightEffect.PlaceToken("pukka", "Dead", Ref.Seat(victim)),
+                    NightEffect.RemoveToken("pukka", "Poisoned", Ref.Seat(victim)),
+                )
             }
         },
     )
@@ -1174,30 +1190,26 @@ private fun shabaloth() = CharacterRule(
                     " — decide BEFORE tonight's two picks."
             }
         },
-        action = { ctx ->
-            if (isPlacebo(ctx)) {
-                placeboAction(ctx, "shabaloth", max = 2)
-            } else {
-                ChoosePlayers(
-                    sourceId = "shabaloth",
-                    prompt = "WHICH TWO DID THEY CHOOSE? (in order)",
-                    min = 2,
-                    max = 2,
-                    constraints = listOf(
-                        TargetConstraint.ANY_LIVING_STATE,
-                        TargetConstraint.SELF_ALLOWED,
-                    ),
-                    sort = TargetSort.ALIVE_FIRST,
-                    perTarget = listOf(
-                        NightEffect.Attack(on = Ref.Target, cause = DeathCause.DEMON_KILL),
-                        NightEffect.PlaceToken("shabaloth", "Dead", Ref.Target),
-                    ),
-                )
-            }
+        action = {
+            ChoosePlayers(
+                sourceId = "shabaloth",
+                prompt = "WHICH TWO DID THEY CHOOSE? (in order)",
+                min = 2,
+                max = 2,
+                constraints = listOf(
+                    TargetConstraint.ANY_LIVING_STATE,
+                    TargetConstraint.SELF_ALLOWED,
+                ),
+                sort = TargetSort.ALIVE_FIRST,
+                perTarget = listOf(
+                    NightEffect.Attack(on = Ref.Target, cause = DeathCause.DEMON_KILL),
+                    NightEffect.PlaceToken("shabaloth", "Dead", Ref.Target),
+                ),
+            )
         },
         pending = { ctx ->
             val candidates = regurgitationCandidates(ctx)
-            if (isPlacebo(ctx) || candidates.isEmpty()) {
+            if (candidates.isEmpty()) {
                 emptyList()
             } else {
                 listOf(
@@ -1243,8 +1255,6 @@ private fun po() = CharacterRule(
             val charged = holder != null &&
                 DayRules.hasToken(ctx.state, holder.id, "po", "3 Attacks")
             when {
-                isPlacebo(ctx) -> placeboAction(ctx, "po", max = if (charged) 3 else 1)
-
                 charged -> ChoosePlayers(
                     sourceId = "po",
                     prompt = "WHICH THREE DID THEY CHOOSE? (in order)",
@@ -1307,40 +1317,14 @@ private fun aliveOrRegistersDead(): WakePredicate = WakePredicate { ctx ->
     }
 }
 
-/**
- * True when this row is being run by somebody who only BELIEVES they hold the
- * character: a Lunatic, a Drunk or a Marionette shown a Demon token
- * (`ActingRole.alwaysFalse`). Nothing they choose may have any effect.
- */
-private fun isPlacebo(ctx: NightContext): Boolean = ctx.role?.alwaysFalse == true
-
-/**
- * The believed Demon's action with every consequence removed: the choice is
- * recorded (the real Demon is shown it, and the Mathematician jinx reads it) and,
- * for a Lunatic, marked with their own official `Chosen` tokens. No kills, no
- * poison, no protection change, ever.
- */
-private fun placeboAction(ctx: NightContext, sourceId: String, max: Int): NightAction {
-    val isLunatic = Character.normalizeId(ctx.holder?.characterId.orEmpty()) == "lunatic"
-    return ChoosePlayers(
-        sourceId = sourceId,
-        prompt = "WHO DID THEY CHOOSE? (nothing happens)",
-        min = 0,
-        max = max,
-        constraints = listOf(
-            TargetConstraint.ANY_LIVING_STATE,
-            TargetConstraint.SELF_ALLOWED,
-        ),
-        sort = TargetSort.ALIVE_FIRST,
-        allowNone = true,
-        noneLabel = "They chose nobody",
-        perTarget = if (isLunatic) {
-            listOf(NightEffect.PlaceToken("lunatic", "Chosen", Ref.Target))
-        } else {
-            emptyList()
-        },
-    )
-}
+// The old `isPlacebo` / `placeboAction` pair lived here. Every Demon row in this
+// file used to branch on `ActingRole.alwaysFalse` and hand a believer a
+// hand-rolled harmless picker; these four rows had it and the twenty-odd Demons
+// of the other editions did not, so a Lunatic who believed they were the Imp ran
+// the real attack. It is `NightPlan`'s job now — `illusory()` strips the effects
+// out of ANY believed action, `resolve` drops the deferred half, and
+// `CharacterRule.illusionToken` says what mark is left behind — so the rows are
+// simply the Demon's own rule, unbranched.
 
 /**
  * The ordinary "point at one player, they die" Demon action.
@@ -1350,32 +1334,28 @@ private fun placeboAction(ctx: NightContext, sourceId: String, max: Int): NightA
  * works, while a real corpse cannot be attacked twice (WP2 acceptance).
  */
 private fun demonAttack(
-    ctx: NightContext,
     sourceId: String,
     deadLabel: String,
     min: Int,
     max: Int,
     allowNone: Boolean,
-): NightAction {
-    if (isPlacebo(ctx)) return placeboAction(ctx, sourceId, max)
-    return ChoosePlayers(
-        sourceId = sourceId,
-        prompt = "WHO DID THEY CHOOSE?",
-        min = min,
-        max = max,
-        constraints = listOf(
-            TargetConstraint.ALIVE,
-            TargetConstraint.SELF_ALLOWED,
-        ),
-        sort = TargetSort.ALIVE_FIRST,
-        allowNone = allowNone,
-        noneLabel = "No kill (impaired, protected, or storyteller's choice)",
-        perTarget = listOf(
-            NightEffect.Attack(on = Ref.Target, cause = DeathCause.DEMON_KILL),
-            NightEffect.PlaceToken(sourceId, deadLabel, Ref.Target),
-        ),
-    )
-}
+): NightAction = ChoosePlayers(
+    sourceId = sourceId,
+    prompt = "WHO DID THEY CHOOSE?",
+    min = min,
+    max = max,
+    constraints = listOf(
+        TargetConstraint.ALIVE,
+        TargetConstraint.SELF_ALLOWED,
+    ),
+    sort = TargetSort.ALIVE_FIRST,
+    allowNone = allowNone,
+    noneLabel = "No kill (impaired, protected, or storyteller's choice)",
+    perTarget = listOf(
+        NightEffect.Attack(on = Ref.Target, cause = DeathCause.DEMON_KILL),
+        NightEffect.PlaceToken(sourceId, deadLabel, Ref.Target),
+    ),
+)
 
 /**
  * Seats carrying THIS Pukka's standing `Poisoned` token, read from the grimoire as
