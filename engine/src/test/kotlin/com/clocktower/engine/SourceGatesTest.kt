@@ -27,9 +27,11 @@ import kotlin.test.assertTrue
  *     with `seatsHolding` (FOLLOWUPS.md, WP7-SV merger note).
  *
  * Every gate is LIVE, and none of them may be `@Ignore`d again — the last test
- * in this file asserts that about this file. Gates 3 and 4 keep a named
- * baseline of the sites that still stand, so a NEW violation fails immediately
- * instead of waiting for the cleanup that would let the strict form pass.
+ * in this file asserts that about this file. Gate 3 keeps a named baseline of
+ * the sites that still stand, so a NEW violation fails immediately instead of
+ * waiting for the cleanup that would let the strict form pass. Gate 4's
+ * baseline is empty: its last two sites (`GameExtras.kt`) now go through
+ * `GameActionsApi.moveSeat`, so the rule is enforced strictly.
  */
 class SourceGatesTest {
 
@@ -250,23 +252,16 @@ class SourceGatesTest {
      */
     @Test
     fun `no app or web source calls the frozen facade or the deprecated kill`() {
-        // Live baseline: two calls in GameExtras.kt still reach past the API for
-        // a verb the API already has (`GameActionsApi.moveSeat`). Not this
-        // package's file to edit; a THIRD one fails here immediately.
-        val known = setOf(
-            "app/src/main/java/com/clocktower/grimoire/ui/screens/GameExtras.kt" to "GameActions.",
-        )
+        // No baseline: the last two tolerated sites (GameExtras.kt's seat
+        // reordering) now call `GameActionsApi.moveSeat`, so every UI file
+        // outside the boundary is held to the rule with no exceptions. A new
+        // violation is fixed by routing the verb through the API — never by
+        // re-introducing a `known` set here.
         val hits = facadeHits()
-        val fresh = hits.filterNot { (it.where.replace('\\', '/') to it.what) in known }
         assertTrue(
-            fresh.isEmpty(),
+            hits.isEmpty(),
             "call engine verbs through GameActionsApi, and kills through Deaths.attempt " +
-                "with a real KillCause (§4.1, WP1):\n" + fresh.joinToString("\n"),
-        )
-        assertTrue(
-            hits.size <= 2,
-            "façade/deprecated-kill call sites grew from 2 to ${hits.size}:\n" +
-                hits.joinToString("\n"),
+                "with a real KillCause (§4.1, WP1):\n" + hits.joinToString("\n"),
         )
     }
 
