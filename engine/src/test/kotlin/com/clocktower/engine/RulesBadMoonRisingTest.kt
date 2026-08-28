@@ -884,6 +884,25 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Godfather's gate question reads "an Outsider", not "a Outsider"`() {
+        // Playtest D P2-14.
+        var state = game("godfather", "pukka", "tinker", "chambermaid", "professor", "gossip")
+        // Somebody died today, but nobody who registered as an Outsider: the
+        // storyteller is asked rather than overruled.
+        var day = Phases.advancePhase(state, lookup)
+        day = Deaths.attempt(
+            day,
+            lookup,
+            seat(day, "chambermaid"),
+            KillCause(DeathCause.EXECUTION),
+        ).state
+        state = Phases.advancePhase(day, lookup)
+
+        val gate = assertIs<StepGate.Conditional>(require(state, "godfather").gate)
+        assertEquals("Did an Outsider die today?", gate.question)
+    }
+
+    @Test
     fun `the Godfather learns the Outsiders on the first night and never again`() {
         // Playtest D P0-4: the "these Outsiders are in play" block, and its four
         // SHOW buttons, were rendered again on night 2 and night 3.

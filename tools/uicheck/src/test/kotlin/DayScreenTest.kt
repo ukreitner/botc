@@ -281,13 +281,18 @@ class DayScreenTest {
 
     @Test
     fun `the nomination check reaches the day screen with its triggers`() {
-        val state = day()
+        // The Goblin CHOICE row is offered for every seated nominee ON A SCRIPT
+        // THAT HAS A GOBLIN: that IS the "Claims to be the Goblin" affordance,
+        // and it is data, not a character-id branch in the screen.
+        //
+        // Playtest D P2-15 narrowed it: it used to be offered on every script,
+        // so a Bad Moon Rising nomination asked "Did Erin claim to be the
+        // Goblin?" about a character nobody at that table could be. Trouble
+        // Brewing has no Goblin either, so this now needs a script that does.
+        val state = withGoblinOnScript(day())
         val check = DayRules.checkNomination(state, lookup, seat(state, "Bo"), seat(state, "Fay"))
 
         assertTrue("a plain nomination is legal", check.legal)
-        // The Goblin CHOICE row is offered for every seated nominee: that IS
-        // the "Claims to be the Goblin" affordance, and it is data, not a
-        // character-id branch in the screen.
         val goblin = check.triggers.firstOrNull { it.sourceId == "goblin" }
         assertNotNull("the goblin claim is offered: ${check.triggers.map { it.sourceId }}", goblin)
         assertEquals(TriggerKind.CHOICE, goblin!!.kind)
@@ -295,7 +300,18 @@ class DayScreenTest {
             "and it carries the options the card renders as buttons",
             goblin.options.any { it.id == DayRules.OPTION_APPLY },
         )
+
+        // …and never on a script without one.
+        val plain = DayRules.checkNomination(day(), lookup, seat(state, "Bo"), seat(state, "Fay"))
+        assertNull(
+            "no Goblin caveat off-script: ${plain.triggers.map { it.sourceId }}",
+            plain.triggers.firstOrNull { it.sourceId == "goblin" },
+        )
     }
+
+    /** The same table, on a script that also carries the Goblin. */
+    private fun withGoblinOnScript(state: GameState): GameState =
+        state.copy(script = state.script.copy(characterIds = state.script.characterIds + "goblin"))
 
     @Test
     fun `the nomination briefing is computed for the tapped pair, not the recorded one`() {
