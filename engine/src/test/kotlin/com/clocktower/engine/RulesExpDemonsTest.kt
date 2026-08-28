@@ -238,7 +238,10 @@ class RulesExpDemonsTest {
         // When it chooses P2 as its host,
         state = resolve(state, row, NightInput(playerIds = listOf(1L)))
 
-        // Then the host is poisoned and the Lleech's life is tied to theirs.
+        // Then the host is marked as the host AND poisoned — two separate facts
+        // since WP6C, so the official Soldier ruling (host, not poisoned) can be
+        // expressed by lifting the poison alone.
+        assertTrue(tokenOn(state, 1L, "lleech", "Host"))
         assertTrue(tokenOn(state, 1L, "lleech", "Poisoned"))
         assertTrue(Status.isImpaired(state, lookup, 1L), "the host is poisoned")
         val blocked = Deaths.killOutcome(state, lookup, 0L, KillCause(DeathCause.EXECUTION))
