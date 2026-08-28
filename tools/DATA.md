@@ -61,25 +61,34 @@ the pipeline touches, and only to strip that space.
   bra1n/townsquare's verbose storyteller prose, and data-accuracy P3 #18 rules
   that the app's copy is better and must be kept. Any character not listed
   here takes the official string.
-* **`spentLabel`** for 20 characters (lead **D49**, ARCHITECTURE §2.14) — the
+* **`spentLabel`** for 23 characters (lead **D49**, ARCHITECTURE §2.14) — the
   exact reminder label that marks a once-per-game ability as used. This drives
   `Gates.notSpent`; the "Once per game" text heuristic is deleted.
+* **`reminders`** — per-character deltas ON TOP of the official reminder
+  lists: extra copies of a label, extra labels, labels reclassified as global.
+  Added in Wave 6C; every entry carries its own `why` and is listed in
+  §"Wave 6C" below.
+* **`nightOrder`** — the four rows the official `nightsheet.json` omits, each
+  anchored to the row it follows. Added in Wave 6C; see §"Wave 6C".
 
-`manualOverrides` (currently empty) is a field-level escape hatch applied after
-the official data; anything put there must be justified in this file.
+`manualOverrides` (currently empty) is a raw field-level escape hatch applied
+after the official data; anything put there must be justified in this file.
+Prefer `reminders`, which records a delta rather than a replacement, so an
+upstream change to the official list still flows through.
 
 ### `spentLabel` assignments
 
 `No Ability` — artist, assassin, bonecollector, courtier, engineer, fibbin,
 fisherman, fool, huntsman, judge, mezepheles, nightwatchman, professor,
-seamstress, slayer, virgin.
+seamstress, slayer, **summoner**, virgin.
 `Guess Used` — damsel, puzzlemaster. `May Not Nominate` — golem.
-`Is The Philosopher` — philosopher.
+`Is The Philosopher` — philosopher. `Woke` — **sage**.
+`Wish Granted` — **wizard**.
 
 Deliberately **not** set: `preacher` (its three `No Ability` tokens go on
-Minions, not on the Preacher), `wizard` (`?` tokens track the wish, not the
-spend), `pixie`, `plaguedoctor`, `deusexfiasco`, `doomsayer`, `fiddler`,
-`revolutionary`, `toymaker`, `knaves`, `zombuul`, `gangster` (once per *day*).
+Minions, not on the Preacher), `pixie`, `plaguedoctor`, `deusexfiasco`,
+`doomsayer`, `fiddler`, `revolutionary`, `toymaker`, `knaves`, `zombuul`,
+`gangster`, `gunslinger`, `psychopath` (the last three are once per *day*).
 `philosopher` is a judgement call: the official data has no spent token, but
 the `Is The Philosopher` global reminder is placed exactly when the
 once-per-game ability is used.
@@ -186,8 +195,8 @@ test that matters now is `characters.json` ↔ `tools/data/roles.json`, which
 ## What the regeneration fixed
 
 Counts, after: **181 characters** (was 171), **131 jinxes** (was 58),
-**80 / 99** night-order entries (was 76 / 96), **185 night-guide entries** with
-**287 channels** and **136 show cards** (was 116 entries, 166 night channels, 119 show cards).
+**80 / 99** night-order entries (was 76 / 96) before Wave 6C's four insertions,
+**185 night-guide entries** (was 116 entries, 166 night channels, 119 show cards).
 
 * 10 characters added: `wraith` (Minion), `cacklejack` (Traveller), and the
   eight Loric `bigwig`, `godofug`, `hindu`, `knaves`, `pope`, `tor`,
@@ -266,7 +275,8 @@ storyteller who checks the wiki is not confused.
 
 `regen-data.py --check` fails on any of:
 
-* not exactly 181 characters / 131 jinxes / 80 firstNight / 99 otherNight;
+* not exactly 181 characters / 131 jinxes / 81 firstNight / 102 otherNight
+  (80 + 1 and 99 + 3 overlay insertions);
 * a duplicate or non-normalised id;
 * a night-order or jinx id that does not resolve to a character;
 * a character with a night reminder that is not in the matching order list, or
@@ -274,17 +284,24 @@ storyteller who checks the wiki is not confused.
 * a `spentLabel` that is not one of that character's own reminders;
 * two reminder labels that differ only by case;
 * a character with no `night_guide.json` channel, a `first`/`other` channel
-  that disagrees with the night order, or a missing marker entry.
+  that disagrees with the night order, or a missing marker entry;
+* an overlay `reminders` entry that changes nothing (the official data has
+  caught up — delete the entry) or names a label the official list does not
+  carry, and a `nightOrder` insertion whose id the official sheet now has or
+  whose anchor does not exist.
 
 `patch-night-guide.py --check` additionally fails on a `GuideShow` whose `kind`
 is outside `NightGuide.VALID_KINDS` or whose `token` is outside
 `VALID_TOKENS`, on a blank `instructions`, and on any of the four P0 sentences
 reappearing.
 
-## Known-failing engine tests (for WP12)
+## Known-failing engine tests (for WP12) — all three now fixed
 
-These three fail **because** the data is now correct. None is a load failure —
-the dataset parses and 102 of 105 tests pass.
+Historical, kept for the record. All three were resolved in later waves; as of
+Wave 6C the engine suite is 759 tests, 0 failures, 6 skipped.
+
+These three failed **because** the data is now correct. None was a load failure —
+the dataset parses and 102 of 105 tests passed at the time.
 
 1. `SetupTest > team warping brackets relax all counts` — asserts
    `Setup.modifierFor(riot) != null`; `riot.setup` is now `false`, which is what
@@ -312,3 +329,146 @@ the new upstream commit, and regenerates. Read the diff: an upstream change to
 a reminder label is a code change too (`GameActions.EXPIRES_AT_*`, the token
 rules), and an upstream change to the night order will move steps under the
 storyteller's feet.
+
+## Wave 6C — the registry agents' data issues
+
+The nine Wave 4 registry packages each ended with a list of things
+`characters.json` could not say. `docs/audit/FOLLOWUPS.md` §"From Wave 4
+registry agents" collects them; this section is what was done about each.
+
+Nothing here is a guess. Every item was re-checked against the character's own
+wiki page before it was applied, and one was rejected on that check (see
+"Rejected", below).
+
+### 1. Four night-order rows the official sheet omits
+
+`tools/app-overlay.json` → `nightOrder`. `nightsheet.json` stays verbatim
+truth for every row it carries and is never reordered; these four are inserted
+after a named anchor, and each carries its own `why` in the overlay.
+
+| list | id | after | why |
+|---|---|---|---|
+| otherNight | `widow` | `poisoner` | "On your 1st night" means the night the Widow **enters play**. The wiki's own example is a Pit-Hag who becomes the Widow on night 3 and sees the Grimoire, poisons and wakes the KNOW player that night. Same slot as on the first night. |
+| otherNight | `snitch` | `scarletwoman` | A Snitch, or a Minion, created mid-game still owes three bluffs. Placed before `summoner`/`lunatic`, mirroring its first-night place straight after MINION INFO. |
+| otherNight | `ogre` | `spy` | "On your 1st night" again. Same neighbours as on the first night — after the Spy, before the High Priestess. |
+| firstNight | `plaguedoctor` | `pixie` | The safety net for a Plague Doctor who dies before the first night ends (an Angel's "something bad", a storyteller death). Nobody is dead on an ordinary night 1, and the registry gate — "dead, and no ability taken yet" — skips the row then. |
+
+Each row needed a night reminder (the generator fails without one) and a
+`night_guide.json` channel (both validators fail without one); the reminders
+are in the overlay's `characters` block and the run-books are
+`patch-night-guide.py` §9.
+
+Totals move from **80 / 99** to **81 / 102**.
+
+### 2. Nineteen reminder deltas
+
+`tools/app-overlay.json` → `reminders`, applied by `apply_reminder_delta()`.
+Four operations — `copies`, `add`, `addGlobal`, `toGlobal` — all of them
+**additive**: the generator never drops or renames an official label, and
+`DataParityTest.appReminders` re-asserts that from the Kotlin side,
+allow-listing exactly these ids and no others.
+
+**Copy counts the rules must be able to reach**
+
+| id | label | 1 → | why |
+|---|---|---|---|
+| `leviathan` | Good Player Executed | 2 | "If **more than 1** good player is executed, evil wins." With one copy the second mark displaced the first and `goodExecutedMarks` could never return 2. |
+| `widow` | Poisoned | 2 | The poison lasts until the Widow dies, so two Widows hold two victims at once. |
+| `snakecharmer` | Poisoned | 2 | Each swap poisons the new Snake Charmer permanently; a second swap must not cure the first victim. |
+| `sweetheart` | Drunk | 2 | "1 player is drunk from now on", per Sweetheart death and permanent. |
+
+**Labels for a state the wiki names and the official token set does not**
+
+| id | label(s) | why |
+|---|---|---|
+| `angel` | No Ability, Can't Vote | The wiki's SOMETHING BAD token stands for "poisoned, or mad, or can't vote today". Poisoned and Mad are generic storyteller tokens; the other two had no label, so the penalty could not be placed, read or swept. Both `Until.DUSK`. |
+| `hellslibrarian` | No Ability, No Vote | The same sentence on the Hell's Librarian's page. |
+| `beggar` | Token | "If a dead player gives you their vote token, you learn their alignment" — the donation has to be visible for the rest of the game. |
+| `boomdandy` | Exploded | "Declare that the Boomdandy has exploded": the explosion runs across a ring of kills, a countdown and a finger vote, so the state must survive between taps. Grimoire centre. |
+| `buddhist` | Silent ×3 | "Declare which players are Buddhists" — the veterans must be visible for the two silent minutes of each day. Three copies because more than one is normally named. **Never** an impairment. |
+| `doomsayer` | Used | The grimoire's copy of `FabledEntry.spentBy`, which stays the authority. |
+| `gunslinger` | No Ability | Once per **day**, so no `spentLabel` (D49); swept at dawn. |
+| `lleech` | Host | The official Soldier ruling has a host who is **not** poisoned. Until now the only marker was the poison itself, so host-ness and impairment could not be told apart. `hostOf` reads `Host` first and keeps `Poisoned` as a fallback for older saves. |
+| `psychopath` | Used Today | Once per **day**; the `STATEMENT` ledger row stays the authority and the token closes the window from the other side. |
+| `sage` | Woke | `NightEffect.MarkSpent` was writing a **labelless** spent effect, invisible in the grimoire. Also the new `spentLabel`. |
+| `summoner` | No Ability | The summon removes the Night 3 token, so nothing was left saying the Summoner is finished. Also the new `spentLabel`. |
+| `vizier` | No Ability | The Courtier/Preacher jinx — "if the Vizier loses their ability, they learn this" — is a state the table can see. It carries no `NO_ABILITY` effect: whatever stripped the Vizier owns that. |
+| `wizard` | Wish Granted | A **declined** wish is not a spend, and the two `?` tokens track the wish's ongoing effects rather than the spend. Also the new `spentLabel`, replacing the "deliberately not set" note above. |
+
+**Reclassified as global**
+
+| id | label | why |
+|---|---|---|
+| `boffin` | Demon Has This Ability | The wiki runs the Boffin by laying a **second character token** next to the Demon's. The grimoire has one token per seat, so the grant is a global reminder naming a character that is not in play — which is what `remindersGlobal` is for. The granted id goes in `PlacedReminder.characterId`. |
+| `minstrel` | Everyone Is Drunk | Moved out of `reminders`: the token is a fact about the whole table, not about the seat it is drawn on (D9/D15 — `grimoireCentre`). This reverses WP5's earlier "stays in `reminders`" note, at WP7-BMR's request. `allReminders` is unchanged, so no rule moved and its `DUSK_AFTER_N_DAYS` lifetime is untouched. |
+
+Every label above is official **Title Case** (lead D5). FOLLOWUPS spells four
+of them in sentence case (`No ability`, `Used today`, `Demon has this
+ability`, `Can't vote`); shipping those verbatim would have collided with the
+existing `No Ability` under the generator's own "no two labels differ only by
+case" invariant, so they are Title Case here.
+
+### 3. Prose fixes
+
+All in `tools/app-overlay.json` → `characters`.
+
+| id | field | change |
+|---|---|---|
+| `ogre` | firstNightReminder | Was "The Ogre chooses a player." Now says **not themself**, names the Friend token, states the alignment flip, that the Ogre is never told, and that it works while drunk or poisoned. |
+| `ogre` | otherNightReminder | New — the same step for an Ogre who has just entered play. |
+| `widow` | otherNightReminder | New — the whole first-night step, for a Widow who has just entered play. |
+| `snitch` | otherNightReminder | New — bluffs for a Minion who has not been given a set yet. |
+| `plaguedoctor` | firstNightReminder | New — the same catch-up sentence as the other-night one. |
+| `alhadikhia` | otherNightReminder | Now says **dead players are legal targets**, that a player who chooses to live has their shroud removed (so a dead one is alive again), and that if all three live, all three die. |
+| `towncrier` | otherNightReminder | "Minion not nominated" / "Minion nominated" → the official labels **Minions Not Nominated** / **Minion Nominated**. |
+| `seamstress` | both | Stray space before the comma in "chose players ,". |
+| `philosopher` | both | "Is the Philosopher" → **Is The Philosopher**, the official label the prose tells the storyteller to place. `spentLabel` stays `Is The Philosopher` — the wiki gives the Philosopher no spent token, and that global reminder is placed exactly when the once-per-game ability is used. |
+
+### 4. `night_guide.json`
+
+`patch-night-guide.py` §9, all `setdefault` so re-running is still a no-op.
+
+* `widow.other`, `ogre.other`, `snitch.other`, `plaguedoctor.first` — required
+  by both validators for the four new order rows.
+* The channels WP7-EXP-O reported missing: `hermit.day` (the Outsider
+  abilities the Hermit holds that act in daylight), `golem.reference` (the
+  Golem's kill is not an execution), `puzzlemaster.setup` (choose and mark the
+  drunk player before night 1 — the one genuinely missing setup step),
+  `politician.day`, `zealot.day`, `heretic.day`.
+
+FOLLOWUPS asks for an "end" channel for the last three. There is no such
+channel: `NightGuideEntry` (ARCHITECTURE §2.14) has `first`, `other`, `setup`,
+`day`, `reference`, and adding a sixth is a Kotlin schema change, not a data
+one. End-of-game work therefore lives in `day`, which is where the storyteller
+is standing when it happens.
+
+Channels move from 287 to **297**, show cards from 136 to **137**.
+
+### Rejected
+
+* **`bigwig` reminders.** FOLLOWUPS lists the Big Wig among the characters
+  with an empty reminder set. It is empty in `roles.json`, it is empty in the
+  audit's own transcription (`mechanics/data-accuracy.md`), and the wiki's How
+  to Run names no token either — the whole ability is "ask the nominee to pick
+  a player; that player is the only one who may speak until the vote". There
+  is nothing to add, so nothing was added; `RulesFabled.bigWig` keeps
+  expressing the madness as a nomination trigger.
+
+### Not a data change
+
+* **`lycanthrope` Faux Paw `characterId`.** WP7-EXP-T asked whether the token
+  could carry its payload. `PlacedReminder.characterId` and
+  `Effect.characterId` both exist, and `RulesExpTownsfolk`'s standing rule
+  already emits `REGISTERS_AS` with `characterId = "evil"` off the token's
+  presence. What is missing is a **placer**: `Faux Paw` is put down by hand at
+  setup, and giving it a payload needs `NightEffect.PlaceToken` to carry
+  `characterId` (a WP2 schema gap, filed by five packages) or a
+  `lycanthrope.fauxpaw` `SetupRequirement`. Neither is a data file, so
+  `characters.json` is unchanged — `Faux Paw` was already an official reminder.
+
+### What a future upstream refresh must check
+
+`regen-data.py --check` now fails if an overlay `reminders` entry has become a
+no-op or a `nightOrder` insertion has been overtaken by the official sheet, so
+`--fetch` will tell you when TPI adds one of these itself. When it does, delete
+the overlay entry and the matching row from `DataParityTest.appReminders`.
