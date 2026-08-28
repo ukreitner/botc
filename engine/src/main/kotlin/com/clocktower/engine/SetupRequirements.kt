@@ -120,6 +120,18 @@ data class SetupRequirement(
  */
 object SetupRequirements {
 
+    /**
+     * Where a Traveller's answered alignment is recorded, per seat.
+     *
+     * `Player.alignment` alone is not an answer: `joinTraveller` writes one for
+     * every Traveller it seats (its dialog pre-selects Good), so the row read as
+     * satisfied the moment the seat existed and the hand-out went on to tell the
+     * player "YOU ARE GOOD — this is the side you play for" on a choice the
+     * storyteller had never made (playtest A-7). The decision is written only by
+     * an actual answer.
+     */
+    fun travellerAlignmentKey(seatId: Long): String = "traveller.alignment:$seatId"
+
     /** Storyteller ack that Lil' Monsta is in play as a centre token, on no seat. */
     const val LILMONSTA_NO_DEMON_SEAT = "lilmonsta.noDemonSeat"
 
@@ -479,13 +491,21 @@ object SetupRequirements {
                     listOf(Candidate("good", "Good"), Candidate("evil", "Evil"))
                 },
                 apply = { s, sel ->
-                    Seats.setAlignment(
-                        s,
-                        traveller.id,
-                        if (sel.text == "evil") Alignment.EVIL else Alignment.GOOD,
+                    val evil = sel.text == "evil"
+                    // The ANSWER is recorded, not only its effect: a seat can
+                    // carry an alignment nobody chose (the traveller-join dialog
+                    // pre-selects Good), and the hand-out must not read that as
+                    // a decision and tell the player "YOU ARE GOOD" (A-7).
+                    Decisions.set(
+                        Seats.setAlignment(s, traveller.id, if (evil) Alignment.EVIL else Alignment.GOOD),
+                        travellerAlignmentKey(traveller.id),
+                        if (evil) "evil" else "good",
                     )
                 },
-                satisfied = { s, _ -> s.player(traveller.id)?.alignment != null },
+                satisfied = { s, _ ->
+                    s.player(traveller.id)?.alignment != null &&
+                        !s.decisions[travellerAlignmentKey(traveller.id)].isNullOrBlank()
+                },
             )
         }
         return rows

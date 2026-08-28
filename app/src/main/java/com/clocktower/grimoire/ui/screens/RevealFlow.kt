@@ -216,8 +216,14 @@ fun HandOutMode(
             openSeat != null -> HandOutCard(
                 viewModel = viewModel,
                 player = openSeat,
-                position = queue.indexOfFirst { it.id == openSeat.id } + 1,
-                total = queue.size,
+                // The SEAT, not the queue position (A-6).
+                seatNumber = state.players.indexOfFirst { it.id == openSeat.id } + 1,
+                seatCount = state.seats.size,
+                // A-7: a Traveller's side is a storyteller CHOICE, and the seat
+                // carries a default one nobody made until the row is answered.
+                alignmentAnswered = !state.decisions[
+                    SetupRequirements.travellerAlignmentKey(openSeat.id),
+                ].isNullOrBlank(),
                 onFinished = {
                     viewModel.markTokenHandedOut(openSeat.id)
                     openSeatId = null
@@ -520,8 +526,9 @@ private val HANDOVER_KINDS = setOf(
 private fun HandOutCard(
     viewModel: GameViewModel,
     player: Player,
-    position: Int,
-    total: Int,
+    seatNumber: Int,
+    seatCount: Int,
+    alignmentAnswered: Boolean,
     onFinished: () -> Unit,
     onLater: () -> Unit,
 ) {
@@ -529,7 +536,9 @@ private fun HandOutCard(
     // Demon — never the seat's truth.
     val believedId = Identity.believedCharacterId(player)
     val character = viewModel.characterById(believedId)
-    val pages = remember(player, character) { handOutPages(player, character) }
+    val pages = remember(player, character, alignmentAnswered) {
+        handOutPages(player, character, alignmentAnswered)
+    }
     // Deliberately NOT saveable: re-opening a seat starts at the character
     // card again rather than resuming mid-sequence.
     var page by remember(player.id) { mutableStateOf(0) }
@@ -600,8 +609,7 @@ private fun HandOutCard(
                     )
                 }
                 Text(
-                    "seat $position of $total" +
-                        if (pages.size > 1) " · card ${page + 1} of ${pages.size}" else "",
+                    handOutCardCaption(seatNumber, seatCount, page, pages.size),
                     fontSize = 14.sp,
                     color = Color.Gray,
                     modifier = Modifier.padding(top = 16.dp),
@@ -659,8 +667,25 @@ private fun HandOutCard(
     }
 }
 
+/**
+ * The line under a hand-out card.
+ *
+ * Playtest A-6: it read the SHUFFLED QUEUE POSITION under the word "seat", so
+ * with the default hand-out order Max (seat 11) was announced as "seat 1 of 12"
+ * and a traveller in seat 13 as "seat 4 of 13". The number a storyteller uses
+ * is the one painted on the table, so that is the one printed here. In "Seat
+ * order" mode the two coincided, which is why the bug survived to a playtest.
+ */
+internal fun handOutCardCaption(
+    seatNumber: Int,
+    seatCount: Int,
+    page: Int,
+    pageCount: Int,
+): String = "seat $seatNumber of $seatCount" +
+    if (pageCount > 1) " · card ${page + 1} of $pageCount" else ""
+
 /** One card in a seat's hand-over sequence. */
-private sealed interface HandOutPage {
+internal sealed interface HandOutPage {
     val handOverCaption: String
 
     data object CharacterPage : HandOutPage {
@@ -681,7 +706,17 @@ private sealed interface HandOutPage {
  * natural side — and NEVER for a character who is not told
  * ([NEVER_TOLD_ALIGNMENT]).
  */
-private fun handOutPages(player: Player, believed: Character?): List<HandOutPage> {
+internal fun handOutPages(
+    player: Player,
+    believed: Character?,
+    /**
+     * Whether the storyteller has ANSWERED this seat's alignment row, as
+     * opposed to the seat merely carrying one. `joinTraveller` writes an
+     * alignment for every Traveller it seats, so without this the hand-out told
+     * every Traveller "YOU ARE GOOD" on a choice nobody had made (A-7).
+     */
+    alignmentAnswered: Boolean,
+): List<HandOutPage> {
     val pages = mutableListOf<HandOutPage>(HandOutPage.CharacterPage)
     val id = believed?.id?.let(Character::normalizeId)
         ?: player.characterId?.let(Character::normalizeId)
@@ -691,6 +726,7 @@ private fun handOutPages(player: Player, believed: Character?): List<HandOutPage
     // default here would TELL the player something untrue; the checklist row
     // (`traveller.alignment:<seat>`) asks for it first.
     val override = player.alignment ?: return pages
+    if (player.isTraveller && !alignmentAnswered) return pages
     when {
         player.isTraveller -> pages += HandOutPage.AlignmentPage(
             evil = override == SeatAlignment.EVIL,
