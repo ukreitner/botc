@@ -365,6 +365,7 @@ data class NightPlan(
 
             next = recordChoice(next, step, targets, input, chosenCharacters, impaired)
             next = recordWakes(next, step, targets)
+            next = recordInformed(next, lookup, step)
             if (impaired && step.wakeCounts == WakeCount.ACT && step.required) {
                 next = recordMalfunction(next, step, holderId)
             }
@@ -639,6 +640,10 @@ data class NightPlan(
             } else {
                 chosen
             }
+            // "The Demon knows … who you choose at night": what another seat's
+            // card owes this holder tonight, declared by that seat's own row.
+            val briefing = NightInfo.choiceBriefings(ctx.state, ctx.lookup, holder)
+                .joinToString(" ") { it.text }
             val name = character?.name ?: role.abilityId
             val sourceName = role.sourceId?.let { ctx.lookup(it)?.name ?: it }
             val badges = buildList {
@@ -668,8 +673,11 @@ data class NightPlan(
                     sourceName?.let { append(" (via the ").append(it).append(")") }
                 },
                 detail = withEvidence(
-                    detailFor(character, firstNightRules),
-                    nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                    withEvidence(
+                        detailFor(character, firstNightRules),
+                        nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                    ),
+                    briefing,
                 ),
                 sourceId = role.sourceId,
                 holderIds = group,
@@ -677,9 +685,14 @@ data class NightPlan(
                 gate = gate,
                 // The planner's own banner (impaired, silenced, dead-but-acts)
                 // always wins: a row must never hide the reason its ability will
-                // not work tonight behind the registry's evidence quote.
-                banner = bannerFor(ctx, role, holder, gate)
-                    .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
+                // not work tonight behind the registry's evidence quote. The
+                // briefing is appended rather than merged away — the real Demon
+                // must see the Lunatic's picks even on a night they are silenced.
+                banner = withEvidence(
+                    bannerFor(ctx, role, holder, gate)
+                        .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
+                    briefing,
+                ),
                 prompt = nightRule?.prompt.orEmpty()
                     .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() },
                 action = action,
@@ -2053,6 +2066,39 @@ data class NightPlan(
                         sourceId = step.abilityId,
                         actorId = holder,
                         genuine = ownAbility,
+                    )
+                }
+            }
+            return next
+        }
+
+        /**
+         * TOLD rows for what this step's sleepers were shown about somebody
+         * ELSE's choice — the Lunatic's fake attack, handed to the real Demon
+         * (`CharacterRule.informsChoiceTo`).
+         *
+         * Written when the row is ticked, so the ledger records what the Demon
+         * was actually told rather than what the sheet offered to tell them. A
+         * dead informer, or one whose own row has not come round yet, produces a
+         * line on the sheet but no entry: there is nothing to have been told.
+         */
+        private fun recordInformed(
+            state: GameState,
+            lookup: (String) -> Character?,
+            step: NightStep,
+        ): GameState {
+            var next = state
+            for (seatId in step.wakes) {
+                val seat = next.player(seatId) ?: continue
+                for (line in NightInfo.choiceBriefings(next, lookup, seat)) {
+                    if (!line.reported) continue
+                    next = ledger(
+                        next,
+                        LedgerKind.TOLD,
+                        sourceId = line.sourceId,
+                        actorId = seatId,
+                        targetIds = line.targetIds,
+                        text = line.text,
                     )
                 }
             }

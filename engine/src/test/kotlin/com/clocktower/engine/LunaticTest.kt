@@ -44,11 +44,18 @@ class LunaticTest {
 
     private val script by lazy { ScriptParser.parse(scriptJson) }
 
+    private val bmr by lazy { data.builtInScripts().first { it.id == "bmr" } }
+
     // ---- fixture helpers ---------------------------------------------------
 
     /** A seated game on the custom script, one character per seat, named P1..Pn. */
-    private fun game(vararg roles: String): GameState {
-        var state = GameActions.newGame(script, roles.indices.map { "P${it + 1}" })
+    private fun game(vararg roles: String): GameState = gameOn(script, *roles)
+
+    /** The same, on the published Bad Moon Rising script. */
+    private fun bmrGame(vararg roles: String): GameState = gameOn(bmr, *roles)
+
+    private fun gameOn(on: Script, vararg roles: String): GameState {
+        var state = GameActions.newGame(on, roles.indices.map { "P${it + 1}" })
         roles.forEachIndexed { i, id -> state = GameActions.assignCharacter(state, i.toLong(), id) }
         return Phases.advancePhase(state, lookup)
     }
@@ -242,5 +249,169 @@ class LunaticTest {
             val expected = if (id == "lunatic") Tokens.key("lunatic", "Chosen") else null
             assertEquals(expected, rule.illusionToken?.key, "$id's illusion token")
         }
+    }
+
+    // ==================================================================
+    // "The Demon knows … who you choose at night"
+    // ==================================================================
+
+    private fun name(state: GameState, playerId: Long): String =
+        assertNotNull(state.player(playerId)).name
+
+    /** The sentence the Demon's row owes tonight. */
+    private fun expected(state: GameState, lunatic: Long, chosen: Long?): String {
+        val who = if (chosen == null) "nobody tonight" else name(state, chosen)
+        return "The Lunatic (${name(state, lunatic)}) chose $who."
+    }
+
+    private fun toldAbout(state: GameState, demon: Long): List<LedgerEntry> = state.ledger.filter {
+        it.kind == LedgerKind.TOLD && it.sourceId == "lunatic" && it.actorId == demon
+    }
+
+    @Test
+    fun `the Po is shown what the Lunatic chose tonight, and it goes in the ledger`() {
+        var state = bmrGame("lunatic", "po", "godfather", "sailor", "fool", "gossip", "chambermaid")
+        val lunatic = seat(state, "lunatic")
+        val po = seat(state, "po")
+        state = GameActions.setShownCharacter(state, lunatic, "po")
+        state = secondNight(state)
+
+        // Before the Lunatic acts the Demon's row promises nothing.
+        val before = illusionRow(state, "po", po)
+        assertFalse(expected(state, lunatic, null) in before.banner, before.banner)
+        assertTrue(toldAbout(state, po).isEmpty())
+
+        val victim = seat(state, "sailor")
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            illusionRow(state, "lunatic", lunatic).key,
+            NightInput(playerIds = listOf(victim)),
+        )
+
+        // The real Po's own row now names the seat the Lunatic pointed at.
+        val row = illusionRow(state, "po", po)
+        val sentence = expected(state, lunatic, victim)
+        assertTrue(sentence in row.banner, "the Po's banner: ${row.banner}")
+        assertTrue(sentence in row.detail, "the Po's detail: ${row.detail}")
+
+        // …and ticking it records what the Demon was actually told.
+        state = NightPlan.resolve(state, lookup, row.key, NightInput(playerIds = listOf(victim)))
+        val told = toldAbout(state, po)
+        assertEquals(1, told.size, "one TOLD row: $told")
+        assertEquals(listOf(victim), told.single().targetIds)
+        assertEquals(sentence, told.single().text)
+    }
+
+    @Test
+    fun `an Imp on a custom script is told the Lunatic's choice too`() {
+        var state = game("lunatic", "imp", "poisoner", "monk", "chef", "soldier")
+        val lunatic = seat(state, "lunatic")
+        val imp = seat(state, "imp")
+        state = GameActions.setShownCharacter(state, lunatic, "imp")
+        state = secondNight(state)
+
+        val victim = seat(state, "chef")
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            illusionRow(state, "lunatic", lunatic).key,
+            NightInput(playerIds = listOf(victim)),
+        )
+
+        val row = illusionRow(state, "imp", imp)
+        assertTrue(expected(state, lunatic, victim) in row.banner, "the Imp's banner: ${row.banner}")
+
+        state = NightPlan.resolve(state, lookup, row.key, NightInput(playerIds = listOf(victim)))
+        assertEquals(1, toldAbout(state, imp).size)
+    }
+
+    @Test
+    fun `a Lunatic who chose nobody is reported as having chosen nobody`() {
+        var state = bmrGame("lunatic", "po", "godfather", "sailor", "fool", "gossip", "chambermaid")
+        val lunatic = seat(state, "lunatic")
+        val po = seat(state, "po")
+        state = GameActions.setShownCharacter(state, lunatic, "po")
+        state = secondNight(state)
+
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            illusionRow(state, "lunatic", lunatic).key,
+            NightInput(none = true),
+        )
+
+        val row = illusionRow(state, "po", po)
+        assertTrue(expected(state, lunatic, null) in row.banner, "the Po's banner: ${row.banner}")
+    }
+
+    @Test
+    fun `on night one the Demon info row carries the choice the Lunatic already made`() {
+        // The Lunatic's first-night slot (16) comes BEFORE DEMON_INFO (17), and a
+        // believed Pukka is one of the Demons that does wake on night 1.
+        var state = bmrGame(
+            "lunatic", "po", "godfather", "assassin",
+            "sailor", "fool", "gossip", "chambermaid",
+        )
+        val lunatic = seat(state, "lunatic")
+        val po = seat(state, "po")
+        state = GameActions.setShownCharacter(state, lunatic, "pukka")
+
+        val order = NightPlan.build(state, lookup).steps.map { it.slotId }
+        assertTrue(
+            order.indexOf("lunatic") < order.indexOf(NightMarkers.DEMON_INFO),
+            "the Lunatic acts before the Demon is woken: $order",
+        )
+
+        val victim = seat(state, "sailor")
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            illusionRow(state, "lunatic", lunatic).key,
+            NightInput(playerIds = listOf(victim)),
+        )
+        assertTrue(assertNotNull(state.player(victim)).alive, "a believed Pukka poisons nobody")
+
+        val info = assertNotNull(
+            NightPlan.build(state, lookup).steps.firstOrNull { it.slotId == NightMarkers.DEMON_INFO },
+        )
+        val sentence = expected(state, lunatic, victim)
+        assertTrue(sentence in info.detail, "the Demon info row: ${info.detail}")
+
+        state = NightPlan.resolve(state, lookup, info.key, NightInput())
+        assertEquals(1, toldAbout(state, po).size, "the real Demon's ledger records it")
+    }
+
+    @Test
+    fun `nobody but the informed team is briefed`() {
+        var state = bmrGame("lunatic", "po", "godfather", "sailor", "fool", "gossip", "chambermaid")
+        val lunatic = seat(state, "lunatic")
+        state = GameActions.setShownCharacter(state, lunatic, "po")
+        state = secondNight(state)
+
+        val victim = seat(state, "sailor")
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            illusionRow(state, "lunatic", lunatic).key,
+            NightInput(playerIds = listOf(victim)),
+        )
+
+        val sentence = expected(state, lunatic, victim)
+        for (step in NightPlan.build(state, lookup).steps) {
+            val team = step.holderId
+                ?.let { state.player(it) }
+                ?.characterId
+                ?.let(lookup)
+                ?.team
+            if (team == Team.DEMON) continue
+            assertFalse(
+                sentence in step.banner || sentence in step.detail,
+                "${step.slotId} is not on the Demon's team and must not be told: $step",
+            )
+        }
+        // The Lunatic's own row least of all.
+        val own = illusionRow(state, "lunatic", lunatic)
+        assertFalse(sentence in own.banner || sentence in own.detail, own.banner + own.detail)
     }
 }

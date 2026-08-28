@@ -103,6 +103,17 @@ data class CharacterRule(
      */
     val illusionToken: TokenRule? = null,
 
+    /**
+     * "The Demon knows … who you choose at night" — this character's nightly
+     * choice is shown to every seat on that team.
+     *
+     * The Lunatic is the only official card that says it. The planner renders it
+     * on the informed seats' own rows (and on `DEMON_INFO`) from the CHOICE
+     * ledger, and writes them a TOLD row when the step is ticked; which team is
+     * told is per-character knowledge and lives here (§3.4.3).
+     */
+    val informsChoiceTo: Team? = null,
+
     // ---- day ----
     val day: DayRule? = null,
 
@@ -595,6 +606,14 @@ internal object NightInfo {
                         "(${lunatics.joinToString { it.name }}) — the Demon can mirror their fake kills.",
                 )
             }
+            // …and, when the informer's slot comes BEFORE this one on the
+            // nightsheet, what they chose tonight. The Lunatic's first-night
+            // slot is 16 and DEMON_INFO is 17, so a believed Pukka has already
+            // acted by the time the real Demon opens their eyes.
+            for (line in choiceBriefings(ctx.state, ctx.lookup, demons.firstOrNull())) {
+                if (!line.reported) continue
+                append(" ").append(line.text)
+            }
         }
         return listOf(
             marker(
@@ -645,6 +664,97 @@ internal object NightInfo {
                 wakeCounts = WakeCount.INFORMED,
             ),
         )
+    }
+
+    // ---- somebody else's choice, shown to a whole team ----------------
+
+    /**
+     * One "you are told who they chose" line, owed to a seat because ANOTHER
+     * character's card says so.
+     *
+     * The Lunatic is the only official one — *"The Demon knows who you are & who
+     * you choose at night"* — and the Lunatic's registry row is what declares it
+     * (`CharacterRule.informsChoiceTo`). The planner renders these and writes the
+     * TOLD rows; it never names a character.
+     */
+    internal data class ChoiceBriefing(
+        /** The informer's own character id: "lunatic". */
+        val sourceId: String,
+        /** The seat whose choice is being reported. */
+        val informerId: Long,
+        /** Who they picked tonight. Empty for "chose nobody" and for a dead informer. */
+        val targetIds: List<Long> = emptyList(),
+        /** One line, storyteller voice. */
+        val text: String = "",
+        /**
+         * True when a CHOICE was actually recorded tonight, so there is something
+         * to write a TOLD row about. A dead informer, or one who has not reached
+         * their row yet, produces a line but no ledger entry.
+         */
+        val reported: Boolean = false,
+    )
+
+    /**
+     * Every briefing [seat] is owed tonight, in seat order.
+     *
+     * Keyed off the INFORMER'S OWN character (a Lunatic is a good Outsider) and
+     * the informed seat's team, so a Lunatic never briefs themselves and a Drunk
+     * or Marionette holding a Demon token briefs nobody.
+     */
+    internal fun choiceBriefings(
+        state: GameState,
+        lookup: (String) -> Character?,
+        seat: Player?,
+    ): List<ChoiceBriefing> {
+        seat ?: return emptyList()
+        val team = seat.characterId?.let(lookup)?.team ?: return emptyList()
+        return state.seats.mapNotNull { other ->
+            if (other.id == seat.id) return@mapNotNull null
+            val id = other.characterId?.let(Character::normalizeId) ?: return@mapNotNull null
+            val rule = CharacterRules.all[id] ?: return@mapNotNull null
+            if (rule.informsChoiceTo == null || rule.informsChoiceTo != team) return@mapNotNull null
+            briefing(state, lookup, rule.id, other)
+        }
+    }
+
+    private fun briefing(
+        state: GameState,
+        lookup: (String) -> Character?,
+        sourceId: String,
+        informer: Player,
+    ): ChoiceBriefing {
+        val name = lookup(sourceId)?.name ?: sourceId
+        if (!informer.alive) {
+            return ChoiceBriefing(
+                sourceId = sourceId,
+                informerId = informer.id,
+                text = "The $name (${informer.name}) is dead — no fake attack tonight.",
+            )
+        }
+        val choice = Memory.choiceTonight(state, informer.id)
+            ?: return ChoiceBriefing(
+                sourceId = sourceId,
+                informerId = informer.id,
+                text = "The $name (${informer.name}) has not chosen anybody yet tonight.",
+            )
+        val chosen = choice.targetIds.mapNotNull { state.player(it)?.name }
+        return ChoiceBriefing(
+            sourceId = sourceId,
+            informerId = informer.id,
+            targetIds = choice.targetIds,
+            text = if (chosen.isEmpty()) {
+                "The $name (${informer.name}) chose nobody tonight."
+            } else {
+                "The $name (${informer.name}) chose ${joinNames(chosen)}."
+            },
+            reported = true,
+        )
+    }
+
+    private fun joinNames(names: List<String>): String = when (names.size) {
+        0 -> ""
+        1 -> names.first()
+        else -> names.dropLast(1).joinToString() + " and " + names.last()
     }
 
     // ---- helpers -----------------------------------------------------

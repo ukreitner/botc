@@ -1,7 +1,6 @@
 package com.clocktower.engine.rules
 
 import com.clocktower.engine.BriefingSlot
-import com.clocktower.engine.Character
 import com.clocktower.engine.ChosenContext
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
@@ -747,6 +746,8 @@ private fun lunatic(): CharacterRule {
         otherNight = rule,
         // Three official Chosen tokens, swept at dawn (Tokens.BASE).
         illusionToken = TokenRule("lunatic", "Chosen", null, Until.DAWN, copies = 3),
+        // "The Demon knows who you are & who you choose at night."
+        informsChoiceTo = Team.DEMON,
     )
 }
 
@@ -1338,25 +1339,23 @@ private fun demonAttack(
     min: Int,
     max: Int,
     allowNone: Boolean,
-): NightAction {
-    return ChoosePlayers(
-        sourceId = sourceId,
-        prompt = "WHO DID THEY CHOOSE?",
-        min = min,
-        max = max,
-        constraints = listOf(
-            TargetConstraint.ALIVE,
-            TargetConstraint.SELF_ALLOWED,
-        ),
-        sort = TargetSort.ALIVE_FIRST,
-        allowNone = allowNone,
-        noneLabel = "No kill (impaired, protected, or storyteller's choice)",
-        perTarget = listOf(
-            NightEffect.Attack(on = Ref.Target, cause = DeathCause.DEMON_KILL),
-            NightEffect.PlaceToken(sourceId, deadLabel, Ref.Target),
-        ),
-    )
-}
+): NightAction = ChoosePlayers(
+    sourceId = sourceId,
+    prompt = "WHO DID THEY CHOOSE?",
+    min = min,
+    max = max,
+    constraints = listOf(
+        TargetConstraint.ALIVE,
+        TargetConstraint.SELF_ALLOWED,
+    ),
+    sort = TargetSort.ALIVE_FIRST,
+    allowNone = allowNone,
+    noneLabel = "No kill (impaired, protected, or storyteller's choice)",
+    perTarget = listOf(
+        NightEffect.Attack(on = Ref.Target, cause = DeathCause.DEMON_KILL),
+        NightEffect.PlaceToken(sourceId, deadLabel, Ref.Target),
+    ),
+)
 
 /**
  * Seats carrying THIS Pukka's standing `Poisoned` token, read from the grimoire as
