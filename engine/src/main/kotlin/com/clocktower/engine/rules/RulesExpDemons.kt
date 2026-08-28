@@ -1,5 +1,6 @@
 package com.clocktower.engine.rules
 
+import com.clocktower.engine.ActionOption
 import com.clocktower.engine.BriefingItem
 import com.clocktower.engine.BriefingKind
 import com.clocktower.engine.BriefingSeverity
@@ -30,12 +31,14 @@ import com.clocktower.engine.NightContext
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
+import com.clocktower.engine.Options
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.Registration
+import com.clocktower.engine.SeatPredicate
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.Setup
 import com.clocktower.engine.ShowCardSpec
@@ -91,12 +94,20 @@ internal val EXP_DEMON_RULES: List<CharacterRule> = listOf(
  * chooses to live or die, but if all live, all die."
  *
  * The dilemma IS the sequencing, so the row is a [Sequence]: pick the three in
- * order (they take the 1 / 2 / 3 tokens), then answer the one question the
- * engine can settle on its own — "did all three choose to live?" — because that
- * is the branch that kills all three at once. The individual "I choose to die"
- * deaths are one attempt each and are handed to the kill sheet as a prompt, so
- * every Monk / Soldier / Innkeeper / Lleech outcome is surfaced per victim
- * rather than auto-cancelled.
+ * order (they take the 1 / 2 / 3 tokens), then answer live-or-die for each in
+ * turn. W7b made the three answers INDEPENDENT — `NightInput.optionIds` carries
+ * one per [Options] stage — so the row no longer has to collapse them into a
+ * single "did all three choose to live?" yes/no and hand the rest to a prompt.
+ *
+ * Each answer resolves as it is given, in order, which is how the table plays
+ * it: a first victim's death is on the board before the second is asked. Every
+ * death goes through `Deaths.attempt`, so each Monk / Soldier / Innkeeper /
+ * Lleech outcome is surfaced per victim rather than auto-cancelled.
+ *
+ * Dead players are legal picks and "live" REVIVES one — guarded by
+ * `When(IS_DEAD)` so choosing to live is a no-op for someone already alive.
+ * "If all live, all die" is the third stage's own third answer: by then the
+ * storyteller knows the other two, and it kills all three at once.
  */
 private fun alHadikhia() = CharacterRule(
     id = "alhadikhia",
@@ -107,7 +118,8 @@ private fun alHadikhia() = CharacterRule(
         gate = Gates.all(Gates.aliveHolder, Gates.notExorcised),
         prompt = "Say SILENCE BEGINS. The Al-Hadikhia may choose 3 players. Wake each in " +
             "order, ask 'do you choose to live?', announce the answer, then wake the next. " +
-            "Say THE SILENCE HAS ENDED. A dead player who chooses to live comes back.",
+            "Say THE SILENCE HAS ENDED. A dead player who chooses to live comes back. If the " +
+            "third also chose to live and so did the other two, tap ALL THREE DIE.",
         action = { alHadikhiaRitual() },
         cards = {
             listOf(
@@ -141,9 +153,65 @@ private fun alHadikhia() = CharacterRule(
     ),
 )
 
+/** Option ids of one Al-Hadikhia live/die answer. */
+private const val AH_LIVE = "live"
+private const val AH_DIE = "die"
+private const val AH_ALL_LIVE = "alllive"
+
+/**
+ * One chosen player's answer. [index] is their place in the pick order, so the
+ * effects address `Ref.TargetN(index)` and nothing depends on `scope.current`.
+ *
+ * The LAST stage carries the extra "…and so did the other two" branch: that is
+ * the first moment the storyteller knows the whole answer.
+ */
+private fun alHadikhiaAnswer(index: Int, ordinal: String, last: Boolean = false): NightAction =
+    Options(
+        sourceId = "alhadikhia",
+        prompt = "DID THE $ordinal CHOSEN PLAYER CHOOSE TO LIVE?",
+        options = buildList {
+            add(
+                ActionOption(
+                    id = AH_DIE,
+                    label = "They chose to DIE",
+                    detail = "One kill attempt: protections and the Innkeeper still apply.",
+                    effects = listOf(
+                        NightEffect.Attack(Ref.TargetN(index), DeathCause.DEMON_KILL),
+                    ),
+                ),
+            )
+            add(
+                ActionOption(
+                    id = AH_LIVE,
+                    label = "They chose to LIVE",
+                    detail = "A DEAD player who chooses to live comes back.",
+                    effects = listOf(
+                        NightEffect.When(
+                            predicate = SeatPredicate.IS_DEAD,
+                            on = Ref.TargetN(index),
+                            then = listOf(NightEffect.Resurrect(Ref.TargetN(index))),
+                        ),
+                    ),
+                ),
+            )
+            if (last) {
+                add(
+                    ActionOption(
+                        id = AH_ALL_LIVE,
+                        label = "They chose to LIVE — and so did the other two: ALL THREE DIE",
+                        detail = "\"…but if all live, all die.\" One attempt each.",
+                        effects = listOf(
+                            NightEffect.Attack(Ref.AllTargets, DeathCause.DEMON_KILL),
+                        ),
+                    ),
+                )
+            }
+        },
+    )
+
 private fun alHadikhiaRitual(): NightAction = Sequence(
     sourceId = "alhadikhia",
-    prompt = "THREE PLAYERS IN ORDER — THEN THE ALL-LIVE QUESTION",
+    prompt = "THREE PLAYERS IN ORDER — THEN ONE LIVE/DIE ANSWER EACH",
     stages = listOf(
         ChoosePlayers(
             sourceId = "alhadikhia",
@@ -171,23 +239,9 @@ private fun alHadikhiaRitual(): NightAction = Sequence(
                 ),
             ),
         ),
-        YesNo(
-            sourceId = "alhadikhia",
-            prompt = "DID ALL THREE CHOOSE TO LIVE?",
-            yesLabel = "All three live — so ALL THREE DIE",
-            noLabel = "At least one chose to die",
-            onYes = listOf(NightEffect.Attack(Ref.AllTargets, DeathCause.DEMON_KILL)),
-            onNo = listOf(
-                NightEffect.QueuePrompt(
-                    at = BriefingSlot.NOW,
-                    kind = PromptKind.RESOLVE_KILL,
-                    sourceId = "alhadikhia",
-                    title = "Resolve the Al-Hadikhia one target at a time: each who chose to " +
-                        "die dies (protections apply); a DEAD target who chose to live is " +
-                        "brought back.",
-                ),
-            ),
-        ),
+        alHadikhiaAnswer(0, "1ST"),
+        alHadikhiaAnswer(1, "2ND"),
+        alHadikhiaAnswer(2, "3RD", last = true),
     ),
 )
 
