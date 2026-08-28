@@ -23,19 +23,21 @@ STEPS = [
     ("sleep",      0.8),
     ("tap",        "^BAG$"),
     ("sleep",      1.2),
-    # Down to the Outsiders and put the Drunk in the bag by hand, so the
-    # scenario always reproduces the P0 rather than hoping Randomize draws it.
-    ("swipe",      ["up", "700"]),
-    ("swipe",      ["up", "700"]),
-    ("swipe",      ["up", "700"]),
+    # Put the Drunk in the bag by hand, so the scenario always reproduces the
+    # P0 rather than hoping Randomize draws it. Found through card 3's search
+    # field, which A-11 put back.
+    ("tap",        "Search characters"),
+    ("sleep",      0.6),
+    ("type",       "drunk"),
+    ("sleep",      1.0),
+    ("back",       None),                 # dismiss the keyboard
     ("sleep",      0.8),
-    ("tap",        "^Drunk$"),
+    # The ABILITY text, not the name: "^Drunk$" also matches what was just
+    # typed into the search field.
+    ("tap",        "You do not know you are the Drunk"),
     ("sleep",      0.8),
-    ("swipe",      ["down", "700"]),
-    ("swipe",      ["down", "700"]),
-    ("swipe",      ["down", "700"]),
-    ("swipe",      ["down", "700"]),
-    ("sleep",      0.8),
+    ("tap",        "Clear the search"),
+    ("sleep",      1.0),
     ("tap",        "Fill the rest"),      # keeps the Drunk, fills the other 7
     ("sleep",      1.5),
     ("tap",        "Deal & hand out"),

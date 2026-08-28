@@ -24,6 +24,10 @@ STEPS = [
     ("tap",        "FABLED"),             # expand card 4
     ("sleep",      1.0),
     ("swipe",      ["up", "700"]),        # scroll the nested Fabled list
+    # Two swipes since the fix wave: card 4 is titled "FABLED" rather than
+    # "FABLED & HOUSE RULES" (A-14), so its header is a line shorter and the
+    # nested list starts higher up.
+    ("swipe",      ["up", "700"]),
     ("sleep",      0.8),
     ("tap",        "^Sentinel$"),
     ("sleep",      1.0),
