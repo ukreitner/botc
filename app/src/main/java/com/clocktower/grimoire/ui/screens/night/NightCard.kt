@@ -102,7 +102,16 @@ fun NightCard(
     val key = step.key
     // Keyed on the CYCLE as well as the step: last night's two lit chips must
     // never be presented as tonight's answer (defect #3).
-    var pick by remember(state.cycle, key.token) { mutableStateOf(PickState()) }
+    //
+    // A step whose answer the grimoire ALREADY holds opens with it lit and its
+    // primary armed — `ShowInfo.preselect`, which today is the Grandmother's
+    // marked Grandchild. The card even says "show the MARKED Grandchild's
+    // character token" and still made the storyteller find the seat again
+    // (playtest D, P2-19). It is a pre-filled answer, not a locked one: the
+    // chips toggle exactly as they always did.
+    var pick by remember(state.cycle, key.token) {
+        mutableStateOf(PickState(playerIds = preselected(step.action)))
+    }
     var gateAnswer by rememberSaveable(state.cycle, key.token) { mutableStateOf<Boolean?>(null) }
     var drawerOpen by rememberSaveable(state.cycle, key.token) { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ShowCard?>(null) }

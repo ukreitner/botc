@@ -98,6 +98,21 @@ data class ShowInfo(
     override val prompt: String,
     val targetsNeeded: Int = 0,
     val constraints: List<TargetConstraint> = emptyList(),
+    /**
+     * Seats the picker opens already lit, because the grimoire ALREADY holds
+     * the answer — the Grandmother's marked Grandchild.
+     *
+     * A step whose own card says "show the MARKED Grandchild's character token"
+     * opened with nothing selected and a disabled primary, so the storyteller
+     * had to find and tap the seat they had marked at setup a second time
+     * (playtest D, P2-19). This is a pre-filled answer and nothing more: the
+     * storyteller can clear it or pick somebody else, and what is recorded is
+     * whatever [NightInput] finally carries.
+     *
+     * Only for an answer the engine can read off the board. A step whose answer
+     * is a genuine choice must never arrive pre-made.
+     */
+    val preselect: List<Long> = emptyList(),
 ) : NightAction
 
 /** Al-Hadikhia: 3 picks, then live/die per pick. */

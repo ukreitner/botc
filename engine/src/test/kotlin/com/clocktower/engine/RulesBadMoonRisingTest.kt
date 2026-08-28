@@ -312,6 +312,33 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Grandmother's first night opens on the marked Grandchild`() {
+        // Playtest D P2-19: the card says "show the MARKED Grandchild's
+        // character token" and the picker opened with nothing selected and a
+        // disabled primary.
+        var state = game("pukka", "grandmother", "gossip", "chambermaid", "gambler", "courtier")
+        val granny = seat(state, "grandmother")
+        val child = seat(state, "gossip")
+
+        val unmarked = assertIs<ShowInfo>(require(state, "grandmother").action)
+        assertEquals(emptyList(), unmarked.preselect, "nothing marked, nothing pre-selected")
+
+        state = Effects.placeExclusiveReminder(state, child, PlacedReminder("grandmother", "Grandchild"))
+        val marked = assertIs<ShowInfo>(require(state, "grandmother").action)
+        assertEquals(listOf(child), marked.preselect)
+        assertEquals(1, marked.targetsNeeded)
+
+        // Never the Grandmother herself, even if the token ends up on her seat.
+        val onHerself = Effects.placeExclusiveReminder(
+            state, granny, PlacedReminder("grandmother", "Grandchild"),
+        )
+        assertEquals(
+            emptyList(),
+            assertIs<ShowInfo>(require(onHerself, "grandmother").action).preselect,
+        )
+    }
+
+    @Test
     fun `the Grandmother's row names her own death before the button lands it`() {
         // The same shape: `pending` kills the holder, so the card must be able
         // to promise it.

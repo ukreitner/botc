@@ -43,6 +43,7 @@ import com.clocktower.grimoire.ui.screens.night.openRowToken
 import com.clocktower.grimoire.ui.screens.night.openingToken
 import com.clocktower.grimoire.ui.screens.night.placedLabels
 import com.clocktower.grimoire.ui.screens.night.pointPrefix
+import com.clocktower.grimoire.ui.screens.night.preselected
 import com.clocktower.grimoire.ui.screens.night.primaryEnabled
 import com.clocktower.grimoire.ui.screens.night.primaryLabel
 import com.clocktower.grimoire.ui.screens.night.progress
@@ -201,6 +202,24 @@ class NightRowsTest {
         )
         // No standing death: nothing is appended.
         assertEquals("DEV — POISONED", primaryLabel(picked = listOf("Dev"), places = listOf("Poisoned")))
+    }
+
+    @Test
+    fun `a step whose answer is already on the board opens with it picked and armed`() {
+        val marked = ShowInfo("grandmother", "WHICH PLAYER IS THE GRANDCHILD?", 1, preselect = listOf(4L))
+        assertEquals(listOf(4L), preselected(marked))
+        assertTrue(primaryEnabled(marked, PickState(playerIds = preselected(marked))))
+
+        // Nothing marked: the picker opens empty and the primary stays disabled.
+        val bare = ShowInfo("grandmother", "WHICH PLAYER IS THE GRANDCHILD?", 1)
+        assertEquals(emptyList<Long>(), preselected(bare))
+        assertFalse(primaryEnabled(bare, PickState(playerIds = preselected(bare))))
+
+        // Never more picks than the step accepts, and never on another shape.
+        val over = ShowInfo("s", "", targetsNeeded = 1, preselect = listOf(4L, 5L))
+        assertEquals(listOf(4L), preselected(over))
+        assertEquals(emptyList<Long>(), preselected(choose()))
+        assertEquals(emptyList<Long>(), preselected(null))
     }
 
     @Test

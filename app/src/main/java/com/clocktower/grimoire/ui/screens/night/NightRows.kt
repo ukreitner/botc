@@ -558,6 +558,18 @@ fun picksNeeded(action: NightAction?): Int = when (action) {
     else -> 0
 }
 
+/**
+ * Seats an action arrives with already picked, because the engine read the
+ * answer off the grimoire — `ShowInfo.preselect`.
+ *
+ * Capped at what the action will actually accept, so a stale mark can never
+ * arm a primary with more picks than the step allows.
+ */
+fun preselected(action: NightAction?): List<Long> = when (action) {
+    is ShowInfo -> action.preselect.take(maxOf(action.targetsNeeded, 0))
+    else -> emptyList()
+}
+
 /** The most seats an action accepts. 0 = no player picking at all. */
 fun picksAllowed(action: NightAction?): Int = when (action) {
     is ChoosePlayers -> action.max
