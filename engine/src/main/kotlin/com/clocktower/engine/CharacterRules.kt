@@ -536,6 +536,11 @@ internal object NightInfo {
                     StepGate.Fire
                 },
                 holderIds = minions.map { it.id },
+                // The two classic info tokens, pre-filled. The row used to
+                // offer no card at all, so the storyteller had to find "THIS IS
+                // THE DEMON" three taps away in the generic card catalogue and
+                // then point by hand (playtest B P1 #7).
+                cards = pointCards(ctx, "THIS IS THE DEMON", shown),
                 wakeCounts = WakeCount.INFORMED,
             ),
         )
@@ -623,16 +628,25 @@ internal object NightInfo {
                 detail = detail,
                 gate = StepGate.Fire,
                 holderIds = demons.map { it.id },
-                cards = if (bluffs.isEmpty()) {
-                    emptyList()
-                } else {
-                    listOf(
-                        CardOffer(
-                            label = "SHOW: BLUFFS",
-                            card = ShowCardSpec.BluffsCard(ctx.state.demonBluffIds),
-                            truthful = true,
-                        ),
-                    )
+                cards = buildList {
+                    if (!bluffsOnly) {
+                        addAll(
+                            pointCards(
+                                ctx,
+                                if (legion.isNotEmpty()) "THESE PLAYERS ARE LEGION" else "THESE ARE YOUR MINIONS",
+                                if (legion.isNotEmpty()) legion else pointOut,
+                            ),
+                        )
+                    }
+                    if (bluffs.isNotEmpty()) {
+                        add(
+                            CardOffer(
+                                label = "SHOW: BLUFFS",
+                                card = ShowCardSpec.BluffsCard(ctx.state.demonBluffIds),
+                                truthful = true,
+                            ),
+                        )
+                    }
                 },
                 wakeCounts = WakeCount.INFORMED,
             ),
@@ -775,6 +789,31 @@ internal object NightInfo {
     private fun seatsOf(ctx: MarkerContext, id: String): List<Player> =
         ctx.state.seats.filter { Character.normalizeId(it.characterId.orEmpty()) == id }
 
+    /**
+     * The two ways to say "one of these players is X" across a table: the bare
+     * info token the storyteller points with, and the same words over the
+     * players' names and seat numbers.
+     */
+    private fun pointCards(ctx: MarkerContext, prefix: String, who: List<Player>): List<CardOffer> {
+        if (who.isEmpty()) return emptyList()
+        return listOf(
+            CardOffer(
+                label = "SHOW: “$prefix”",
+                card = ShowCardSpec.Message(prefix),
+                truthful = true,
+            ),
+            CardOffer(
+                label = "SHOW: $prefix — ${who.joinToString { it.name }}",
+                card = ShowCardSpec.PointCard(
+                    prefix = prefix,
+                    playerNames = who.map { it.name },
+                    seatNumbers = who.map { seatIndex(ctx, it) + 1 },
+                ),
+                truthful = true,
+            ),
+        )
+    }
+
     private fun seatIndex(ctx: MarkerContext, p: Player): Int =
         ctx.state.seats.indexOfFirst { it.id == p.id }
 
@@ -811,11 +850,16 @@ internal object NightInfo {
         slotId = slotId,
         order = ctx.order,
         title = title,
-        detail = detail,
+        // The row's OWN words are the prompt — they name this game's seats
+        // ("Wake all Minions (Ben) … point out the Demon (Fay)"). The generic
+        // run-book, twelve paragraphs of characters that cannot be in the
+        // running script, stays in `NightGuide` and reaches the storyteller
+        // through the card's drawer only, once (playtest B P2 #11).
+        detail = "",
         holderIds = holderIds,
         style = ctx.style,
         gate = gate,
-        prompt = NightGuide.forStep(slotId, ctx.style)?.instructions.orEmpty(),
+        prompt = detail,
         cards = cards,
         badges = if (wakeCounts == WakeCount.INFORMED) {
             listOf("does not count for the Chambermaid")

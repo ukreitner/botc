@@ -1102,7 +1102,9 @@ data class NightPlan(
             }
             val missing = owed.filter { ctx.state.bluffSets[it.key].orEmpty().size < it.size }
             return step.copy(
-                detail = step.detail + owed.joinToString(" ", prefix = " ") {
+                // On the card, next to the row's own words — not in a `detail`
+                // that a marker row does not print any more.
+                prompt = step.prompt + owed.joinToString(" ", prefix = " ") {
                     "Also hand out: ${it.label} — ${it.reason}"
                 },
                 cards = step.cards + cards,

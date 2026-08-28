@@ -540,10 +540,10 @@ class GameActionsTest {
         val first = NightPlan.build(state, data::character).steps
         val minionInfo = assertNotNull(first.find { it.slotId == NightMarkers.MINION_INFO })
         assertEquals(listOf(1L), minionInfo.wakes)
-        assertFalse("P3" in minionInfo.detail)
+        assertFalse("P3" in minionInfo.prompt)
 
         val demonInfo = assertNotNull(first.find { it.slotId == NightMarkers.DEMON_INFO })
-        assertTrue("Marionette (P3)" in demonInfo.detail)
+        assertTrue("Marionette (P3)" in demonInfo.prompt)
 
         val chefStep = assertNotNull(first.find { it.slotId == "chef" })
         assertEquals(listOf(2L), chefStep.wakes)
@@ -564,7 +564,7 @@ class GameActionsTest {
         assertFalse(first.any { it.slotId == NightMarkers.DEMON_INFO })
         val marionetteInfo = assertNotNull(first.find { it.slotId == "marionette" })
         assertEquals(listOf(0L), marionetteInfo.wakes)
-        assertTrue("P3" in marionetteInfo.detail)
+        assertTrue("P3" in marionetteInfo.prompt)
     }
 
     @Test

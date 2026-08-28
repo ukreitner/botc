@@ -889,16 +889,16 @@ class RulesExpTownsfolkTest {
         val demonInfo = assertNotNull(plan.steps.firstOrNull { it.slotId == "DEMON_INFO" })
 
         // "Minions think you are a Demon": the Magician is shown beside the Imp.
-        assertTrue("MAGICIAN" in minionInfo.detail, minionInfo.detail)
-        assertTrue("P1" in minionInfo.detail, "the Magician's seat is named: ${minionInfo.detail}")
+        assertTrue("MAGICIAN" in minionInfo.prompt, minionInfo.prompt)
+        assertTrue("P1" in minionInfo.prompt, "the Magician's seat is named: ${minionInfo.prompt}")
 
         // "The Demon thinks you are a Minion": the Magician is in the Minion list,
         // and the Marionette clause is SUPPRESSED — otherwise the Demon could
         // subtract the Marionette and find the Magician.
-        assertTrue("MAGICIAN" in demonInfo.detail, demonInfo.detail)
+        assertTrue("MAGICIAN" in demonInfo.prompt, demonInfo.prompt)
         assertTrue(
-            "Do not point out the Marionette" in demonInfo.detail,
-            demonInfo.detail,
+            "Do not point out the Marionette" in demonInfo.prompt,
+            demonInfo.prompt,
         )
 
         // A DRUNK Magician confuses nobody: both rows go back to the truth.
@@ -907,8 +907,8 @@ class RulesExpTownsfolkTest {
         ).state
         val sober = NightPlan.build(state, lookup)
         val demonAgain = assertNotNull(sober.steps.firstOrNull { it.slotId == "DEMON_INFO" })
-        assertFalse("MAGICIAN" in demonAgain.detail, demonAgain.detail)
-        assertTrue("Point out the Marionette" in demonAgain.detail, demonAgain.detail)
+        assertFalse("MAGICIAN" in demonAgain.prompt, demonAgain.prompt)
+        assertTrue("Point out the Marionette" in demonAgain.prompt, demonAgain.prompt)
     }
 
     @Test
@@ -919,8 +919,8 @@ class RulesExpTownsfolkTest {
         val demonInfo = assertNotNull(
             NightPlan.build(state, lookup).steps.firstOrNull { it.slotId == "DEMON_INFO" },
         )
-        assertTrue("JINX" in demonInfo.detail, demonInfo.detail)
-        assertTrue("Vizier" in demonInfo.detail, demonInfo.detail)
+        assertTrue("JINX" in demonInfo.prompt, demonInfo.prompt)
+        assertTrue("Vizier" in demonInfo.prompt, demonInfo.prompt)
     }
 
     // ==================================================================

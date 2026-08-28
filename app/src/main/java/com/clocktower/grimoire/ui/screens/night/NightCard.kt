@@ -647,6 +647,8 @@ private fun SecondaryDrawer(
                 onClick = { viewModel.toggleNightStep(step.key) },
             )
         }
+        // The generic run-book. A marker row's own words are its `prompt` and
+        // are already on the card, so this no longer prints them twice.
         val guide = NightGuide.forStep(step.abilityId, step.style)?.instructions.orEmpty()
         val book = listOf(guide, step.detail).filter { it.isNotBlank() }.distinct().joinToString("\n\n")
         if (book.isNotBlank()) {

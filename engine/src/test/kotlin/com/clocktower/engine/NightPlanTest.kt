@@ -39,6 +39,44 @@ class NightPlanTest {
         }
 
     // ==================================================================
+    // The two information rows name who they are about
+    // ==================================================================
+
+    @Test
+    fun `Minion info and Demon info offer the card that names the seats`() {
+        val state = game(tb, "imp", "poisoner", "washerwoman", "empath", "chef", "monk", "mayor", "butler")
+        val steps = plan(state).steps
+
+        val minionInfo = assertNotNull(steps.firstOrNull { it.slotId == NightMarkers.MINION_INFO })
+        // The row's own words are its PROMPT, and they name this game's seats;
+        // the registry's generic run-book is not repeated there.
+        assertTrue("P1" in minionInfo.prompt, "the Demon is named: ${minionInfo.prompt}")
+        assertEquals("", minionInfo.detail)
+
+        val demonPoint = assertNotNull(
+            minionInfo.cards.map { it.card }.filterIsInstance<ShowCardSpec.PointCard>().firstOrNull(),
+            "Minion info must offer a card that points at the Demon: ${minionInfo.cards.map { it.label }}",
+        )
+        assertEquals("THIS IS THE DEMON", demonPoint.prefix)
+        assertEquals(listOf("P1"), demonPoint.playerNames)
+        assertEquals(listOf(1), demonPoint.seatNumbers)
+        assertTrue(
+            minionInfo.cards.any { it.card == ShowCardSpec.Message("THIS IS THE DEMON") },
+            "and the bare info token too",
+        )
+
+        val demonInfo = assertNotNull(steps.firstOrNull { it.slotId == NightMarkers.DEMON_INFO })
+        val minionPoint = assertNotNull(
+            demonInfo.cards.map { it.card }.filterIsInstance<ShowCardSpec.PointCard>().firstOrNull(),
+            "Demon info must offer a card that points at the Minions: ${demonInfo.cards.map { it.label }}",
+        )
+        assertEquals("THESE ARE YOUR MINIONS", minionPoint.prefix)
+        assertEquals(listOf("P2"), minionPoint.playerNames)
+        assertEquals(listOf(2), minionPoint.seatNumbers)
+        assertTrue(demonInfo.cards.all { it.truthful })
+    }
+
+    // ==================================================================
     // Purity and cost
     // ==================================================================
 
