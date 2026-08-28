@@ -116,6 +116,12 @@ fun SetupScreen(
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
     /** Filters the character list in card 3 (A-11). */
     var bagQuery by rememberSaveable { mutableStateOf("") }
+    // A successful import used to close the dialog and say nothing at all
+    // (A-19). The store writes asynchronously, so the confirmation is raised
+    // when the new script actually appears rather than when Import was pressed.
+    var awaitingImport by rememberSaveable { mutableStateOf(false) }
+    var knownScriptIds by rememberSaveable { mutableStateOf(ArrayList<String>() as List<String>) }
+    var importNotice by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     // Seat indices marked as Travellers: they fill no distribution slot and are
     // dealt no token (setup-and-home #8). Saved as a List<Int>, because losing
@@ -130,9 +136,22 @@ fun SetupScreen(
     val imported by viewModel.importedScripts.collectAsState()
     val rosters by viewModel.recentRosters.collectAsState()
     val builtIn = remember { viewModel.gameData.builtInScripts() }
-    val allScripts = builtIn + imported
+    // A-19: what you just imported is what you came here for, so it goes at the
+    // TOP, newest first, rather than below the three built-ins.
+    val allScripts = imported.asReversed() + builtIn
     val script = allScripts.find { it.id == scriptId }
     val liveGame by viewModel.game.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(imported) {
+        val added = imported.lastOrNull { it.id !in knownScriptIds }
+        if (awaitingImport && added != null) {
+            importNotice = "Imported \"${added.name}\" — " +
+                "${plural(added.characterIds.size, "character")}, now selected."
+            scriptId = added.id
+            awaitingImport = false
+        }
+        knownScriptIds = ArrayList(imported.map { it.id })
+    }
 
     if (handingOut) {
         val state = liveGame
@@ -277,6 +296,14 @@ fun SetupScreen(
                     expanded = expanded == CARD_SCRIPT,
                     onToggle = { expanded = if (expanded == CARD_SCRIPT) -1 else CARD_SCRIPT },
                 ) {
+                    importNotice?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AgedGold,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
                     ScriptPicker(
                         scripts = allScripts,
                         viewModel = viewModel,
@@ -548,7 +575,10 @@ fun SetupScreen(
             onDismiss = { showImport = false },
             onImport = { text ->
                 val error = viewModel.importScript(text)
-                if (error == null) showImport = false
+                if (error == null) {
+                    showImport = false
+                    awaitingImport = true
+                }
                 error
             },
         )

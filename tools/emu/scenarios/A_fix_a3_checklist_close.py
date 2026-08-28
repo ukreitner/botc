@@ -32,8 +32,9 @@ STEPS = [
     ("sleep",      1.0),
     ("tap",        "^Import$"),
     ("sleep",      1.5),
-    ("tap",        "^PlaytestA$"),
-    ("sleep",      1.2),
+    # A-19: a successful import says so and selects the new script itself.
+    ("wait",       "Imported \"PlaytestA\""),
+    ("sleep",      1.0),
     ("tap",        "Start empty"),
     ("wait",       "Before the first night"),
     ("sleep",      1.2),
