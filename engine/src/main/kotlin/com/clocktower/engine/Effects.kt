@@ -1021,7 +1021,29 @@ object Effects {
         // history needs and what reveals a paradox, so it is computed exactly once.
         val q = StatusQuery(swept, lookup)
         val impairedNow = swept.seats.associate { it.id to q.impairment(it.id) }
-        return raiseParadoxPrompt(recordImpairmentSpans(swept, impairedNow), q.detectParadox())
+        return raiseParadoxPrompt(
+            recordImpairmentSpans(markNightImpaired(swept, impairedNow), impairedNow),
+            q.detectParadox(),
+        )
+    }
+
+    /**
+     * Raises the night-scoped impairment watermark (lead D72).
+     *
+     * Every kill, every character change and every placed token ends in a
+     * `reconcile`, so accumulating here is what makes "or BECOME drunk or
+     * poisoned tonight" answerable at any later point in the night. The
+     * watermark only ever grows; `Phases.advancePhase` seeds it at dusk and
+     * clears it at dawn.
+     */
+    private fun markNightImpaired(
+        state: GameState,
+        impairedNow: Map<Long, List<Reason>>,
+    ): GameState {
+        if (state.phase != Phase.NIGHT) return state
+        val marked = state.nightImpaired +
+            impairedNow.filterValues { it.isNotEmpty() }.keys
+        return if (marked.size == state.nightImpaired.size) state else state.copy(nightImpaired = marked)
     }
 
     /**
