@@ -9,6 +9,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * The Android side of the tiny platform seam. The web build substitutes
@@ -86,6 +88,25 @@ fun rememberScreenBrightness(): (Float?) -> Unit = remember { { _: Float? -> } }
  */
 @Composable
 fun keyboardInsetDp(): Float = 0f
+
+/**
+ * Safe-area insets that this platform's Compose `WindowInsets` do NOT already
+ * report, for the overlay layers (`Dialog`, `Popup`, `ModalBottomSheet`) that
+ * sit outside the shell's own inset padding.
+ *
+ * Zero on Android, and that is the point: `MainActivity` calls
+ * `enableEdgeToEdge()`, so Compose carries the real system-bar insets and
+ * `Modifier.windowInsetsPadding` — which is consumption-aware — is the whole
+ * story. The browser build has no such thing and returns the shell-measured
+ * `env(safe-area-inset-*)` instead. See `ui/components/SafeArea.kt`; there is
+ * exactly one inset source per platform and this is Android's.
+ */
+@Composable
+fun shellSafeTopDp(): Dp = 0.dp
+
+/** The bottom half of [shellSafeTopDp]: zero here, the home indicator on the web. */
+@Composable
+fun shellSafeBottomDp(): Dp = 0.dp
 
 /**
  * Returns an action that opens the platform file picker and reads the

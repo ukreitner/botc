@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,7 +38,11 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize()) {
                         GrimoireAppRoot()
-                        UpdateBanner(Modifier.align(Alignment.BottomCenter))
+                        // The window is edge-to-edge, so a banner pinned to the
+                        // bottom lands on the gesture strip and its Reload
+                        // button cannot be pressed. Every screen below applies
+                        // its own insets; this one sits above them all.
+                        UpdateBanner(Modifier.align(Alignment.BottomCenter).safeDrawingPadding())
                     }
                 }
             }

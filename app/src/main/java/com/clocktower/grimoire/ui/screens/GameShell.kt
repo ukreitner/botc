@@ -19,6 +19,7 @@ import com.clocktower.grimoire.ui.components.PrivacyCover
 import com.clocktower.grimoire.ui.components.FullScreenShow
 import com.clocktower.grimoire.ui.components.ShowCard
 import com.clocktower.grimoire.ui.components.ShowToolSheet
+import com.clocktower.grimoire.ui.components.overlaySafeAreaPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -692,7 +693,12 @@ private fun ReadOnlyGrimoire(
         ),
     ) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Its last child is a full-width button; a dialog sits above the
+            // shell's inset padding, so without this the home indicator eats it.
+            Column(
+                Modifier.overlaySafeAreaPadding().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 if (!handedOver) {
                     Text("Show the grimoire", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
                     Text(

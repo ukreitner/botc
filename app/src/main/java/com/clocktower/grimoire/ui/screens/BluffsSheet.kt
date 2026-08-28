@@ -35,6 +35,7 @@ import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.Time
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import kotlin.random.Random
@@ -114,7 +115,7 @@ fun BluffsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             item("bluff-head-${requirement.key}") {

@@ -50,6 +50,7 @@ import com.clocktower.engine.Team
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.TownsfolkBlue
@@ -169,7 +170,7 @@ fun FabledSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             item {
@@ -296,7 +297,7 @@ fun RevealSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             item {
@@ -463,7 +464,7 @@ fun SetupChecklistSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             item {
