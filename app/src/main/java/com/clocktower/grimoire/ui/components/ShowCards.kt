@@ -197,12 +197,16 @@ fun FullScreenShow(
         // where the phone's gesture strip covered all but a sliver of it and
         // the storyteller could not close the card at all.
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-            val safeBottom = overlaySafeBottom()
+            // The insets are the ones measured at the app ROOT: inside a
+            // Dialog's own window Compose reports zero, which is how FLIP and
+            // HOLD TO CLOSE came to be drawn inside the gesture strip, sliced
+            // in half and untappable (playtest B P1 #5).
+            val safeBottom = dialogSafeBottom()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars)
-                    .padding(top = overlaySafeTop(), bottom = bottomActionClearance(safeBottom))
+                    .padding(top = dialogSafeTop(), bottom = bottomActionClearance(safeBottom))
                     .graphicsLayer { rotationZ = if (flipped) 180f else 0f },
                 contentAlignment = Alignment.Center,
             ) {

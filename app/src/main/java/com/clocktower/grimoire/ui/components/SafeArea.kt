@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -101,6 +103,40 @@ fun overlaySafeBottom(): Dp = shellSafeBottomDp()
 @Composable
 fun overlaySafeTop(): Dp = shellSafeTopDp()
 
+/**
+ * The safe area as measured at the ROOT of the app, before anything consumed
+ * it — provided by `GrimoireTheme` and read by the layers Compose cannot
+ * measure from the inside.
+ *
+ * ## Why a `Dialog` needs this and `windowInsetsPadding` does not do it
+ *
+ * A `Dialog` is its own window. Its window fits system windows, so Compose
+ * reports **zero** insets to everything inside it while the content still draws
+ * edge to edge — measured on the reference device, a `FullScreenShow` asked for
+ * 126 px of bottom padding and was given 0, and `⟳ FLIP` / `HOLD TO CLOSE` were
+ * drawn in the gesture strip, sliced through the middle and untappable
+ * (playtest B P1 #5). `DialogProperties(decorFitsSystemWindows = false)` would
+ * fix it on Android and does not exist in Compose Multiplatform, which the same
+ * source has to compile for. So the numbers are captured one layer up, where
+ * they are real, and carried into the dialog by composition — which crosses the
+ * window boundary exactly as `MaterialTheme` does.
+ */
+val LocalRootSafeTop: ProvidableCompositionLocal<Dp> = staticCompositionLocalOf { 0.dp }
+
+/** The bottom half of [LocalRootSafeTop] — the home indicator's own strip. */
+val LocalRootSafeBottom: ProvidableCompositionLocal<Dp> = staticCompositionLocalOf { 0.dp }
+
+/** The larger of the two inset sources — pure, so `tools/uicheck` can measure it. */
+fun dialogSafeInset(overlay: Dp, root: Dp): Dp = if (root > overlay) root else overlay
+
+/** [overlaySafeTop] for content inside a `Dialog`'s own window. */
+@Composable
+fun dialogSafeTop(): Dp = dialogSafeInset(overlaySafeTop(), LocalRootSafeTop.current)
+
+/** [overlaySafeBottom] for content inside a `Dialog`'s own window. */
+@Composable
+fun dialogSafeBottom(): Dp = dialogSafeInset(overlaySafeBottom(), LocalRootSafeBottom.current)
+
 /** [bottomActionPadding] with the live inset already read. */
 @Composable
 fun overlayBottomPadding(margin: Dp = BottomActionMargin): Dp =
@@ -122,4 +158,4 @@ fun overlayBodyClearance(): Dp = bottomActionClearance(overlaySafeBottom())
 fun Modifier.overlaySafeAreaPadding(): Modifier =
     this
         .windowInsetsPadding(WindowInsets.systemBars)
-        .padding(top = overlaySafeTop(), bottom = overlaySafeBottom())
+        .padding(top = dialogSafeTop(), bottom = dialogSafeBottom())
