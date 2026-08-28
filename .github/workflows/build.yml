@@ -31,7 +31,7 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
-      - run: gradle -p tools/uicheck compileKotlin
+      - run: ./gradlew -p tools/uicheck compileKotlin test
 
   web:
     name: Build & deploy web app (PWA)
