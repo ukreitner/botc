@@ -1,6 +1,5 @@
 package com.clocktower.engine
 
-import org.junit.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -27,11 +26,12 @@ import kotlin.test.assertTrue
  *
  * Tests are in two groups.
  *  * **Live** — what today's engine already gets right about this game. These
- *    must never regress; they are the reason the fixture is committed early.
- *  * **`@Ignore`d** — one per complaint, each naming the package that will
- *    deliver it. They call the real (currently `TODO(...)`) signatures WP0
- *    declared, so they compile today and the merger only has to delete the
- *    `@Ignore` line when the named package lands.
+ *    must never regress; they are the reason the fixture was committed early.
+ *  * **The five complaints** — one test each. Every one of them was `@Ignore`d
+ *    in WP12 pass 1, naming the package that would deliver it; all five ran
+ *    green in WP12 pass 2 once WP1/WP2/WP3/WP4/WP6/WP7-BMR and the Wave 7
+ *    schema pass had landed, and the `@Ignore` lines are gone. Nothing in this
+ *    file may be skipped again.
  */
 class BmrSessionPlaytestTest {
 
@@ -313,11 +313,10 @@ class BmrSessionPlaytestTest {
     }
 
     // ==================================================================
-    // The five complaints. Each is @Ignore'd until its package lands.
+    // The five complaints. All five are LIVE (WP12 pass 2) — never skip them.
     // ==================================================================
 
     @Test
-    @Ignore("WP1 (Deaths.attempt / Effects) + WP7-BMR (the Pukka registry row) — the night-1 Pukka must offer no kill, and the night-2 choice must poison the new target and kill the old one from one action")
     fun `Pukka poisons on the night it chooses and kills on the next`() {
         // Complaint 1: "Pukka ... offered to kill even though it's supposed to
         // poison then kill the turn after" (friction-log F17, lead D4).
@@ -389,7 +388,6 @@ class BmrSessionPlaytestTest {
     }
 
     @Test
-    @Ignore("WP3 (Ledger/Memory.lastChoice) + WP2 (NightPlan target constraints) — the Devil's Advocate's night-1 choice must survive the token sweep and be excluded from night 2's picker")
     fun `Devil's Advocate cannot choose the same player two nights running`() {
         // Complaint 2: the DA token gave the storyteller no way to honour
         // "different to last night" (friction-log F21/F30, lead D3).
@@ -424,7 +422,6 @@ class BmrSessionPlaytestTest {
     }
 
     @Test
-    @Ignore("WP3 (Ledger) — a public statement must be recordable on the day it is made, whether or not the Gossip is asked, and readable again on the following night")
     fun `a Gossip statement is recorded on the day it is made`() {
         // Complaint 3: "make it easy to write down all the gossips even if
         // Gossip isn't in play" (friction-log F52, invariant I3).
@@ -465,7 +462,6 @@ class BmrSessionPlaytestTest {
     }
 
     @Test
-    @Ignore("WP1 (Deaths.resurrect / Prompts) + WP2 (NightPlan first-night insertion) + WP6 (Briefings.at DAWN) — a resurrection must announce at dawn and re-run the resurrected seat's first night")
     fun `Professor resurrection announces at dawn and re-runs the first night`() {
         // Complaint 4: "When Professor brings someone back it should remind in
         // the morning and rerun the 1st night for that" (invariant I4, lead D7).
@@ -524,7 +520,6 @@ class BmrSessionPlaytestTest {
     }
 
     @Test
-    @Ignore("WP4 (Bluffs.requirements / Identity.actingRoles) + WP2 (NightPlan) — the Lunatic needs their own bluff set, their own fake Minions and a full Demon night action that changes nothing")
     fun `the Lunatic gets their own bluffs fake Minions and Demon behaviour`() {
         // Complaint 5: the Lunatic had no illusion kit at all (friction-log
         // F13/F27, lead D20).
@@ -549,28 +544,76 @@ class BmrSessionPlaytestTest {
         assertEquals(listOf("courtier", "minstrel", "moonchild"), state.demonBluffIds)
 
         // The fake Minion count equals the real Minion count (Ana and Lena).
-        val plan = NightPlan.build(state, data::character)
-        val lunaticInfo = assertNotNull(
-            plan.steps.find { it.abilityId == "lunatic" },
-            "the Lunatic wakes on a row of their own: ${plan.steps.map { it.key.token }}",
+        // WP4 filed the fake Minions as a SETUP CHECKLIST row, not as a line of
+        // the night step's detail, and keeps it advisory (`blocking = false`)
+        // because "Fake Minion" is not an official token. The pass-1 fixture
+        // read the count off `NightStep.detail`; the row is the real home, and
+        // it is the thing a storyteller can act on.
+        val fakeMinions = assertNotNull(
+            SetupRequirements.all(state, data::character).find { it.id == "lunatic.minions:$jonas" },
+            "the Lunatic owes a fake-Minion row of their own",
         )
+        assertFalse(
+            fakeMinions.satisfied(state, data::character),
+            "nobody has been pointed out as a Minion yet",
+        )
+        assertFalse(
+            fakeMinions.apply(state, Selection(playerIds = listOf(id(state, "Ana"))))
+                .let { fakeMinions.satisfied(it, data::character) },
+            "one fake Minion is not enough: the game has two real ones",
+        )
+        state = fakeMinions.apply(state, Selection(playerIds = listOf(id(state, "Ana"), id(state, "Lena"))))
         assertTrue(
-            "2" in lunaticInfo.detail || lunaticInfo.holderIds.size == 1,
-            "the Lunatic is shown as many fake Minions as there are real ones",
+            fakeMinions.satisfied(state, data::character),
+            "two real Minions, two players pointed out",
         )
 
-        // And the Lunatic acts as the Po: a full Demon action, at the Po's slot,
-        // that kills nobody.
-        assertEquals("po", lunaticInfo.slotId, "the Lunatic acts at the believed Demon's slot")
-        val action = assertNotNull(lunaticInfo.action as? ChoosePlayers, "a Po-shaped choice")
-        assertTrue(action.max >= 3, "the Po's charged night takes three targets")
-        val aliveBefore = state.alivePlayers.size
-        state = NightPlan.resolve(
-            state,
-            data::character,
-            lunaticInfo.key,
-            NightInput(playerIds = listOf(id(state, "Cleo"), id(state, "Iris"), id(state, "Hal"))),
+        // Lead D70: `Identity.derivedGrants` names the BELIEVED DEMON as the
+        // ability and keeps "lunatic" as the slot, so the row sorts at the
+        // Lunatic's own place on the nightsheet while running the Po's action.
+        val lunaticInfo = assertNotNull(
+            NightPlan.build(state, data::character).steps.find { it.slotId == "lunatic" },
+            "the Lunatic wakes on a row of their own",
         )
+        assertEquals("po", lunaticInfo.abilityId, "the Lunatic runs the believed Demon's ability (D70)")
+        assertEquals(listOf(jonas), lunaticInfo.wakes, "one seat wakes on it: the Lunatic")
+        assertTrue(
+            lunaticInfo.detail.contains(lunatic.label),
+            "night 1 hands over the Lunatic's own bluff set: ${lunaticInfo.detail}",
+        )
+        // The Po has no first night, so neither has a Lunatic who believes they
+        // are the Po — the row is the illusion (bluffs, token, fake Minions),
+        // and the storyteller is told so on the row itself.
+        assertEquals(null, lunaticInfo.action, "no first-night choice: the Po does not act on night 1")
+        assertTrue("illusion" in lunaticInfo.banner, "the row says so: ${lunaticInfo.banner}")
+
+        // And from night 2 the Lunatic acts as the Po: a full Demon action, on
+        // the Lunatic's own slot, that kills nobody. Charged with the Po's
+        // official "3 Attacks" token it takes three targets, exactly as the
+        // reported session did.
+        state = GameActions.advancePhase(GameActions.advancePhase(state)) // day 1, night 2
+        state = GameActions.addReminder(state, jonas, PlacedReminder("po", "3 Attacks"))
+        val lunaticAct = assertNotNull(
+            NightPlan.build(state, data::character).steps.find { it.slotId == "lunatic" },
+        )
+        assertEquals("po", lunaticAct.abilityId)
+        val action = assertNotNull(lunaticAct.action as? ChoosePlayers, "a Po-shaped choice")
+        assertEquals(3, action.max, "the Po's charged night takes three targets")
+        assertTrue(
+            action.perTarget.none { it is NightEffect.Attack },
+            "and not one of them is a kill: ${action.perTarget}",
+        )
+        val aliveBefore = state.alivePlayers.size
+        val chosen = listOf(id(state, "Cleo"), id(state, "Iris"), id(state, "Hal"))
+        state = NightPlan.resolve(state, data::character, lunaticAct.key, NightInput(playerIds = chosen))
         assertEquals(aliveBefore, state.alivePlayers.size, "a Lunatic's kills do nothing at all")
+        // The illusion is still drawn: the Lunatic's own Chosen markers land.
+        for (victim in chosen) {
+            val drawn = Effects.rendered(state, data::character, victim)
+            assertTrue(
+                drawn.any { Tokens.key(it.sourceId, it.label) == Tokens.key("lunatic", "Chosen") },
+                "the Lunatic's Chosen marker is on seat $victim: ${drawn.map { it.label }}",
+            )
+        }
     }
 }
