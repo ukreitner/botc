@@ -163,6 +163,11 @@ private fun beggar(): CharacterRule = CharacterRule(
         ),
         briefing = { ctx ->
             val tokens = ctx.holder.voteTokens
+            // An exiled Beggar's hoard constrains nothing: the standing fact
+            // stayed on the card for days after they left (playtest C-12).
+            if (!ctx.holder.alive) {
+                emptyList()
+            } else {
             dayStart(
                 ctx,
                 "beggar",
@@ -174,6 +179,7 @@ private fun beggar(): CharacterRule = CharacterRule(
                     "Beggar's day ability and show them that player's alignment privately. They " +
                     "support exiles freely, spending nothing, and cannot be drunk or poisoned.",
             )
+            }
         },
     ),
 )

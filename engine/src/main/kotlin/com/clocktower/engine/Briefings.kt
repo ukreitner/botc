@@ -239,6 +239,7 @@ object Briefings {
             // 3. Everything else the storyteller still owes the table.
             for (entry in pending) {
                 if (entry.id in consumed) continue
+                if (entry.cycle < night) continue
                 add(announcement(entry))
             }
 
@@ -299,8 +300,15 @@ object Briefings {
         buildList {
             val day = state.cycle
 
-            // Anything still unsaid from dawn stays on the card until it is said.
-            for (entry in Memory.pendingAnnouncements(state)) add(announcement(entry))
+            // Anything still unsaid from dawn stays on the card until it is
+            // said — but only TODAY's. "Announce: Begg joins the game" was
+            // still on the day-5 card for a traveller who joined and was exiled
+            // on day 3: a line nobody ticked two days ago is not still owed to
+            // a table that has moved on (playtest C-12).
+            for (entry in Memory.pendingAnnouncements(state)) {
+                if (entry.cycle < day) continue
+                add(announcement(entry))
+            }
 
             for (seat in state.seats) {
                 // Madness, and the character they are mad about (§2.12).
@@ -370,6 +378,41 @@ object Briefings {
                         text = "${vizier.name} (Vizier) may execute immediately if any good " +
                             "player votes.",
                         playerId = vizier.id,
+                    ),
+                )
+            }
+            // The Butler is the commonest day-time constraint on the base
+            // scripts, and it was the one the briefing never mentioned: a table
+            // with a living Butler and a placed Master read "Nothing constrains
+            // today" (playtest C-6).
+            for (seat in state.seats) {
+                if (seat.characterId?.let(Character::normalizeId) != "butler") continue
+                // While they can still vote at all — a spent ghost vote ends it.
+                if (!seat.alive && seat.ghostVoteUsed) continue
+                if (!Status.hasAbility(state, lookup, seat.id)) continue
+                val master = DayRules.masterOf(state, seat.id)?.let { state.player(it) } ?: continue
+                add(
+                    BriefingItem(
+                        key = "day:$day:butler:${seat.id}",
+                        kind = BriefingKind.STANDING_FACT,
+                        severity = BriefingSeverity.ACTION,
+                        sourceId = "butler",
+                        text = "${seat.name} (Butler) may only vote if ${master.name} votes — " +
+                            "a hand raised alone does not count.",
+                        playerId = seat.id,
+                    ),
+                )
+            }
+            for (id in DayRules.mustVote(state, lookup)) {
+                val seat = state.player(id) ?: continue
+                add(
+                    BriefingItem(
+                        key = "day:$day:zealot:$id",
+                        kind = BriefingKind.STANDING_FACT,
+                        severity = BriefingSeverity.ACTION,
+                        sourceId = "zealot",
+                        text = "${seat.name} (Zealot) must vote for every nomination today.",
+                        playerId = id,
                     ),
                 )
             }

@@ -509,6 +509,20 @@ interface GameActionsApi {
         record: ExecutionRecord,
     ): List<ExecutionConsequence> = Execution.consequences(state, lookup, record)
 
+    /**
+     * The same rows BEFORE the button, for the confirmation sheet: the Saint,
+     * the Goblin claim, the Zombuul's shroud, the Mastermind's extra day and
+     * every other game-ending consequence, shown while the execution can still
+     * be called off (day-engine §F, playtest C-5).
+     */
+    fun executionConsequencePreview(
+        state: GameState,
+        playerId: Long,
+        nominatorId: Long? = null,
+        nominationIndex: Int? = null,
+    ): List<ExecutionConsequence> =
+        Execution.previewConsequences(state, lookup, playerId, nominatorId, nominationIndex)
+
     /** True when the day is closed: an execution happened, or none will. */
     fun nominationsClosed(state: GameState): Boolean = DayRules.nominationsClosed(state, lookup)
 

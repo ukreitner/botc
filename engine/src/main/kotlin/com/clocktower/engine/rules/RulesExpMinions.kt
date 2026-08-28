@@ -351,7 +351,11 @@ private fun goblin() = CharacterRule(
             // One set of rows per nomination, not one per Goblin seat.
             val firstGoblinSeat =
                 ctx.state.seats.firstOrNull { isCharacter(it, "goblin") }?.id == ctx.holder.id
-            if (nominee == null || nominee.characterId == null || !firstGoblinSeat) {
+            // An exile is not an execution, so no claim can win on one
+            // (day-engine §D test 38, playtest C-2).
+            if (nominee == null || nominee.characterId == null || nominee.isTraveller ||
+                !firstGoblinSeat
+            ) {
                 emptyList()
             } else {
                 buildList {

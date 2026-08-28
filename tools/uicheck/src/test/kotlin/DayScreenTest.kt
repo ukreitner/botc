@@ -233,18 +233,99 @@ class DayScreenTest {
 
     @Test
     fun `ring positions run clockwise from the top and stay inside the box`() {
-        val positions = (0 until 12).map { NominationModel.position(it, 12) }
+        val w = PHONE_WIDTH_DP
+        val h = NominationModel.ringHeightDp(12, w)
+        val positions = (0 until 12).map { NominationModel.seatCentreDp(it, 12, w) }
         val (topX, topY) = positions.first()
-        assertEquals(0.5f, topX, 0.001f)
-        assertTrue("seat 1 sits at the top: $topY", topY < 0.5f)
+        assertEquals(w / 2f, topX, 0.01f)
+        assertTrue("seat 1 sits at the top: $topY", topY < h / 2f)
         // Clockwise: seat 4 of 12 is a quarter turn round, on the right.
-        assertTrue("seat 4 is on the right: ${positions[3]}", positions[3].first > 0.5f)
+        assertTrue("seat 4 is on the right: ${positions[3]}", positions[3].first > w / 2f)
         assertTrue(
             "every seat stays inside the box: $positions",
-            positions.all { it.first in 0f..1f && it.second in 0f..1f },
+            positions.all { it.first in 0f..w && it.second in 0f..h },
         )
         // Degenerate table: never divide by zero.
-        assertEquals(0.5f to 0.5f, NominationModel.position(0, 0))
+        assertEquals(w / 2f, NominationModel.seatCentreDp(0, 0, w).first, 0.01f)
+    }
+
+    // ------------------------------------------------------------------
+    // The measured half: the ring may not overlap anything (playtest D-6)
+    // ------------------------------------------------------------------
+
+    /** The reference phone the app is judged on, in dp. */
+    private val PHONE_WIDTH_DP = 411f
+
+    private fun hitRects(
+        count: Int,
+        w: Float = PHONE_WIDTH_DP,
+        maxRy: Float = NominationModel.MAX_RADIUS_Y_DP,
+    ): List<FloatArray> {
+        val seatW = NominationModel.seatWidthDp(count, w, maxRy)
+        return (0 until count).map { i ->
+            val (cx, cy) = NominationModel.seatCentreDp(i, count, w, maxRy)
+            floatArrayOf(
+                cx - seatW / 2f,
+                cy - NominationModel.SEAT_HIT_DP / 2f,
+                cx + seatW / 2f,
+                cy + NominationModel.SEAT_HIT_DP / 2f,
+            )
+        }
+    }
+
+    private fun overlaps(a: FloatArray, b: FloatArray): Boolean =
+        a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+
+    @Test
+    fun `no two seats on the nomination ring share a pixel of hit target`() {
+        // `ui.py audit` reported ten overlapping clickable pairs on this
+        // screen, the worst at 41 %: two 48 dp targets 38 dp apart. Tapping a
+        // vote landed on the seat behind it and silently re-picked the nominee.
+        for (n in 5..16) {
+            val rects = hitRects(n)
+            for (i in rects.indices) {
+                for (j in i + 1 until rects.size) {
+                    assertFalse(
+                        "at $n seats, seat ${i + 1} ${rects[i].toList()} overlaps " +
+                            "seat ${j + 1} ${rects[j].toList()}",
+                        overlaps(rects[i], rects[j]),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the ring keeps a clear strip between its lowest seat and the list below`() {
+        for (n in 5..16) {
+            val height = NominationModel.ringHeightDp(n, PHONE_WIDTH_DP)
+            val lowest = hitRects(n).maxOf { it[3] }
+            assertTrue(
+                "at $n seats the lowest hit target ends at $lowest of a $height dp ring",
+                lowest <= height - NominationModel.RING_GAP_DP + 0.01f,
+            )
+            val highest = hitRects(n).minOf { it[1] }
+            assertTrue("at $n seats a seat is clipped off the top: $highest", highest >= -0.01f)
+        }
+    }
+
+    @Test
+    fun `the ring grows only as much as the table needs, and never owns the screen`() {
+        val small = NominationModel.ringHeightDp(8, PHONE_WIDTH_DP)
+        val large = NominationModel.ringHeightDp(15, PHONE_WIDTH_DP)
+        assertTrue("a 15-seat ring needs more room than an 8-seat one: $small / $large", large > small)
+        assertTrue("and a small table does not waste the screen: $small", small <= 260f)
+
+        // On a short screen the ring is capped rather than pushing the vote
+        // panel off the phone — the cap still keeps the strip below it.
+        val cramped = NominationModel.maxRadiusYFor(500f)
+        val capped = NominationModel.ringHeightDp(15, PHONE_WIDTH_DP, cramped)
+        assertTrue("capped to its share of 500 dp: $capped", capped <= 500f * 0.56f)
+        val lowest = hitRects(15, PHONE_WIDTH_DP, cramped).maxOf { it[3] }
+        assertTrue(
+            "and the clear strip survives the cap: $lowest of $capped",
+            lowest <= capped - NominationModel.RING_GAP_DP + 0.01f,
+        )
     }
 
     @Test
@@ -252,18 +333,11 @@ class DayScreenTest {
         val phone = 360f
         val seven = NominationModel.seatWidthDp(7, phone)
         val twelve = NominationModel.seatWidthDp(12, phone)
-        val twenty = NominationModel.seatWidthDp(20, phone)
+        val fifteen = NominationModel.seatWidthDp(15, phone)
 
-        assertTrue("a bigger table means narrower seats", seven > twelve && twelve > twenty)
-        assertTrue("never below the text floor: $twenty", twenty >= NominationModel.MIN_SEAT_DP)
+        assertTrue("a bigger table means narrower seats", seven > twelve && twelve > fifteen)
+        assertTrue("never below the text floor: $fifteen", fifteen >= NominationModel.MIN_SEAT_DP)
         assertTrue("never absurd at 7: $seven", seven <= NominationModel.MAX_SEAT_DP)
-
-        // No overlap at 12 — the arc each seat owns is at least its width.
-        val circumference = 2 * Math.PI * NominationModel.RADIUS * phone
-        assertTrue(
-            "12 seats fit round the ring: $twelve vs ${circumference / 12}",
-            twelve <= circumference / 12 + 0.01,
-        )
         // Degenerate tables must not divide by zero.
         assertEquals(NominationModel.MAX_SEAT_DP, NominationModel.seatWidthDp(0, phone), 0.01f)
     }
@@ -281,13 +355,20 @@ class DayScreenTest {
 
     @Test
     fun `the nomination check reaches the day screen with its triggers`() {
-        val state = day()
-        val check = DayRules.checkNomination(state, lookup, seat(state, "Bo"), seat(state, "Fay"))
+        var state = day()
 
-        assertTrue("a plain nomination is legal", check.legal)
-        // The Goblin CHOICE row is offered for every seated nominee: that IS
-        // the "Claims to be the Goblin" affordance, and it is data, not a
-        // character-id branch in the screen.
+        // C-2: the Goblin CHOICE row is data, not a character-id branch in the
+        // screen — but it is only offered where a Goblin can actually claim.
+        // On a plain Trouble Brewing table nobody can be one.
+        val plain = DayRules.checkNomination(state, lookup, seat(state, "Bo"), seat(state, "Fay"))
+        assertTrue("a plain nomination is legal", plain.legal)
+        assertNull(
+            "no Goblin, no question: ${plain.triggers.map { it.sourceId }}",
+            plain.triggers.firstOrNull { it.sourceId == "goblin" },
+        )
+
+        state = Seats.assignCharacter(state, seat(state, "Kit"), "goblin")
+        val check = DayRules.checkNomination(state, lookup, seat(state, "Bo"), seat(state, "Fay"))
         val goblin = check.triggers.firstOrNull { it.sourceId == "goblin" }
         assertNotNull("the goblin claim is offered: ${check.triggers.map { it.sourceId }}", goblin)
         assertEquals(TriggerKind.CHOICE, goblin!!.kind)
@@ -337,6 +418,111 @@ class DayScreenTest {
         assertEquals(4, view.tally)
         assertEquals(3, view.weights[bo])
         assertTrue("the reason is shown", view.reasons.any { it.contains("3 times") })
+    }
+
+    @Test
+    fun `a closed day locks the ring and never discards a vote in silence`() {
+        // Playtest C-4: after a Virgin execution every card said "the day is
+        // over" while the ring, the chips and a live "Lock in: … SAFE (0 of 5)"
+        // stayed up — and locking in cleared the draft and recorded nothing.
+        var state = day()
+        val fay = seat(state, "Fay")
+        state = Execution.execute(state, lookup, fay)
+        assertTrue(DayRules.nominationsClosed(state, lookup))
+
+        val reason = DayRules.nominationsClosedReason(state, lookup)
+        assertTrue("the reason is in storyteller voice: '$reason'", reason.contains("the day is over"))
+        assertTrue("the ring is dead", NominationModel.ringLocked(reason, reopened = false))
+        assertFalse("until the ST reopens it", NominationModel.ringLocked(reason, reopened = true))
+
+        val ana = seat(state, "Ana")
+        val bo = seat(state, "Bo")
+        val check = DayRules.checkNomination(state, lookup, ana, bo)
+        assertFalse(check.legal)
+        assertTrue(
+            "and Lock in refuses rather than swallowing it",
+            NominationModel.lockInRefused(check.blockers, force = false),
+        )
+        assertFalse(NominationModel.lockInRefused(check.blockers, force = true))
+
+        // Why the button must refuse: the engine really does drop it.
+        val dropped = DayRules.record(
+            state,
+            lookup,
+            Nomination(day = state.cycle, nominatorId = ana, nomineeId = bo, voterIds = listOf(ana)),
+        )
+        assertEquals("nothing was recorded", state.nominations.size, dropped.nominations.size)
+        val forced = DayRules.record(
+            state,
+            lookup,
+            Nomination(day = state.cycle, nominatorId = ana, nomineeId = bo, voterIds = listOf(ana)),
+            force = true,
+        )
+        assertEquals(state.nominations.size + 1, forced.nominations.size)
+    }
+
+    @Test
+    fun `an ineligible hand is shown, is not counted, and cannot put anyone on the block`() {
+        // Playtest C-1 (P0): the chip was dimmed with a reason AND summed.
+        var state = day()
+        state = Seats.assignCharacter(state, seat(state, "Jo"), "voudon", isTraveller = true)
+        val ana = seat(state, "Ana")
+        val jo = seat(state, "Jo")
+        val fay = seat(state, "Fay")
+
+        val illegal = NominationModel.voteView(state, lookup, ana, fay, setOf(ana))
+        assertEquals("only the Voudon and the dead may vote", 1, illegal.threshold)
+        assertTrue("the chip carries its reason", illegal.ineligible.containsKey(ana))
+        assertEquals("and the hand adds nothing", 0, illegal.tally)
+        assertEquals(NominationResult.SAFE, illegal.result)
+        assertTrue(
+            "the lock-in label cannot claim a block: '${NominationModel.lockInLabel(illegal)}'",
+            NominationModel.lockInLabel(illegal).contains("SAFE"),
+        )
+
+        // The Voudon's own hand is the one that counts.
+        val legal = NominationModel.voteView(state, lookup, ana, fay, setOf(jo))
+        assertEquals(1, legal.tally)
+        assertEquals(NominationResult.ABOUT_TO_DIE, legal.result)
+    }
+
+    @Test
+    fun `an illegal Butler hand is listed as uncounted and left out of the tally`() {
+        var state = day()
+        val ivy = seat(state, "Ivy") // the Butler
+        val dee = seat(state, "Dee")
+        state = Effects.addReminder(state, dee, PlacedReminder("butler", "Master"))
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Ana"),
+            seat(state, "Fay"),
+            setOf(ivy, seat(state, "Bo")),
+        )
+        assertEquals("the Master's hand is down: one hand counts", 1, view.tally)
+        assertTrue("and the Butler's hand is called out", view.uncounted.containsKey(ivy))
+        assertTrue(
+            "in words that do not tell the storyteller to count it: '${view.uncounted[ivy]}'",
+            view.uncounted.getValue(ivy).contains("does not count"),
+        )
+    }
+
+    @Test
+    fun `the may-not-vote lines are capped so a Voudon day stays readable`() {
+        var state = day()
+        state = Seats.assignCharacter(state, seat(state, "Jo"), "voudon", isTraveller = true)
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Ana"),
+            seat(state, "Fay"),
+            emptySet(),
+        )
+        val lines = NominationModel.ineligibleLines(view)
+        assertTrue("eleven living seats may not vote", view.ineligible.size > 4)
+        assertEquals(NominationModel.MAX_INELIGIBLE_LINES + 1, lines.size)
+        assertTrue("the tail is summarised: '${lines.last()}'", lines.last().contains("more may not vote"))
     }
 
     @Test
@@ -428,6 +614,79 @@ class DayScreenTest {
         assertTrue("the tie names both: '$line'", line.contains("Fay") && line.contains("Gus"))
         assertTrue("and the number to beat: '$line'", line.contains("to beat it"))
         assertNull("nobody is on the block after a tie", DayRules.aboutToDie(state))
+    }
+
+    @Test
+    fun `the vote panel names both tied players before the tie is recorded`() {
+        // Finding 21: in-panel it read "Tie at 4 — Player 10", the stat strip
+        // read "Tie at 4 — Player 10 and Player 5". The nomination being
+        // counted is not on the record yet, so the panel has to add it.
+        var state = day()
+        val fay = seat(state, "Fay")
+        val voters = state.alivePlayers.take(6).map { it.id }
+        state = DayRules.record(
+            state,
+            lookup,
+            Nomination(
+                day = state.cycle,
+                nominatorId = seat(state, "Ana"),
+                nomineeId = fay,
+                voterIds = voters,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Bo"),
+            seat(state, "Gus"),
+            voters.toSet(),
+        )
+        assertEquals(NominationResult.TIED, view.result)
+        assertTrue(
+            "both names, in the panel too: '${view.outcomeLine}'",
+            view.outcomeLine.contains("Fay") && view.outcomeLine.contains("Gus"),
+        )
+    }
+
+    @Test
+    fun `the block line stops instructing an execution that already happened`() {
+        // Finding 13: "On the block: Fay — 6 votes" survived Fay's execution
+        // and stood for the rest of the day.
+        var state = day()
+        val fay = seat(state, "Fay")
+        state = DayRules.record(
+            state,
+            lookup,
+            Nomination(
+                day = state.cycle,
+                nominatorId = seat(state, "Ana"),
+                nomineeId = fay,
+                voterIds = state.alivePlayers.take(6).map { it.id },
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+        assertTrue(DayModel.stats(state, lookup).blockLine.startsWith("On the block"))
+
+        state = Execution.execute(state, lookup, fay)
+        val after = DayModel.stats(state, lookup).blockLine
+        assertFalse("the block is history: '$after'", after.startsWith("On the block"))
+        assertTrue("and the strip says what happened: '$after'", after.contains("the day is over"))
+    }
+
+    @Test
+    fun `an empty What was said is not ticked as done`() {
+        // Finding 22: a ✓ on an empty list reads as "done", not "nothing owed".
+        val state = day()
+        val fresh = DayModel.stages(state, lookup, null, emptyBriefing(), emptySet())
+            .first { it.stage == DayStage.SAID }
+        assertFalse("nothing has been said yet", fresh.complete)
+
+        val said = Ledger.statement(state, seat(state, "Bo"), Ledger.Sources.CLAIM, "I am the Chef")
+        val ticked = DayModel.stages(said, lookup, null, emptyBriefing(), emptySet())
+            .first { it.stage == DayStage.SAID }
+        assertTrue("one line recorded, nothing owed", ticked.complete)
     }
 
     // ------------------------------------------------------------------

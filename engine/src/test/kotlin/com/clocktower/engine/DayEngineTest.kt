@@ -274,6 +274,36 @@ class DayEngineTest {
     }
 
     @Test
+    fun `the Goblin question needs a Goblin in play, and never fires on an exile`() {
+        // Playtest C-2: it fired on every nomination of every Trouble Brewing
+        // game — a script with no Goblin — and on exiles, where the win cannot
+        // apply at all.
+        var plain = day1()
+        plain = assign(plain, 4L, "chef")
+        assertNull(
+            DayRules.checkNomination(plain, lookup, 1L, 4L).triggers.find { it.sourceId == "goblin" },
+            "no Goblin is in play",
+        )
+
+        var withGoblin = day1()
+        withGoblin = assign(withGoblin, 6L, "goblin")
+        withGoblin = assign(withGoblin, 4L, "chef")
+        assertNotNull(
+            DayRules.checkNomination(withGoblin, lookup, 1L, 4L)
+                .triggers.find { it.sourceId == "goblin" },
+            "with a Goblin in play the claim is worth asking about",
+        )
+
+        // An exile is not an execution, so the claim can win nothing.
+        var exile = withGoblin
+        exile = assign(exile, 5L, "beggar", traveller = true)
+        assertNull(
+            DayRules.checkNomination(exile, lookup, 1L, 5L).triggers.find { it.sourceId == "goblin" },
+            "on an exile it does not fire",
+        )
+    }
+
+    @Test
     fun `withdrawn nominations are recordable and consume both rights`() {
         var state = day1()
         state = DayRules.record(
@@ -384,10 +414,49 @@ class DayEngineTest {
     }
 
     @Test
+    fun `the Butler's Master is a standing fact of the day briefing`() {
+        // Playtest C-6: a living Butler with a placed Master read
+        // "Nothing constrains today" — the commonest day constraint on the
+        // base scripts was the one the briefing never mentioned.
+        var state = day1()
+        state = assign(state, 1L, "butler")
+        val butlerName = assertNotNull(state.player(1L)).name
+        val masterName = assertNotNull(state.player(2L)).name
+
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .none { it.sourceId == "butler" },
+            "with no Master token there is nothing to say yet",
+        )
+
+        state = token(state, 2L, "butler", "Master")
+        val fact = assertNotNull(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .find { it.sourceId == "butler" },
+            "the Butler's constraint is a standing fact",
+        )
+        assertTrue(butlerName in fact.text && masterName in fact.text, fact.text)
+        assertTrue("may only vote if" in fact.text, fact.text)
+
+        // A spent ghost vote ends it: they cannot vote at all any more.
+        state = Deaths.attempt(state, lookup, 1L, KillCause(DeathCause.STORYTELLER)).state
+        state = state.updatePlayer(1L) { it.copy(ghostVoteUsed = true) }
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .none { it.sourceId == "butler" },
+        )
+    }
+
+    @Test
     fun `a Zealot must vote with five or more alive`() {
         var state = day1(6)
         state = assign(state, 3L, "zealot")
         assertEquals(listOf(3L), DayRules.mustVote(state, lookup))
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .any { it.sourceId == "zealot" && "must vote" in it.text },
+            "and the briefing says so before nominations open",
+        )
         state = Deaths.attempt(state, lookup, 5L, KillCause(DeathCause.STORYTELLER)).state
         state = Deaths.attempt(state, lookup, 4L, KillCause(DeathCause.STORYTELLER)).state
         assertEquals(4, state.aliveCountWithTravellers)
@@ -395,7 +464,11 @@ class DayEngineTest {
     }
 
     @Test
-    fun `a sober Organ Grinder switches on secret voting and drops an illegal Butler vote`() {
+    fun `an illegal Butler hand never counts, secret voting or not`() {
+        // Playtest C-3: this used to be tallied on an ordinary day, so three
+        // legal hands plus the Butler read "about to die" at 4 of 4 when the
+        // legal total was 3 — SAFE. The wiki is unconditional: "you may only
+        // vote if they are voting too".
         var state = day1()
         state = assign(state, 6L, "organgrinder")
         state = assign(state, 1L, "butler")
@@ -405,12 +478,64 @@ class DayEngineTest {
         assertTrue(DayRules.butlerVotingIllegally(state, lookup, 1L, listOf(1L, 2L)))
         assertEquals(1, DayRules.tally(state, lookup, listOf(1L, 2L), isExile = false))
 
-        // Without the Organ Grinder the Butler's vote is tallied anyway.
+        // The same day with no Organ Grinder: still one, not two.
         var open = day1()
         open = assign(open, 1L, "butler")
         open = token(open, 4L, "butler", "Master")
         assertFalse(DayRules.secretVoting(open, lookup))
-        assertEquals(2, DayRules.tally(open, lookup, listOf(1L, 2L), isExile = false))
+        assertEquals(
+            1,
+            DayRules.tally(open, lookup, listOf(1L, 2L), isExile = false),
+            "the Butler's Master is not voting — the hand does not count",
+        )
+        assertEquals(listOf(2L), DayRules.countedVoters(open, lookup, listOf(1L, 2L), isExile = false))
+
+        // With the Master's hand up it counts, and so does the Master's.
+        assertEquals(3, DayRules.tally(open, lookup, listOf(1L, 2L, 4L), isExile = false))
+    }
+
+    @Test
+    fun `an ineligible hand can never move the tally`() {
+        // Playtest C-1 (P0): the vote chips for ineligible voters were dimmed
+        // and given a reason, then summed anyway.
+        var spent = day1()
+        spent = Deaths.attempt(spent, lookup, 2L, KillCause(DeathCause.STORYTELLER)).state
+        spent = spent.updatePlayer(2L) { it.copy(ghostVoteUsed = true) }
+        assertFalse(2L in DayRules.voteRules(spent, lookup, false).eligibleVoterIds)
+        assertEquals(
+            1,
+            DayRules.tally(spent, lookup, listOf(1L, 2L), isExile = false),
+            "a spent ghost vote adds nothing",
+        )
+
+        // A sober Voudon: only the Voudon and the dead may vote, and the
+        // threshold is 1 — the worst case in the finding, where one illegal
+        // living hand put a player on the block.
+        var voudon = day1()
+        voudon = assign(voudon, 7L, "voudon", traveller = true)
+        val rules = DayRules.voteRules(voudon, lookup, isExile = false)
+        assertEquals(1, rules.threshold)
+        assertEquals(0, DayRules.tally(voudon, lookup, listOf(1L), isExile = false))
+        assertEquals(1, DayRules.tally(voudon, lookup, listOf(7L), isExile = false))
+
+        // An exile is untouched: every hand counts once, abilities do not apply.
+        assertEquals(2, DayRules.tally(voudon, lookup, listOf(1L, 3L), isExile = true))
+    }
+
+    @Test
+    fun `an ineligible hand reaches neither the record nor the vote tokens`() {
+        var state = day1()
+        state = Deaths.attempt(state, lookup, 2L, KillCause(DeathCause.STORYTELLER)).state
+        state = state.updatePlayer(2L) { it.copy(ghostVoteUsed = true) }
+
+        state = DayRules.record(state, lookup, nomination(state, 0L, 3L, voters = listOf(1L, 2L)))
+        val recorded = assertNotNull(state.nominations.lastOrNull())
+        assertEquals(1, recorded.votes, "the spent ghost vote is not in the tally")
+        assertEquals(
+            listOf(1L, 2L),
+            recorded.voterIds,
+            "the raw hands stay on the record — only the tally drops them",
+        )
     }
 
     @Test
@@ -430,12 +555,12 @@ class DayEngineTest {
         )
         assertEquals(1, recorded.votes)
 
-        // Without the Organ Grinder both hands count, so record and tally agree there too.
+        // Without the Organ Grinder record and tally still agree — at one.
         var open = day1()
         open = assign(open, 1L, "butler")
         open = token(open, 4L, "butler", "Master")
         open = DayRules.record(open, lookup, nomination(open, 0L, 3L, voters = voters), force = true)
-        assertEquals(2, assertNotNull(open.nominations.lastOrNull()).votes)
+        assertEquals(1, assertNotNull(open.nominations.lastOrNull()).votes)
     }
 
     @Test
@@ -500,6 +625,51 @@ class DayEngineTest {
     // ==================================================================
     // Execution
     // ==================================================================
+
+    @Test
+    fun `the execution sheet can warn about the Saint before the button`() {
+        // Playtest C-5: the sheet showed only what might STOP the kill, so the
+        // one execution that ends the game for good read "Nothing stops it —
+        // they die." and the Saint advisory arrived after the death.
+        var state = day1()
+        state = assign(state, 4L, "saint")
+
+        val before = Execution.previewConsequences(state, lookup, 4L)
+        val saint = assertNotNull(
+            before.find { it.sourceId == "saint" },
+            "the Saint row is offered BEFORE the execution: ${before.map { it.sourceId }}",
+        )
+        assertTrue("EVIL WINS" in saint.headline, saint.headline)
+
+        // A Saint who would not die raises nothing: the preview reads the same
+        // kill funnel the button will run.
+        val safe = Effects.place(
+            state = state,
+            target = 4L,
+            kind = EffectKind.SURVIVES_EXECUTION,
+            sourceCharacterId = "devilsadvocate",
+            sourcePlayerId = 5L,
+            until = Until.DUSK,
+            label = "Survives Execution",
+        ).state
+        assertNull(
+            Execution.previewConsequences(safe, lookup, 4L).find { it.sourceId == "saint" },
+            "a Saint the Devil's Advocate saves loses nobody the game",
+        )
+
+        // And the rows are not only about the kill: a claimed Goblin is one.
+        var goblin = day1()
+        goblin = assign(goblin, 4L, "goblin")
+        goblin = DayRules.record(
+            goblin,
+            lookup,
+            nomination(goblin, 1L, 4L).copy(goblinClaim = true),
+        )
+        assertNotNull(
+            Execution.previewConsequences(goblin, lookup, 4L).find { it.sourceId == "goblin" },
+            "the claim they made before the votes is on the sheet that kills them",
+        )
+    }
 
     @Test
     fun `an execution that kills nobody is still an execution`() {

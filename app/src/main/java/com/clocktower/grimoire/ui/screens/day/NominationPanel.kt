@@ -67,31 +67,66 @@ import com.clocktower.grimoire.ui.theme.PoisonGreen
  * [Allow anyway] (finding 14: a dead Banshee, a Butcher's second nomination
  * and a Riot re-nomination are all legal somewhere).
  */
+@Suppress("LongParameterList")
 @Composable
 fun SeatRingPanel(
     viewModel: GameViewModel,
     state: GameState,
     nominatorId: Long?,
     nomineeId: Long?,
+    /** The storyteller has explicitly reopened a closed day. */
+    reopened: Boolean,
     onPickSeat: (Long) -> Unit,
     onSay: (Long) -> Unit,
+    onReopen: () -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
     val ring = remember(state, nominatorId, nomineeId) {
         NominationModel.ring(state, lookup, nominatorId, nomineeId)
     }
+    val closedReason = remember(state) { DayRules.nominationsClosedReason(state, lookup) }
+    // A closed day disables the ring instead of pretending to take a
+    // nomination it will drop on the floor (C-4). The reason is stated where
+    // the taps would have gone, and reopening is one deliberate tap.
+    val locked = NominationModel.ringLocked(closedReason, reopened)
     Column(Modifier.fillMaxWidth()) {
+        if (closedReason.isNotBlank()) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    closedReason,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                    modifier = Modifier.weight(1f),
+                )
+                if (locked) {
+                    TextButton(onClick = onReopen) { Text("Nominate anyway") }
+                }
+            }
+        }
         Text(
-            NominationModel.ringPrompt(
-                nominatorId,
-                nomineeId,
-                nominatorId?.let { state.player(it)?.name },
-            ),
+            if (locked) {
+                "Nominations are closed. Tap Nominate anyway to take one regardless."
+            } else {
+                NominationModel.ringPrompt(
+                    nominatorId,
+                    nomineeId,
+                    nominatorId?.let { state.player(it)?.name },
+                )
+            },
             style = MaterialTheme.typography.bodyMedium,
-            color = PaleGold,
+            color = if (locked) FadedInk else PaleGold,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
         )
-        SeatRing(ring = ring, onTap = onPickSeat, onLongPress = onSay)
+        SeatRing(
+            ring = ring,
+            enabled = !locked,
+            onTap = onPickSeat,
+            onLongPress = onSay,
+        )
     }
 }
 
@@ -114,19 +149,11 @@ fun NominationDetail(
     onForce: () -> Unit,
     onReset: () -> Unit,
 ) {
-    val lookup: (String) -> Character? = viewModel::characterById
-    if (DayRules.nominationsClosed(state, lookup)) {
-        Text(
-            DayRules.nominationsClosedReason(state, lookup),
-            style = MaterialTheme.typography.bodyMedium,
-            color = FadedInk,
-        )
+    val check = remember(state, nominatorId, nomineeId) {
+        viewModel.nominationCheck(state, nominatorId, nomineeId)
     }
 
     if (nominatorId != null || nomineeId != null) {
-        val check = remember(state, nominatorId, nomineeId) {
-            viewModel.nominationCheck(state, nominatorId, nomineeId)
-        }
         // Per chip tap — the NOMINATION slot's default pair is the last
         // RECORDED nomination, which is wrong for "the 1st time you are
         // nominated" (the Virgin). WP6 merger note.
@@ -151,8 +178,10 @@ fun NominationDetail(
             nominatorId = nominatorId,
             nomineeId = nomineeId,
             voters = voters,
+            blockers = check.blockers,
             force = force,
             onToggleVoter = onToggleVoter,
+            onForce = onForce,
             onReset = onReset,
         )
     }
@@ -166,18 +195,24 @@ fun NominationDetail(
 @Composable
 private fun SeatRing(
     ring: List<RingSeat>,
+    enabled: Boolean,
     onTap: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .height(RING_HEIGHT),
-    ) {
-        val width = maxWidth
-        val height = maxHeight
-        val seatWidth = NominationModel.seatWidthDp(ring.size, width.value).dp
-        for (seat in ring) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // The ring sizes ITSELF: the height it needs is the height that keeps
+        // two adjacent 48 dp hit targets apart at this table size, plus a clear
+        // strip under the lowest seat. A fixed 240 dp box put twelve seats
+        // 38 dp apart and let the list scroll up against the bottom row.
+        val widthDp = maxWidth.value
+        val maxRy = NominationModel.maxRadiusYFor(maxHeight.value)
+        val seatWidth = NominationModel.seatWidthDp(ring.size, widthDp, maxRy).dp
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(NominationModel.ringHeightDp(ring.size, widthDp, maxRy).dp),
+        ) {
+        for ((index, seat) in ring.withIndex()) {
             val tint = when (seat.pick) {
                 SeatPick.NOMINATOR -> AgedGold
                 SeatPick.NOMINEE -> EmberRed
@@ -187,13 +222,14 @@ private fun SeatRing(
                     FadedInk
                 }
             }
+            val (cx, cy) = NominationModel.seatCentreDp(index, ring.size, widthDp, maxRy)
             Box(
                 Modifier
                     .offset(
-                        x = width * seat.x - seatWidth / 2,
-                        y = height * seat.y - SEAT_HEIGHT / 2,
+                        x = cx.dp - seatWidth / 2,
+                        y = (cy - NominationModel.SEAT_HEIGHT_DP / 2f).dp,
                     )
-                    .size(width = seatWidth, height = SEAT_HEIGHT),
+                    .size(width = seatWidth, height = NominationModel.SEAT_HEIGHT_DP.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(
@@ -206,6 +242,7 @@ private fun SeatRing(
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
+                            enabled = enabled,
                             onClick = { onTap(seat.id) },
                             // Long-press a seat to record what they said (§C).
                             onLongClick = { onLongPress(seat.id) },
@@ -239,7 +276,7 @@ private fun SeatRing(
                                     SeatPick.NONE -> Unit
                                 }
                             },
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelMedium,
                             color = if (seat.allowed) FadedInk else FadedInk.copy(alpha = 0.7f),
                         )
                     }
@@ -262,6 +299,7 @@ private fun SeatRing(
             textAlign = TextAlign.Center,
             modifier = Modifier.align(Alignment.Center),
         )
+        }
     }
 }
 
@@ -308,35 +346,39 @@ fun NominationCheckCard(
             if (force && check.blockers.isNotEmpty()) {
                 Text(
                     "Allowed anyway — the storyteller always wins.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = PoisonGreen,
                 )
             }
             for (caution in check.cautions) {
                 Text(
                     caution,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = PaleGold,
                 )
             }
             for (trigger in check.triggers) {
                 TriggerCard(viewModel, trigger)
             }
-            // Anything the NOMINATION briefing adds beyond the raw triggers.
-            val extra = briefing.items.filter { item ->
-                check.triggers.none { it.headline == item.text }
-            }
+            // Anything the NOMINATION briefing adds beyond what is already on
+            // this card. Every reason used to be rendered twice — once as a
+            // card, once as a `·` bullet under it (finding 8) — because only
+            // the triggers were de-duplicated, never the blockers or cautions.
+            val said = (check.blockers + check.cautions + check.triggers.map { it.headline })
+                .map { it.trim() }
+                .toSet()
+            val extra = briefing.items.filterNot { it.text.trim() in said }
             for (item in extra) {
                 Text(
                     "• ${item.text}",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = FadedInk,
                 )
             }
             if (check.blockers.isEmpty() && check.cautions.isEmpty() && check.triggers.isEmpty()) {
                 Text(
                     "Nothing fires on this nomination.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = FadedInk,
                 )
             }
@@ -361,12 +403,12 @@ private fun TriggerCard(viewModel: GameViewModel, trigger: NominationTrigger) {
             color = tone,
         )
         if (trigger.detail.isNotBlank()) {
-            Text(trigger.detail, style = MaterialTheme.typography.bodySmall, color = FadedInk)
+            Text(trigger.detail, style = MaterialTheme.typography.bodyMedium, color = FadedInk)
         }
         if (trigger.impaired) {
             Text(
                 "The ability may not work — you decide anyway.",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = PoisonGreen,
             )
         }
@@ -408,8 +450,11 @@ private fun VotePanel(
     nominatorId: Long,
     nomineeId: Long,
     voters: Set<Long>,
+    /** Why the engine would refuse this nomination — empty when it would not. */
+    blockers: List<String>,
     force: Boolean,
     onToggleVoter: (Long) -> Unit,
+    onForce: () -> Unit,
     onReset: () -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
@@ -449,9 +494,19 @@ private fun VotePanel(
     Row(
         Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = { if (view.secret) peek = false },
-                onLongClick = { if (view.secret) peek = true },
+            // Hold-to-peek belongs to the Organ Grinder and nobody else: a
+            // full-width click target that did nothing on an ordinary day was
+            // the node `audit` caught overlapping the ring by 34 % once the
+            // list scrolled up against it (D-6).
+            .then(
+                if (view.secret) {
+                    Modifier.combinedClickable(
+                        onClick = { peek = false },
+                        onLongClick = { peek = true },
+                    )
+                } else {
+                    Modifier
+                },
             ),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom,
@@ -477,7 +532,7 @@ private fun VotePanel(
 
     Text(
         "Votes for ${view.nomineeName}, starting now — clockwise from their left.",
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         color = FadedInk,
     )
 
@@ -491,8 +546,12 @@ private fun VotePanel(
             val weight = view.weights[id]
             FilterChip(
                 selected = id in voters,
-                // An ineligible seat stays tappable: the hand DID go up, and
-                // the storyteller may still need it on the record.
+                // A seat the rules say may not vote does not toggle (C-1). The
+                // chip stays on the row with its ⊘ and its reason, because the
+                // hand DID go up and the storyteller has to see that it was
+                // noticed — but it can never reach the tally that decides who
+                // is on the block.
+                enabled = blocked == null,
                 onClick = { onToggleVoter(id) },
                 label = {
                     Text(
@@ -510,7 +569,7 @@ private fun VotePanel(
                     )
                 },
                 leadingIcon = if (blocked != null) {
-                    { Text("⊘", style = MaterialTheme.typography.labelSmall, color = FadedInk) }
+                    { Text("⊘", style = MaterialTheme.typography.labelMedium, color = FadedInk) }
                 } else {
                     null
                 },
@@ -518,26 +577,24 @@ private fun VotePanel(
         }
     }
 
-    for (id in orderedVoters) {
-        view.ineligible[id]?.let {
-            Text("⊘ $it", style = MaterialTheme.typography.bodySmall, color = FadedInk)
-        }
+    for (line in NominationModel.ineligibleLines(view)) {
+        Text("⊘ $line", style = MaterialTheme.typography.bodyMedium, color = FadedInk)
     }
     for ((_, reason) in view.uncounted) {
-        Text("! $reason", style = MaterialTheme.typography.bodySmall, color = PaleGold)
+        Text("! $reason", style = MaterialTheme.typography.bodyMedium, color = PaleGold)
     }
     for (id in view.mustVote) {
         if (id !in voters) {
             val name = state.player(id)?.name ?: "That seat"
             Text(
                 "! $name must vote for every nomination.",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = PaleGold,
             )
         }
     }
     for (reason in view.reasons) {
-        Text("· $reason", style = MaterialTheme.typography.bodySmall, color = FadedInk)
+        Text("· $reason", style = MaterialTheme.typography.bodyMedium, color = FadedInk)
     }
 
     if (!hidden) {
@@ -553,8 +610,24 @@ private fun VotePanel(
         )
     }
 
+    // `DayRules.record` refuses an illegal nomination and returns the state
+    // untouched, so a live Lock in on a closed day cleared the draft and wrote
+    // nothing at all — the storyteller believed the vote was on the record
+    // (C-4). The button now says it will not be recorded, and says why.
+    val refused = NominationModel.lockInRefused(blockers, force)
+    if (refused) {
+        Text(
+            "This will NOT be recorded: ${blockers.first()}",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = EmberRed,
+        )
+        TextButton(onClick = onForce) { Text("Record it anyway") }
+    }
+
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilledTonalButton(
+            enabled = !refused,
             modifier = Modifier.weight(1f),
             onClick = {
                 viewModel.nominate(
@@ -578,5 +651,3 @@ private fun VotePanel(
 
 /** 48 sp: readable at arm's length while counting hands (§F). */
 private const val TALLY_SP = 48f
-private val RING_HEIGHT = 240.dp
-private val SEAT_HEIGHT = 40.dp
