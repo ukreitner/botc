@@ -2,10 +2,15 @@ package com.clocktower.grimoire.ui.platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlinx.browser.document
+import kotlinx.coroutines.delay
 import org.w3c.dom.HTMLInputElement
 import org.w3c.files.FileReader
 import org.w3c.files.get
@@ -40,6 +45,11 @@ private fun vibrateJs(): Unit =
 
 private fun setBrightnessJs(level: Double): Unit =
     js("{ try { window.__setGrimoireBrightness && window.__setGrimoireBrightness(level); } catch (e) {} }")
+
+/** The shell's measured safe area — the same globals `Main.kt` reads. */
+private fun safeTopJs(): Double = js("(window.__safeTop || 0)")
+
+private fun safeBottomJs(): Double = js("(window.__safeBottom || 0)")
 
 private fun keyboardInsetJs(): Double =
     js(
@@ -97,6 +107,44 @@ fun rememberScreenBrightness(): (Float?) -> Unit = remember {
 /** Extra bottom inset the on-screen keyboard covers, in dp (iOS Safari). */
 @Composable
 fun keyboardInsetDp(): Float = keyboardInsetJs().toFloat()
+
+/**
+ * Safe-area insets that Compose does NOT know about on wasm, for the overlay
+ * layers (`Dialog`, `Popup`, `ModalBottomSheet`) that escape the app root's
+ * padding by being hosted at the scene root.
+ *
+ * These are the SAME numbers `Main.kt` pads the root with — `index.html`
+ * measures `env(safe-area-inset-*)` into `window.__safeTop` / `__safeBottom`
+ * once and everything reads them from there. Polled rather than remembered:
+ * rotating the phone moves the safe area, and an overlay may well be open
+ * while it happens.
+ */
+@Composable
+fun shellSafeTopDp(): Dp = pollInsetDp { safeTopJs() }
+
+/** The bottom half of [shellSafeTopDp] — the home indicator's strip. */
+@Composable
+fun shellSafeBottomDp(): Dp = pollInsetDp { safeBottomJs() }
+
+/**
+ * Reads one shell-measured inset and keeps reading it, writing state only when
+ * the value actually changes, so a still device costs no recompositions —
+ * the same discipline `Main.kt` uses for the root padding.
+ */
+@Composable
+private fun pollInsetDp(read: () -> Double): Dp {
+    var value by remember { mutableStateOf(read()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val next = read()
+            if (next != value) value = next
+            delay(INSET_POLL_MILLIS)
+        }
+    }
+    return value.dp
+}
+
+private const val INSET_POLL_MILLIS = 250L
 
 /** Opens a browser file picker and reads the chosen file as text. */
 @Composable

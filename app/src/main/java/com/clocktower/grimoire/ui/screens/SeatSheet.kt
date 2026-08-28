@@ -68,6 +68,7 @@ import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.components.StatusPip
 import com.clocktower.grimoire.ui.components.TokenCopies
 import com.clocktower.grimoire.ui.components.labelCopies
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.MarkerGrey
 import com.clocktower.grimoire.ui.theme.OnBlockGold
@@ -174,7 +175,7 @@ fun SeatSheet(
                     .imePadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
-                    .padding(bottom = 24.dp),
+                    .padding(bottom = overlayBottomPadding()),
             ) {
                 Text("Swap characters with…", style = MaterialTheme.typography.headlineSmall)
                 Text(
@@ -679,7 +680,7 @@ fun CharacterPicker(
             .fillMaxWidth()
             .imePadding()
             .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp),
+            .padding(bottom = overlayBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         item {
@@ -807,7 +808,7 @@ fun ReminderPicker(
             .fillMaxWidth()
             .imePadding()
             .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp),
+            .padding(bottom = overlayBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         item {

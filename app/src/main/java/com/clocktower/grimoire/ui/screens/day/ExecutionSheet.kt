@@ -29,6 +29,7 @@ import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameState
 import com.clocktower.engine.KillOutcome
 import com.clocktower.grimoire.ui.GameViewModel
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.FadedInk
@@ -106,7 +107,7 @@ private fun ExecutionSheetBody(
             .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp),
+            .padding(bottom = overlayBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
@@ -216,7 +217,7 @@ fun ExileSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(

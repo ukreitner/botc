@@ -42,6 +42,7 @@ import com.clocktower.engine.GameState
 import com.clocktower.engine.Ledger
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.platform.rememberDictation
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.FadedInk
 
@@ -135,7 +136,7 @@ private fun SaidSheetBody(
             .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp),
+            .padding(bottom = overlayBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(

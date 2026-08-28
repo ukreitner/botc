@@ -12,12 +12,17 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -186,11 +191,18 @@ fun FullScreenShow(
             usePlatformDefaultWidth = false,
         ),
     ) {
+        // Black edge to edge — under the notch and under the home indicator —
+        // but NOTHING readable or pressable goes there. The card used to draw
+        // its FLIP / HOLD TO CLOSE row at the physical bottom of the screen,
+        // where the phone's gesture strip covered all but a sliver of it and
+        // the storyteller could not close the card at all.
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            val safeBottom = overlaySafeBottom()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 96.dp)
+                    .windowInsetsPadding(WindowInsets.systemBars)
+                    .padding(top = overlaySafeTop(), bottom = bottomActionClearance(safeBottom))
                     .graphicsLayer { rotationZ = if (flipped) 180f else 0f },
                 contentAlignment = Alignment.Center,
             ) {
@@ -201,7 +213,10 @@ fun FullScreenShow(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 20.dp),
+                    // Bottom only: a side navigation bar in landscape must not
+                    // shift a row that is meant to stay centred.
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))
+                    .padding(bottom = bottomActionPadding(safeBottom)),
             ) {
                 FilledTonalButton(onClick = { flipped = !flipped }, modifier = Modifier.heightIn(min = 56.dp)) {
                     Text("⟳ FLIP", fontSize = 16.sp)
@@ -519,7 +534,7 @@ fun ShowToolSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {

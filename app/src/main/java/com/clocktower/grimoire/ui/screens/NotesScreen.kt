@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.clocktower.grimoire.ui.components.ZoomControls
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.components.rememberZoomState
 import com.clocktower.grimoire.ui.components.zoomGestures
 import com.clocktower.grimoire.ui.components.zoomTransform
@@ -449,7 +450,7 @@ private fun GeneralNotesSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Game notes", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
@@ -501,7 +502,7 @@ private fun ScriptRefSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
@@ -797,7 +798,7 @@ private fun NoteSeatSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
@@ -1069,7 +1070,7 @@ private fun ClaimMatrixSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             item {
@@ -1150,7 +1151,7 @@ private fun TimelineSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             item {
@@ -1225,7 +1226,7 @@ private fun MeSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = overlayBottomPadding()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {

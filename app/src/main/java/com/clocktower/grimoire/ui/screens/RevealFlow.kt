@@ -50,6 +50,7 @@ import com.clocktower.engine.RequirementKind
 import com.clocktower.engine.SetupRequirements
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.overlaySafeAreaPadding
 import com.clocktower.grimoire.ui.platform.KeepScreenOn
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
@@ -94,7 +95,15 @@ fun RevealFlow(
         onDismissRequest = onDone,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
     ) {
-        HandOutMode(viewModel = viewModel, state = state, onDone = onDone, seats = seats)
+        // A dialog is hosted ABOVE the shell's own inset padding, so the safe
+        // area is re-applied here rather than inside [HandOutMode] — which is
+        // also a first-class destination (SetupScreen), where the shell has
+        // already padded it and doing it again would double up.
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            Box(Modifier.fillMaxSize().overlaySafeAreaPadding()) {
+                HandOutMode(viewModel = viewModel, state = state, onDone = onDone, seats = seats)
+            }
+        }
     }
 }
 

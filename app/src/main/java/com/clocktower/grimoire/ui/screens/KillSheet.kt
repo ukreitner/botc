@@ -52,6 +52,7 @@ import com.clocktower.engine.Player
 import com.clocktower.engine.StatusEffects
 import com.clocktower.engine.Team
 import com.clocktower.grimoire.ui.GameViewModel
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.PoisonGreen
 import com.clocktower.grimoire.ui.theme.ShieldBlue
@@ -170,7 +171,7 @@ private fun KillSheetBody(
             .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
-            .padding(bottom = 24.dp),
+            .padding(bottom = overlayBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(

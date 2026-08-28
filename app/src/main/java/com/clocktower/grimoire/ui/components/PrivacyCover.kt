@@ -91,6 +91,10 @@ fun PrivacyCover(caption: String = "", onUnlock: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Column(
+                // The hold target stays edge to edge — the whole black screen
+                // is the control — but the ring and the caption stay clear of
+                // the notch and the home indicator like every other overlay.
+                modifier = Modifier.overlaySafeAreaPadding(),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
