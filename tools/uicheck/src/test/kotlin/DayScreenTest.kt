@@ -23,6 +23,7 @@ import com.clocktower.engine.Script
 import com.clocktower.engine.Seats
 import com.clocktower.engine.TriggerKind
 import com.clocktower.engine.Verdict
+import com.clocktower.engine.Voting
 import com.clocktower.grimoire.ui.components.TimerFormat
 import com.clocktower.grimoire.ui.components.TimerState
 import com.clocktower.grimoire.ui.screens.day.DayModel
@@ -534,6 +535,49 @@ class DayScreenTest {
         assertTrue("ghost votes are on the day tab: '${stats.detail}'", stats.detail.contains("ghost"))
         assertTrue(stats.detail.contains("alive"))
         assertEquals("Day ${state.cycle}", stats.headline)
+    }
+
+    /** A sober Voudon rewrites the vote, so it must rewrite the strip too. */
+    @Test
+    fun `the stat strip reads the engine's vote rules under a Voudon`() {
+        var state = day()
+        // Ana takes a traveller seat as the Voudon; Cai is dead with a ghost
+        // vote in hand — under a Voudon no ghost vote is ever spent.
+        state = GameActions.assignCharacter(state, seat(state, "Ana"), "voudon", isTraveller = true)
+        state = state.updatePlayer(seat(state, "Cai")) { it.copy(alive = false) }
+
+        val rules = DayRules.voteRules(state, lookup, isExile = false)
+        assertEquals("the engine says one vote is enough", 1, rules.threshold)
+        assertFalse(rules.spendsGhostVotes)
+
+        val stats = DayModel.stats(state, lookup)
+        assertTrue("the strip shows the engine's threshold: '${stats.detail}'", stats.detail.contains("1 to execute"))
+        assertFalse(
+            "no ghost-vote count when none is spent: '${stats.detail}'",
+            stats.detail.contains("ghost"),
+        )
+        assertTrue("and it says why: '${stats.voteNote}'", stats.voteNote.contains("Voudon"))
+        assertTrue("naming the one living voter: '${stats.voteNote}'", stats.voteNote.contains("Ana"))
+    }
+
+    @Test
+    fun `a poisoned Voudon leaves the stat strip on the ordinary threshold`() {
+        var state = day()
+        val ana = seat(state, "Ana")
+        state = GameActions.assignCharacter(state, ana, "voudon", isTraveller = true)
+        state = Effects.addReminder(state, ana, PlacedReminder("poisoner", "Poisoned", placedCycle = state.cycle))
+        state = state.updatePlayer(seat(state, "Cai")) { it.copy(alive = false) }
+
+        val ordinary = Voting.executionThreshold(state.aliveCountWithTravellers)
+        val stats = DayModel.stats(state, lookup)
+        assertEquals(
+            "a poisoned Voudon changes nothing",
+            ordinary,
+            DayRules.voteRules(state, lookup, isExile = false).threshold,
+        )
+        assertTrue("the strip agrees: '${stats.detail}'", stats.detail.contains("$ordinary to execute"))
+        assertTrue("and the ghost vote is countable again: '${stats.detail}'", stats.detail.contains("ghost"))
+        assertFalse("with no Voudon note: '${stats.voteNote}'", stats.voteNote.contains("Voudon"))
     }
 
     // ------------------------------------------------------------------
