@@ -325,7 +325,11 @@ data class NightPlan(
             key: StepKey,
             input: NightInput,
         ): GameState {
-            val step = build(state, lookup).step(key) ?: return toggleDone(state, key.token)
+            // No such row tonight: the plan has moved on (a prompt row that was
+            // discharged, an insertion that has been consumed). Resolving is
+            // still "this step is finished", never "un-finish it" — the primary
+            // button is idempotent (fix wave 1, Fix-B).
+            val step = build(state, lookup).step(key) ?: return markDone(state, key.token)
             val ctx = PlanContext(state, lookup)
             val nightCtx = ctx.nightContext(step)
             val rule = CharacterRules.of(step.abilityId, lookup(step.abilityId))
@@ -398,7 +402,7 @@ data class NightPlan(
                 next = recordMalfunction(next, step, holderId)
             }
             next = discharge(next, step)
-            next = toggleDone(next, step.key.token, forceDone = true)
+            next = markDone(next, step.key.token)
             return Effects.reconcile(next, lookup)
         }
 
@@ -482,7 +486,28 @@ data class NightPlan(
             return nightRule.infoId != ""
         }
 
+        /**
+         * Un-ticks a ticked row and ticks an un-ticked one.
+         *
+         * This is the storyteller CORRECTING themselves — the "undo this step,
+         * put it back on the sheet" affordance in the card's drawer and the
+         * collapsed list. It is never what a primary button does: see
+         * [markDone].
+         */
         fun toggleDone(state: GameState, token: String): GameState = toggleDone(state, token, false)
+
+        /**
+         * Ticks a row and leaves a ticked row ticked.
+         *
+         * Every "do it" path is idempotent (playtest fix wave 1, Fix-B): a
+         * storyteller who presses the primary twice — on a slow frame, on a row
+         * whose card is still open, on a step the plan has since dropped
+         * (a discharged prompt row, a consumed insertion) — must not silently
+         * put the step back on the sheet. Before this, [resolve]'s own fallback
+         * for "this key is no longer in the plan" called the TOGGLE, so pressing
+         * the primary again un-ticked the very row it had just finished.
+         */
+        fun markDone(state: GameState, token: String): GameState = toggleDone(state, token, true)
 
         private fun toggleDone(state: GameState, token: String, forceDone: Boolean): GameState =
             state.copy(

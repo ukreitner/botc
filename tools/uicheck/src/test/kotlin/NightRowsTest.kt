@@ -310,6 +310,38 @@ class NightRowsTest {
     }
 
     @Test
+    fun `only a done row offers the undo, and it is the only un-tick in the night UI`() {
+        val poisoner = step(ability = "a", action = choose())
+        val teller = step(ability = "b", action = choose())
+        val gated = step(ability = "c", gate = StepGate.Skip("dead — no ability"))
+        val plan = NightPlan(cycle = 2, isFirstNight = false, steps = listOf(poisoner, teller, gated))
+        val rows = rowViews(
+            plan = plan,
+            done = setOf(poisoner.key.token),
+            activeToken = teller.key.token,
+            forced = emptySet(),
+            holderNames = { "Gus" },
+            results = { "" },
+        )
+        assertTrue("a ticked row can be put back on the sheet", rows[0].undo)
+        assertFalse("nothing to undo on the open card", rows[1].undo)
+        assertFalse("the engine auto-ticked it; [Run anyway] is its control", rows[2].undo)
+        assertTrue(rows[2].runAnyway)
+
+        // …and the card itself no longer carries an un-tick: pressing something
+        // on the card that is DOING the step must never undo it (Fix-B).
+        val card = File(
+            appScreens(),
+            "night/NightCard.kt",
+        )
+        assertTrue("NightCard.kt not found at ${card.absolutePath}", card.isFile)
+        val code = card.readText().lines()
+            .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+            .joinToString("\n")
+        assertFalse("NightCard still un-ticks a step", code.contains("toggleNightStep"))
+    }
+
+    @Test
     fun `the ask summary reads in the storyteller's words`() {
         assertEquals("1 pick", askSummary(choose()))
         assertEquals("yes / no", askSummary(YesNo("s", "", "Yes", "No")))
@@ -535,16 +567,31 @@ class NightRowsTest {
 
     /** `NightScreen.kt` plus the whole `ui/screens/night/` package. */
     private fun nightSources(): List<File> {
-        val app = File(repoRoot(), "app/src/main/java/com/clocktower/grimoire/ui/screens")
-        return (File(app, "night").listFiles()?.toList().orEmpty() + File(app, "NightScreen.kt"))
+        val app = appScreens()
+        val files = (File(app, "night").listFiles()?.toList().orEmpty() + File(app, "NightScreen.kt"))
             .filter { it.isFile && it.extension == "kt" }
+        // A scan that found nothing is a green test that checks nothing.
+        assertTrue("no night sources found under ${app.absolutePath}", files.size >= 5)
+        return files
     }
 
-    /** Walks up from the working directory to the repository root. */
-    private fun repoRoot(): File {
+    /**
+     * `app/src/main/java/.../ui/screens`, found by walking up from the working
+     * directory.
+     *
+     * This project nests a second `settings.gradle.kts` under `tools/uicheck`,
+     * which is where Gradle runs these tests from — so "walk up to the first
+     * settings.gradle.kts" stopped at `tools/uicheck` and every source-scanning
+     * check here was silently reading an empty file list.
+     */
+    private fun appScreens(): File {
+        val suffix = "app/src/main/java/com/clocktower/grimoire/ui/screens"
         var dir: File? = File(".").absoluteFile
-        while (dir != null && !File(dir, "settings.gradle.kts").isFile) dir = dir.parentFile
-        return requireNotNull(dir) { "repository root not found from ${File(".").absolutePath}" }
+        while (dir != null && !File(dir, suffix).isDirectory) dir = dir.parentFile
+        return File(
+            requireNotNull(dir) { "app sources not found from ${File(".").absolutePath}" },
+            suffix,
+        )
     }
 
     // ---- the night screen names no character ------------------------------

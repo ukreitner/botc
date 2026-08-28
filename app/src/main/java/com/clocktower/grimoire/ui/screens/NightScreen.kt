@@ -210,6 +210,10 @@ fun NightScreen(
                             forced = forced + row.token
                             openRow = openRowKey(state.cycle, row.token)
                         },
+                        onUndo = {
+                            viewModel.toggleNightStep(step.key)
+                            openRow = openRowKey(state.cycle, row.token)
+                        },
                     )
                 }
             }
@@ -321,7 +325,12 @@ private fun fateOf(state: GameState, playerId: Long): String {
 
 /** One line of the collapsed sheet. Tapping it opens that step's card. */
 @Composable
-private fun NightRowLine(row: RowView, onOpen: () -> Unit, onRunAnyway: () -> Unit) {
+private fun NightRowLine(
+    row: RowView,
+    onOpen: () -> Unit,
+    onRunAnyway: () -> Unit,
+    onUndo: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -370,6 +379,22 @@ private fun NightRowLine(row: RowView, onOpen: () -> Unit, onRunAnyway: () -> Un
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
+            // The ONE way to un-tick a step. Every primary is idempotent, so
+            // correcting yourself is a deliberate, separate act and it lives
+            // here, on the collapsed line (fix wave 1, Fix-B).
+            if (row.undo) {
+                Text(
+                    text = "[Undo]",
+                    fontSize = NIGHT_MIN_SP.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AgedGold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onUndo)
+                        .heightIn(min = 44.dp)
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                )
+            }
         }
         if (row.mark == RowMark.SKIPPED) {
             Row(verticalAlignment = Alignment.CenterVertically) {

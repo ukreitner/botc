@@ -716,14 +716,11 @@ private fun SecondaryDrawer(
             }
         }
         TokenPlacer(viewModel, state, step)
-        if (step.key.token in state.nightStepsDone) {
-            NightChip(
-                label = "undo this step — put it back on the sheet",
-                tone = Tone.MUTED,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { viewModel.toggleNightStep(step.key) },
-            )
-        }
+        // No un-tick here. Un-ticking is the storyteller CORRECTING themselves,
+        // never a consequence of pressing something on the card that is doing
+        // the step; it lives on the collapsed line as `[Undo]`, next to
+        // `[Run anyway]` (fix wave 1, Fix-B).
+        //
         // The generic run-book. A marker row's own words are its `prompt` and
         // are already on the card, so this no longer prints them twice.
         val guide = NightGuide.forStep(step.abilityId, step.style)?.instructions.orEmpty()

@@ -94,6 +94,19 @@ data class RowView(
     val reason: String,
     /** True when the row offers `[Run anyway]`. */
     val runAnyway: Boolean,
+    /**
+     * True when the row offers `[Undo]` — the ONE place a ticked step can be put
+     * back on the sheet.
+     *
+     * Every "do it" control is idempotent (fix wave 1, Fix-B): pressing a
+     * primary twice must never un-tick the row it just finished. Correcting
+     * yourself is a different act from doing the step, so it has a control of
+     * its own, on the collapsed line, next to `[Run anyway]`.
+     *
+     * A `SKIPPED` row is auto-ticked by the engine, not by the storyteller, so
+     * there is nothing to undo — it offers `[Run anyway]` instead.
+     */
+    val undo: Boolean = false,
 )
 
 /** A gated row's badge, above the instructions. Null when the step simply fires. */
@@ -194,6 +207,7 @@ fun rowViews(
         tone = rowTone(mark, step.gate),
         reason = (step.gate as? StepGate.Skip)?.reason.orEmpty(),
         runAnyway = mark == RowMark.SKIPPED,
+        undo = mark == RowMark.DONE,
     )
 }
 
