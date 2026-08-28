@@ -64,6 +64,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.clocktower.engine.BriefingItem
+import com.clocktower.engine.Briefings
 import com.clocktower.engine.Effects
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Phase
@@ -136,6 +138,50 @@ fun GameShell(
     // Phase logic lives in PhaseFlow.kt (WP0 extraction; WP6 owns it next).
     val onPhaseButton: () -> Unit = {
         requestPhaseAdvance(viewModel, state, phaseGuards)?.let { tab = it }
+    }
+
+    // One-tap follow-through on a briefing line (WP6's `actionId` prefixes).
+    // The navigation half can only happen here — the shell owns the tabs and
+    // the seat sheet — and it closes the card first, because a seat sheet
+    // underneath a briefing dialog would be invisible. Re-tapping the phase
+    // button brings the card straight back: nothing is spent by leaving it.
+    // The engine half stays with the engine, and the line is ticked in place.
+    val onBriefingItem: (BriefingItem) -> Boolean = { item ->
+        val action = item.actionId
+        when {
+            action.startsWith(Briefings.ACTION_OPEN_SEAT) -> {
+                val seatId = item.playerId
+                    ?: action.removePrefix(Briefings.ACTION_OPEN_SEAT).toLongOrNull()
+                if (seatId != null) {
+                    phaseGuards.clear()
+                    openSeat = seatId
+                }
+                false
+            }
+
+            // The plan already carries the inserted FIRST re-run step; the
+            // night sheet is where it is ticked off.
+            action.startsWith(Briefings.ACTION_RERUN_FIRST_NIGHT) -> {
+                phaseGuards.clear()
+                tab = GameTab.NIGHT
+                false
+            }
+
+            // The Day tab renders the same item with a working composer beside
+            // it (its DAWN card's record action); the shell only has to land
+            // the storyteller there.
+            action.startsWith(Briefings.ACTION_RECORD) -> {
+                phaseGuards.clear()
+                tab = GameTab.DAY
+                false
+            }
+
+            // mark-announced:, resolve-prompt: — and execute:, which the dusk
+            // sheet's own primary button performs.
+            action.isNotBlank() -> viewModel.resolveBriefingItem(item)
+
+            else -> false
+        }
     }
 
     // The scrim lives OUTSIDE the Scaffold so it covers the top bar and the
@@ -296,7 +342,14 @@ fun GameShell(
                         // (ux/night-screen §F): "OPEN THE DAY →".
                         onDawn = onPhaseButton,
                     )
-                    GameTab.DAY -> DayScreen(viewModel, state)
+                    GameTab.DAY -> DayScreen(
+                        viewModel = viewModel,
+                        state = state,
+                        // The Day tab hands the close of day back to the
+                        // shell's dusk sheet rather than duplicating it.
+                        onDusk = onPhaseButton,
+                        onOpenSeat = { openSeat = it },
+                    )
                     // WP11: passing the live state marks what is in play and
                     // in which seat on the Script tab.
                     GameTab.REFERENCE -> ReferenceScreen(viewModel, state.script, state)
@@ -415,7 +468,7 @@ fun GameShell(
             onDismiss = { revealGoodWins = null },
         )
     }
-    PhaseGuardDialogs(viewModel, state, phaseGuards) { tab = it }
+    PhaseGuardDialogs(viewModel, state, phaseGuards, onItem = onBriefingItem) { tab = it }
     activeCard?.let { card ->
         FullScreenShow(
             card = card,

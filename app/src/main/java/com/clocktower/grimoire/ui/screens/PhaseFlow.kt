@@ -1,8 +1,10 @@
 package com.clocktower.grimoire.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -151,6 +153,14 @@ class PhaseGuards {
     /** Someone is on the block and has not been executed. */
     var onBlockId by mutableStateOf<Long?>(null)
 
+    /**
+     * Keys of the briefing items already acted on from the open sheet. The
+     * briefing itself is a frozen snapshot, so a line whose obligation the tap
+     * just retired would otherwise look untouched: these are ticked and go
+     * quiet instead.
+     */
+    var actedKeys by mutableStateOf(setOf<String>())
+
     internal fun clear() {
         setupIssues = emptyList()
         unfinishedNightSteps = emptyList()
@@ -158,6 +168,7 @@ class PhaseGuards {
         dusk = null
         duskAdvisories = emptyList()
         onBlockId = null
+        actedKeys = emptySet()
     }
 }
 
@@ -213,14 +224,27 @@ internal fun requestPhaseAdvance(
 /** An accidental double tap must not skip a whole phase. */
 private const val DEBOUNCE_MS = 800L
 
-/** The guard dialogs and the two read-aloud briefing sheets. */
+/**
+ * The guard dialogs and the two read-aloud briefing sheets.
+ *
+ * [onItem] is the one-tap follow-through on a briefing line's `actionId`
+ * (`open-seat:7`, `record:gossip`, …). The shell owns it because half the
+ * prefixes are navigation — a seat sheet, a tab — which only the shell can
+ * perform; it returns true when the item was consumed, so the line can be
+ * ticked off here. Defaulted so a caller that wants read-only cards needs no
+ * change.
+ */
 @Composable
 internal fun PhaseGuardDialogs(
     viewModel: GameViewModel,
     state: GameState,
     guards: PhaseGuards,
+    onItem: (BriefingItem) -> Boolean = { false },
     onTab: (GameTab) -> Unit,
 ) {
+    val handleItem: (BriefingItem) -> Unit = { item ->
+        if (onItem(item)) guards.actedKeys = guards.actedKeys + item.key
+    }
     if (guards.setupIssues.isNotEmpty()) {
         AlertDialog(
             onDismissRequest = { guards.setupIssues = emptyList() },
@@ -319,6 +343,8 @@ internal fun PhaseGuardDialogs(
                 onTab(GameTab.DAY)
             },
             onDismiss = { guards.dawn = null },
+            acted = guards.actedKeys,
+            onItem = handleItem,
         )
     }
 
@@ -354,6 +380,8 @@ internal fun PhaseGuardDialogs(
                 viewModel.advancePhase()
                 onTab(GameTab.NIGHT)
             },
+            acted = guards.actedKeys,
+            onItem = handleItem,
         )
     }
 }
@@ -370,6 +398,9 @@ private fun blockingNominationIndex(state: GameState, playerId: Long): Int? =
 /**
  * The read-aloud card of ARCHITECTURE §3.2: ANNOUNCE lines first, PRIVATE
  * below, SWEPT and TODO_ASK under that, and one primary button.
+ *
+ * A line that carries an `actionId` is tappable: [onItem] performs it. Lines
+ * whose key is in [acted] are already done and read as ticked.
  */
 @Composable
 @Suppress("LongParameterList")
@@ -382,6 +413,8 @@ private fun BriefingSheet(
     advisories: List<WinCheck.Advisory> = emptyList(),
     secondaryLabel: String? = null,
     onSecondary: () -> Unit = {},
+    acted: Set<String> = emptySet(),
+    onItem: (BriefingItem) -> Unit = {},
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -413,15 +446,32 @@ private fun BriefingSheet(
                         )
                     }
                     items(lines, key = { it.key }) { line ->
+                        val done = line.key in acted
+                        val actionable = line.actionId.isNotBlank() && !done
                         Text(
-                            "• ${line.text}",
+                            text = if (done) "✓ ${line.text}" else "• ${line.text}",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (line.severity == BriefingSeverity.ALERT) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
+                            color = when {
+                                done -> MaterialTheme.colorScheme.onSurfaceVariant
+                                line.severity == BriefingSeverity.ALERT ->
+                                    MaterialTheme.colorScheme.error
+                                actionable -> MaterialTheme.colorScheme.primary
+                                else -> MaterialTheme.colorScheme.onSurface
                             },
-                            modifier = Modifier.padding(vertical = 2.dp),
+                            // 44 dp of height: a briefing line is tapped in a
+                            // dark room, standing up, holding a grimoire.
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (actionable) {
+                                        Modifier
+                                            .heightIn(min = 44.dp)
+                                            .clickable { onItem(line) }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .padding(vertical = 2.dp),
                         )
                     }
                 }
