@@ -201,9 +201,10 @@ object Identity {
             }
         }
 
-        if (state.floatingGrants.isNotEmpty()) {
+        val floating = state.floatingGrants + boffinGrant(state)
+        if (floating.isNotEmpty()) {
             val demonSeatId = soleAliveDemonSeatId(state, lookup)
-            for (floating in state.floatingGrants) {
+            for (floating in floating) {
                 val holderId = when (floating.holder) {
                     GrantHolder.ALIVE_DEMON -> demonSeatId
                     // The Storyteller is not a seat — NightPlan renders it seatless.
@@ -221,6 +222,40 @@ object Identity {
         }
         return grants
     }
+
+    /**
+     * The Boffin's gift, DERIVED from `Decisions.BOFFIN_GRANT` (WP7-EXP-M's open
+     * P0): "the Demon (even if drunk or poisoned) has a not-in-play good
+     * character's ability". The setup decision is the whole record — nothing is
+     * stored twice — and the grant lasts while a Boffin seat exists, alive or
+     * dead, because the card ties it to the Boffin, not to their ability.
+     *
+     * A dead Boffin ends it: `Deaths` already raises the "the Demon loses the
+     * granted ability" prompt, and this stops emitting the row the moment the
+     * storyteller retires the seat. The wiki keeps the gift while the Boffin
+     * merely sleeps, which is why the check is "a Boffin is seated", not "alive".
+     */
+    private fun boffinGrant(state: GameState): List<FloatingGrant> {
+        val ability = state.decisions[Decisions.BOFFIN_GRANT]
+            ?.takeIf { it.isNotBlank() }
+            ?.let(Character::normalizeId)
+            ?: return emptyList()
+        val seated = state.seats.any {
+            it.characterId?.let(Character::normalizeId) == BOFFIN
+        }
+        if (!seated) return emptyList()
+        return listOf(
+            FloatingGrant(
+                abilityId = ability,
+                sourceId = BOFFIN,
+                holder = GrantHolder.ALIVE_DEMON,
+                // "even if drunk or poisoned" — the card's own words.
+                worksWhileImpaired = true,
+            ),
+        )
+    }
+
+    private const val BOFFIN = "boffin"
 
     /** The character the Cannibal currently has, from the seat carrying the Lunch token. */
     private fun cannibalLunchAbility(state: GameState): String? {

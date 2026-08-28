@@ -232,11 +232,11 @@ private fun angel() = CharacterRule(
         DeathTrigger(
             // "Even if dead" by construction: the Angel has no seat and no ability
             // to lose, so no `Status.hasAbility` gate (lead D35 exception).
-            gate = { state, event, _ ->
+            gate = { state, _, event, _ ->
                 fabledActive(state, "angel") &&
                     seatsHolding(state, "angel", "Protected").any { it.id == event.playerId }
             },
-            produce = { state, event, _ ->
+            produce = { state, _, event, _ ->
                 val victim = state.player(event.playerId)?.name ?: "The protected player"
                 val suggested = if (event.cause == DeathCause.EXECUTION) {
                     state.executions.lastOrNull { it.day == event.day }?.nominatorId
@@ -1070,12 +1070,12 @@ private fun hindu() = CharacterRule(
     id = "hindu",
     onDeath = listOf(
         DeathTrigger(
-            gate = { state, event, _ ->
+            gate = { state, _, event, _ ->
                 fabledActive(state, "hindu") &&
                     state.player(event.playerId)?.isTraveller == false &&
                     reincarnationsSoFar(state) < 4
             },
-            produce = { state, event, _ ->
+            produce = { state, _, event, _ ->
                 val victim = state.player(event.playerId)?.name ?: "They"
                 TriggerResult(
                     prompts = listOf(

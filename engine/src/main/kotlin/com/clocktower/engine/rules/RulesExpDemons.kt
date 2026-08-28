@@ -623,8 +623,8 @@ private fun lleech() = CharacterRule(
         // The host died while a Mastermind lives and it was an execution: the
         // Lleech lives, but loses its ability (jinx).
         DeathTrigger(
-            gate = { state, event, holder -> hostChainFires(state, event, holder) && mastermindJinx(state, event) },
-            produce = { state, _, holder ->
+            gate = { state, _, event, holder -> hostChainFires(state, event, holder) && mastermindJinx(state, event) },
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     prompts = listOf(
                         obligation(
@@ -656,8 +656,8 @@ private fun lleech() = CharacterRule(
         ),
         // The ordinary chain: the host is dead, so the Lleech dies and good wins.
         DeathTrigger(
-            gate = { state, event, holder -> hostChainFires(state, event, holder) && !mastermindJinx(state, event) },
-            produce = { state, event, holder ->
+            gate = { state, _, event, holder -> hostChainFires(state, event, holder) && !mastermindJinx(state, event) },
+            produce = { state, _, event, holder ->
                 val host = state.player(event.playerId)?.name ?: "the host"
                 TriggerResult(
                     prompts = listOf(
@@ -674,11 +674,11 @@ private fun lleech() = CharacterRule(
         ),
         // An impaired Lleech has no life-link at all: it simply survives.
         DeathTrigger(
-            gate = { state, event, holder ->
+            gate = { state, _, event, holder ->
                 isThisLleech(holder) && holder.alive && event.playerId == hostOf(state) &&
                     impairedNow(state, holder.id)
             },
-            produce = { state, _, holder ->
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     prompts = listOf(
                         obligation(

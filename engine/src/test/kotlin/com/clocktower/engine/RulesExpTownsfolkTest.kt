@@ -5,6 +5,7 @@ import com.clocktower.engine.rules.MISSING_INFO_IDS
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -345,6 +346,26 @@ class RulesExpTownsfolkTest {
         )
     }
 
+    @Test
+    fun `the Balloonist cannot be shown the same character type two nights running`() {
+        // Given a Balloonist shown the Poisoner (a MINION) on night 1,
+        var state = game("balloonist", "imp", "poisoner", "baron", "chef", "mayor")
+        state = run(state, "balloonist", NightInput(playerIds = listOf(2L)))
+        state = atNight(state, 2)
+
+        // W7E: the constraint is on the picker AND enforced at resolve time.
+        val choose = assertIs<ChoosePlayers>(assertNotNull(step(state, "balloonist")).action)
+        assertTrue(TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT in choose.constraints)
+
+        // Then another MINION is refused…
+        val repeat = run(state, "balloonist", NightInput(playerIds = listOf(3L)))
+        assertFalse(has(repeat, 3L, "balloonist", "Know"), "the Baron is a Minion too")
+
+        // …and a Townsfolk is not.
+        val fresh = run(state, "balloonist", NightInput(playerIds = listOf(4L)))
+        assertTrue(has(fresh, 4L, "balloonist", "Know"))
+    }
+
     // ==================================================================
     // banshee
     // ==================================================================
@@ -467,12 +488,25 @@ class RulesExpTownsfolkTest {
         // Given a living Cult Leader
         var state = game("cultleader", "imp", "poisoner", "chef", "mayor")
 
-        // Then both nights offer the ST the OUTCOME, not a target
+        // Then both nights offer the ST the OUTCOME, not a target. W7E made it a
+        // three-way [Options] — "no change" is a real answer and wakes nobody.
         for (night in listOf(1, 2)) {
             val row = assertNotNull(step(atNight(state, night), "cultleader"), "night $night")
             assertEquals(StepGate.Fire, row.gate)
-            assertTrue(row.action is YesNo, "the storyteller picks the outcome: ${row.action}")
+            val options = assertIs<Options>(row.action).options
+            assertEquals(listOf("none", "evil", "good"), options.map { it.id })
         }
+
+        // When the storyteller says they join the evil neighbour…
+        val flipped = run(atNight(state, 2), "cultleader", NightInput(optionId = "evil"))
+        // …the alignment REALLY changes, and it is not a character change.
+        assertTrue(assertNotNull(flipped.player(0L)).isEvil(lookup))
+        assertEquals("cultleader", assertNotNull(flipped.player(0L)).characterId)
+        assertTrue(flipped.identityLog.none { it.playerId == 0L })
+
+        // "No change" changes nothing.
+        val same = run(atNight(state, 2), "cultleader", NightInput(optionId = "none"))
+        assertFalse(assertNotNull(same.player(0L)).isEvil(lookup))
 
         // When the Cult Leader dies
         state = kill(atNight(state, 2), 0L, DeathCause.DEMON_KILL, "imp", 1L)

@@ -309,16 +309,17 @@ class RulesTravellersTest {
         assertTrue(DayRules.hasToken(state, seat, "apprentice", "Is The Apprentice"))
         assertEquals("apprentice", state.player(seat)?.characterId, "they do NOT become the character")
         assertTrue(assertNotNull(state.player(seat)).isTraveller)
-        assertTrue(
-            state.prompts.any { it.sourceId == "apprentice" && it.subjectPlayerId == seat },
-            "the grant is raised as an obligation",
-        )
+        // W7E: the grant is REAL now — `NightEffect.GrantAbility` writes it, so
+        // the row no longer has to ask the storyteller to add it by hand.
+        val grant = assertNotNull(state.player(seat)).grants.single()
+        assertEquals("washerwoman", grant.abilityId)
+        assertEquals("apprentice", grant.sourceId)
 
-        // Once the grant exists the Apprentice's own row is gone and the granted one appears.
-        state = state.updatePlayer(seat) {
-            it.copy(grants = listOf(AbilityGrant("washerwoman", "apprentice", GrantMode.REPLACE)))
-        }
-        assertNull(step(state, "apprentice"), "never re-emitted after the grant")
+        // And the Apprentice's own row is auto-ticked from now on, while the
+        // granted one appears. The grant is ADD, not REPLACE: the Apprentice has
+        // no ability of its own to displace, so the row stays and says why.
+        val again = assertNotNull(step(state, "apprentice"))
+        assertTrue(again.gate is StepGate.Skip, "spent: ${again.gate}")
         val washerwoman = assertNotNull(step(state, "washerwoman"), "the granted ability wakes")
         assertEquals(seat, washerwoman.holderId)
     }

@@ -302,4 +302,5 @@ class NightActionTest {
         val lie = assertNotNull(chef.cards.firstOrNull { !it.truthful })
         assertTrue(lie.label.startsWith("LIE"), lie.label)
     }
+
 }

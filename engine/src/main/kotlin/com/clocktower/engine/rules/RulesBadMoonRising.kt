@@ -458,6 +458,15 @@ private fun gossip() = CharacterRule(
                     NightEffect.Attack(on = Ref.Target, cause = DeathCause.GOOD_ABILITY),
                     NightEffect.PlaceToken("gossip", "Dead", Ref.Target),
                 ),
+                // W7E: the statement is CONSUMED once it has been acted on, so
+                // yesterday's gossip is never offered again on a later night.
+                // `gossipStatement` already filters on `resolvedCycle == null`.
+                onResolve = listOfNotNull(
+                    gossipStatement(ctx.state)?.let { NightEffect.MarkConsumed(it.id) },
+                ),
+                onNone = listOfNotNull(
+                    gossipStatement(ctx.state)?.let { NightEffect.MarkConsumed(it.id) },
+                ),
             )
         },
     ),
@@ -731,12 +740,12 @@ private fun moonchild() = CharacterRule(
     // death) or immediately (a day death), and chooses publicly, right then.
     onDeath = listOf(
         DeathTrigger(
-            gate = { state, event, holder ->
+            gate = { state, _, event, holder ->
                 event.playerId == holder.id &&
                     !event.registeredOnly &&
                     moonchildChoice(state, holder.id) == null
             },
-            produce = { _, event, holder ->
+            produce = { _, _, event, holder ->
                 TriggerResult(
                     prompts = listOf(
                         Prompt(
@@ -854,6 +863,10 @@ private fun devilsAdvocate(): CharacterRule {
                     TargetConstraint.ALIVE,
                     TargetConstraint.SELF_ALLOWED,
                     TargetConstraint.DIFFERENT_FROM_LAST_NIGHT,
+                    // W7E: "an ALIVE player". A Zombuul's first death is stored
+                    // dead and REGISTERS dead while the seat is still in the
+                    // game, and `ALIVE` alone lets `isTrulyAlive` back in.
+                    TargetConstraint.NOT_REGISTERS_DEAD,
                 ),
                 sort = TargetSort.ALIVE_FIRST,
                 allowNone = true,

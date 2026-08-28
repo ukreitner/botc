@@ -1066,6 +1066,17 @@ data class NightPlan(
                         targetId !in Memory.everChosen(state, step.abilityId, holderId)
                     TargetConstraint.NEIGHBOUR_OF_SOURCE ->
                         holderId == null || targetId in state.seatNeighbours(holderId).map { it.id }
+                    // A Zombuul's first death REGISTERS dead while the seat is
+                    // still in the game, so this is stricter than ALIVE.
+                    TargetConstraint.NOT_REGISTERS_DEAD -> target.alive
+                    TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT -> {
+                        val last = Memory.lastChoice(state, step.abilityId, holderId)
+                            ?.targetIds
+                            ?.mapNotNull { state.player(it)?.characterId?.let(lookup)?.team }
+                            ?.toSet()
+                            .orEmpty()
+                        team == null || team !in last
+                    }
                 }
             }
         }
@@ -1136,6 +1147,19 @@ data class NightPlan(
                     }
                 }
 
+                is Options -> {
+                    scope.current = targets.firstOrNull()
+                    // An unrecognised id applies `onNone`, never a branch picked
+                    // by position: the storyteller's tap is the only authority.
+                    val chosen = action.options.firstOrNull { it.id == input.optionId }
+                    next = applyEffects(
+                        next,
+                        lookup,
+                        chosen?.effects ?: action.onNone,
+                        scope,
+                    )
+                }
+
                 is ShowInfo -> Unit
                 else -> Unit
             }
@@ -1166,6 +1190,11 @@ data class NightPlan(
                     val kind = effect.kind
                         ?: rule?.effect
                         ?: if (rule?.impairs == true) EffectKind.POISONED else EffectKind.MARKER
+                    // An empty payload falls back to the character picked on this
+                    // step, so a Cerenovus's Mad token names what it is mad about.
+                    val payload = effect.characterId?.ifEmpty { scope.characterIds.firstOrNull() }
+                    val linked = effect.linkedPlayerId
+                        ?.let { seats(next, lookup, it, scope).firstOrNull() }
                     for (target in seats(next, lookup, effect.on, scope)) {
                         next = Effects.place(
                             state = next,
@@ -1175,7 +1204,12 @@ data class NightPlan(
                             sourcePlayerId = scope.sourceId,
                             until = rule?.until ?: effect.until,
                             label = effect.label,
-                            endsWithSource = rule?.endsWithSource ?: true,
+                            note = effect.note,
+                            characterId = payload,
+                            linkedPlayerId = linked,
+                            endsWithSource = effect.endsWithSource
+                                ?: rule?.endsWithSource
+                                ?: true,
                         ).state
                     }
                 }
@@ -1329,8 +1363,118 @@ data class NightPlan(
                             genuine = false,
                         )
                     }
+
+                is NightEffect.SetAlignment -> {
+                    val side = if (effect.evil) Alignment.EVIL else Alignment.GOOD
+                    for (target in seats(next, lookup, effect.on, scope)) {
+                        val seat = next.player(target) ?: continue
+                        if (seat.isEvil(lookup) == effect.evil && seat.alignment == side) continue
+                        next = next
+                            .updatePlayer(target) {
+                                it.copy(alignment = side, legacyAlignmentFlipped = false)
+                            }
+                        next = Ledger.ruling(
+                            state = next,
+                            sourceId = scope.sourceCharacterId.orEmpty(),
+                            playerId = target,
+                            text = effect.note.ifEmpty {
+                                "${seat.name} now plays for ${if (effect.evil) "evil" else "good"}."
+                            },
+                        )
+                    }
+                }
+
+                is NightEffect.GrantAbility -> {
+                    val abilityId = effect.abilityId.ifEmpty { scope.characterIds.firstOrNull() }
+                        ?.let(Character::normalizeId)
+                        .orEmpty()
+                    if (abilityId.isNotEmpty()) {
+                        val on = effect.on
+                        if (on == null) {
+                            val floating = FloatingGrant(
+                                abilityId = abilityId,
+                                sourceId = effect.sourceId,
+                                holder = effect.floatingHolder,
+                                worksWhileImpaired = effect.worksWhileImpaired,
+                            )
+                            if (floating !in next.floatingGrants) {
+                                next = next.copy(floatingGrants = next.floatingGrants + floating)
+                            }
+                        } else {
+                            val grant = AbilityGrant(
+                                abilityId = abilityId,
+                                sourceId = effect.sourceId,
+                                mode = effect.mode,
+                                slotId = effect.slotId,
+                                worksWhileImpaired = effect.worksWhileImpaired,
+                                cycle = next.cycle,
+                            )
+                            for (target in seats(next, lookup, on, scope)) {
+                                next = next.updatePlayer(target) { seat ->
+                                    // One grant per (ability, source): re-running a
+                                    // step must not stack two copies of the same gift.
+                                    val kept = seat.grants.filterNot {
+                                        Character.normalizeId(it.sourceId) ==
+                                            Character.normalizeId(effect.sourceId) &&
+                                            Character.normalizeId(it.abilityId) == abilityId
+                                    }
+                                    seat.copy(grants = kept + grant)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is NightEffect.When -> {
+                    val matched = seats(next, lookup, effect.on, scope)
+                        .partition { holds(next, lookup, effect.predicate, it, scope) }
+                    // The branch runs per seat, with `current` pointing at it, so
+                    // `Ref.Target` inside a branch means "this seat".
+                    val before = scope.current
+                    for (seat in matched.first) {
+                        scope.current = seat
+                        next = applyEffects(next, lookup, effect.then, scope)
+                    }
+                    for (seat in matched.second) {
+                        scope.current = seat
+                        next = applyEffects(next, lookup, effect.otherwise, scope)
+                    }
+                    scope.current = before
+                }
+
+                is NightEffect.MarkConsumed -> next = Ledger.resolve(next, effect.ledgerId)
             }
             return next
+        }
+
+        /** Answers one [SeatPredicate] about one seat, right now. */
+        private fun holds(
+            state: GameState,
+            lookup: (String) -> Character?,
+            predicate: SeatPredicate,
+            seatId: Long,
+            scope: EffectScope,
+        ): Boolean {
+            val seat = state.player(seatId) ?: return false
+            val team = seat.characterId?.let(lookup)?.team
+            return when (predicate) {
+                SeatPredicate.IS_TOWNSFOLK -> team == Team.TOWNSFOLK
+                SeatPredicate.IS_OUTSIDER -> team == Team.OUTSIDER
+                SeatPredicate.IS_MINION -> team == Team.MINION
+                SeatPredicate.IS_DEMON -> team == Team.DEMON
+                SeatPredicate.IS_GOOD -> !seat.isEvil(lookup)
+                SeatPredicate.IS_EVIL -> seat.isEvil(lookup)
+                SeatPredicate.IS_ALIVE -> seat.alive
+                SeatPredicate.IS_DEAD -> !seat.alive
+                SeatPredicate.REGISTERS_MINION ->
+                    Team.MINION in Registration.registersAs(state, lookup, seat)
+                SeatPredicate.REGISTERS_DEMON ->
+                    Team.DEMON in Registration.registersAs(state, lookup, seat)
+                SeatPredicate.REGISTERS_EVIL -> Registration.registersEvil(state, lookup, seat)
+                SeatPredicate.HAS_ABILITY -> Status.hasAbility(state, lookup, seatId)
+                SeatPredicate.IS_IMPAIRED -> Status.isImpaired(state, lookup, seatId)
+                SeatPredicate.IS_SOURCE -> seatId == scope.sourceId
+            }
         }
 
         /** Which seats one [Ref] addresses right now. */

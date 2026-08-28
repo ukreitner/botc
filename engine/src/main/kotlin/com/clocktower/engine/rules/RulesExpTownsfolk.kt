@@ -1,5 +1,6 @@
 package com.clocktower.engine.rules
 
+import com.clocktower.engine.ActionOption
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.CardOffer
 import com.clocktower.engine.ChangeReason
@@ -25,6 +26,7 @@ import com.clocktower.engine.Memory
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
+import com.clocktower.engine.Options
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
@@ -319,10 +321,9 @@ private fun atheist() = CharacterRule(
 /**
  * "Each night, you learn a player of a different character type than last night."
  *
- * SCHEMA GAP (WP2): `TargetConstraint` has `DIFFERENT_FROM_LAST_NIGHT` (same
- * *player*); this character needs a different registered *type*. Until
- * `DIFFERENT_TYPE_FROM_LAST_NIGHT` exists the constraint is stated in the
- * prompt and `Memory.typesSeen` backs the storyteller's own check.
+ * W7E: `TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT` reads the ledger, so it
+ * survives the token sweep exactly as `DIFFERENT_FROM_LAST_NIGHT` does — the old
+ * row could only state the constraint in the prompt and hope.
  */
 private fun balloonist(): CharacterRule {
     val rule = NightRule(
@@ -335,7 +336,11 @@ private fun balloonist(): CharacterRule {
                 prompt = "WHO DID THEY LEARN?",
                 min = 1,
                 max = 1,
-                constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED),
+                constraints = listOf(
+                    TargetConstraint.ANY_LIVING_STATE,
+                    TargetConstraint.SELF_ALLOWED,
+                    TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT,
+                ),
                 sort = TargetSort.SEAT_ORDER,
                 // The token MOVES: the setup one is a hand-placed reminder, which
                 // `Effects.place` cannot displace on its own.
@@ -392,12 +397,12 @@ private fun banshee() = CharacterRule(
     ),
     onDeath = listOf(
         DeathTrigger(
-            gate = { _, event, holder ->
+            gate = { _, _, event, holder ->
                 event.playerId == holder.id &&
                     isDemonKill(event) &&
                     event.abilityImpairedAtDeath != true
             },
-            produce = { state, _, holder ->
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     prompts = listOf(
                         Prompt(
@@ -584,25 +589,59 @@ private fun kingKilledByDemon(): WakePredicate = WakePredicate { ctx ->
 /**
  * "Each night, you become the alignment of an alive neighbor."
  *
- * SCHEMA GAP (WP2): there is no `NightEffect` that sets an alignment —
- * `BecomeCharacter` is the only identity effect and it strips the seat's
- * tokens, clears `shownCharacterId` and writes an `IdentityRecord`, which would
- * make the planner insert a bogus "new character" row every single night. The
- * storyteller therefore applies the flip from the seat sheet; the answer is
- * recorded here so tomorrow's "did it change?" question is answerable.
- * `InfoCalc.cultleader` supplies the neighbours and their alignments.
+ * W7E: `NightEffect.SetAlignment` writes the side and nothing else. Before it
+ * existed the only identity effect was `BecomeCharacter`, which strips the
+ * seat's tokens, clears `shownCharacterId` and writes an `IdentityRecord` — so
+ * the planner would have inserted a bogus "new character" row every night, and
+ * the row had to ask the storyteller to do it by hand instead.
+ *
+ * Which side is still the storyteller's call whenever the neighbours disagree,
+ * so this is a three-way [Options] rather than a computed flip:
+ * `InfoCalc.cultleader` supplies the neighbours and their alignments, and "no
+ * change" is the answer that does not wake anybody.
  */
 private fun cultLeader(): CharacterRule {
     val rule = NightRule(
         gate = Gates.aliveHolder,
         prompt = "Both alive neighbours the same alignment? The change is FORCED. " +
             "Wake them ONLY if the alignment actually changed, then show the thumb.",
+        infoId = "cultleader",
         action = {
-            YesNo(
+            Options(
                 sourceId = "cultleader",
-                prompt = "DOES THE CULT LEADER CHANGE ALIGNMENT TONIGHT?",
-                yesLabel = "Yes — set their alignment on the seat sheet, then wake them",
-                noLabel = "No change — do not wake them",
+                prompt = "WHICH ALIGNMENT DOES THE CULT LEADER TAKE TONIGHT?",
+                options = listOf(
+                    ActionOption(
+                        id = "none",
+                        label = "No change — do not wake them",
+                    ),
+                    ActionOption(
+                        id = "evil",
+                        label = "They join the evil neighbour",
+                        detail = "Wake them and show a thumbs-down.",
+                        effects = listOf(
+                            NightEffect.SetAlignment(
+                                on = Ref.Source,
+                                evil = true,
+                                note = "Cult Leader: joined an evil neighbour.",
+                            ),
+                            NightEffect.ShowCardTo(Ref.Source, "YOU ARE — evil (thumbs down)"),
+                        ),
+                    ),
+                    ActionOption(
+                        id = "good",
+                        label = "They join the good neighbour",
+                        detail = "Wake them and show a thumbs-up.",
+                        effects = listOf(
+                            NightEffect.SetAlignment(
+                                on = Ref.Source,
+                                evil = false,
+                                note = "Cult Leader: joined a good neighbour.",
+                            ),
+                            NightEffect.ShowCardTo(Ref.Source, "YOU ARE — good (thumbs up)"),
+                        ),
+                    ),
+                ),
             )
         },
     )
@@ -1118,6 +1157,10 @@ private fun pixie() = CharacterRule(
                         on = Ref.Source,
                         kind = EffectKind.MAD,
                         until = Until.FOREVER,
+                        // W7E: the token NAMES the character they are mad about,
+                        // which is the whole ability — the death trigger below
+                        // reads it back. It used to live only in the ledger.
+                        characterId = "",
                     ),
                 ),
             )
@@ -1125,14 +1168,14 @@ private fun pixie() = CharacterRule(
     ),
     onDeath = listOf(
         DeathTrigger(
-            gate = { state, event, holder ->
+            gate = { state, _, event, holder ->
                 val mad = pixieMadCharacter(state, holder)
                 mad != null &&
                     Character.normalizeId(event.characterIdAtDeath.orEmpty()) == mad &&
                     event.playerId != holder.id &&
                     !holdsToken(holder, "pixie", "Has Ability")
             },
-            produce = { state, event, holder ->
+            produce = { state, _, event, holder ->
                 val mad = pixieMadCharacter(state, holder).orEmpty()
                 TriggerResult(
                     prompts = listOf(

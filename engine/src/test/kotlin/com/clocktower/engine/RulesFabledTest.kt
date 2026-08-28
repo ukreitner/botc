@@ -334,8 +334,8 @@ class RulesFabledTest {
             id = 1, playerId = state.seat("chef"), day = 1, atNight = true,
             cause = DeathCause.DEMON_KILL, killerCharacterId = "imp", killerPlayerId = state.seat("imp"),
         )
-        assertTrue(trigger.gate(state, event, state.players.first()))
-        val produced = trigger.produce(state, event, state.players.first())
+        assertTrue(trigger.gate(state, lookup, event, CharacterRules.GRIMOIRE_HOLDER))
+        val produced = trigger.produce(state, lookup, event, CharacterRules.GRIMOIRE_HOLDER)
         val prompt = produced.prompts.single()
         assertEquals(PromptKind.DECIDE, prompt.kind)
         assertEquals(listOf(state.seat("imp")), prompt.targetIds, "the Demon is the suggested culprit")
@@ -343,7 +343,7 @@ class RulesFabledTest {
 
         // An unprotected seat's death raises nothing.
         val other = event.copy(playerId = state.seat("mayor"))
-        assertFalse(trigger.gate(state, other, state.players.first()))
+        assertFalse(trigger.gate(state, lookup, other, CharacterRules.GRIMOIRE_HOLDER))
     }
 
     // =======================================================================

@@ -23,6 +23,7 @@ import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.GrantMode
 import com.clocktower.engine.Identity
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.NightContext
@@ -36,6 +37,7 @@ import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.Registration
+import com.clocktower.engine.SeatPredicate
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.Status
 import com.clocktower.engine.StepGate
@@ -448,19 +450,34 @@ private fun snakeCharmer(): CharacterRule {
                 sort = TargetSort.SEAT_ORDER,
                 allowNone = true,
                 noneLabel = "They chose nobody",
+                // W7E: `NightEffect.When` asks the question the row could not ask
+                // before — "is the seat they just pointed at a Demon?" — so the
+                // swap is raised ONLY on a Demon pick, never on every pick.
+                //
+                // The swap itself stays `Identity.snakeCharmerSwap`, which the
+                // prompt discharges: it swaps the characters AND reverts both
+                // alignments to the new characters' natural sides, which the
+                // generic `SwapCharacters` (the Barber's, alignment-preserving)
+                // deliberately does not do.
                 onResolve = if (!works || demons.isEmpty()) {
                     listOf(NightEffect.RecordChoice())
                 } else {
                     listOf(
                         NightEffect.RecordChoice(),
-                        NightEffect.QueuePrompt(
-                            at = BriefingSlot.NOW,
-                            kind = PromptKind.DECIDE,
-                            sourceId = SNAKE_CHARMER,
-                            title = "Snake Charmer: if they pointed at the Demon " +
-                                "(${names(demons)}), swap their characters AND alignments, " +
-                                "then poison the new Snake Charmer.",
+                        NightEffect.When(
+                            predicate = SeatPredicate.REGISTERS_DEMON,
                             on = Ref.Target,
+                            then = listOf(
+                                NightEffect.QueuePrompt(
+                                    at = BriefingSlot.NOW,
+                                    kind = PromptKind.DECIDE,
+                                    sourceId = SNAKE_CHARMER,
+                                    title = "Snake Charmer: they pointed at the Demon. Swap " +
+                                        "their characters AND alignments, then poison the new " +
+                                        "Snake Charmer.",
+                                    on = Ref.Target,
+                                ),
+                            ),
                         ),
                     )
                 },
@@ -704,16 +721,29 @@ private fun philosopher(): CharacterRule {
                 allowNone = true,
                 onResolve = listOf(
                     NightEffect.RecordChoice(),
+                    // W7E: the grant is REAL now. REPLACE, because the
+                    // Philosopher exercises the chosen ability instead of their
+                    // own, and the empty id means "the character just picked".
+                    NightEffect.GrantAbility(
+                        abilityId = "",
+                        sourceId = PHILOSOPHER,
+                        on = Ref.Source,
+                        mode = GrantMode.REPLACE,
+                    ),
+                    NightEffect.MarkSpent(PHILOSOPHER),
+                    // Which in-play copy goes drunk is still a board question the
+                    // storyteller settles — the character may not be in play at all.
                     NightEffect.QueuePrompt(
                         at = BriefingSlot.NOW,
                         kind = PromptKind.CHOOSE_CHARACTER,
                         sourceId = PHILOSOPHER,
-                        title = "Philosopher: grant ${ctx.holder?.name ?: "them"} the chosen " +
-                            "ability, add the Is The Philosopher reminder, and make any " +
-                            "in-play copy of that character drunk.",
+                        title = "${ctx.holder?.name ?: "They"} now have that ability. If the " +
+                            "character IS in play, make that player drunk with the " +
+                            "Philosopher's Drunk token.",
                         on = Ref.Source,
                     ),
                 ),
+                onNone = listOf(NightEffect.RecordChoice()),
             )
         },
     )
@@ -888,10 +918,10 @@ private fun sweetheart() = CharacterRule(
     ),
     onDeath = listOf(
         DeathTrigger(
-            gate = { _, event, holder ->
+            gate = { _, _, event, holder ->
                 diedAsSelf(event, holder, SWEETHEART) && workedAtDeath(event) && !event.atNight
             },
-            produce = { state, _, holder ->
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     prompts = listOf(
                         prompt(
@@ -957,10 +987,10 @@ private fun barber() = CharacterRule(
         DeathTrigger(
             // Any death, any cause, any phase — but only a seat that WAS the Barber
             // when it died, and only when the ability was working then.
-            gate = { _, event, holder ->
+            gate = { _, _, event, holder ->
                 diedAsSelf(event, holder, BARBER) && workedAtDeath(event)
             },
-            produce = { state, _, holder ->
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     effects = listOf(
                         deathToken(
@@ -980,8 +1010,8 @@ private fun klutz() = CharacterRule(
     keepsAbilityWhenDead = true,
     onDeath = listOf(
         DeathTrigger(
-            gate = { _, event, holder -> diedAsSelf(event, holder, KLUTZ) },
-            produce = { _, event, holder ->
+            gate = { _, _, event, holder -> diedAsSelf(event, holder, KLUTZ) },
+            produce = { _, _, event, holder ->
                 val worked = workedAtDeath(event)
                 TriggerResult(
                     prompts = listOf(
@@ -1205,9 +1235,15 @@ private fun cerenovus(): CharacterRule {
                         on = Ref.Target,
                         kind = EffectKind.MAD,
                         until = Until.DUSK,
+                        // W7E: the token now NAMES what they are mad about. An
+                        // empty payload means "the character just picked", so a
+                        // Cerenovus's Mad token no longer loses its character
+                        // between the pick and tomorrow's madness ruling.
+                        characterId = "",
                     ),
                     NightEffect.RecordChoice(),
                 ),
+                onNone = listOf(NightEffect.RecordChoice()),
             )
         },
     )
@@ -1336,6 +1372,30 @@ private fun fangGuAction(ctx: NightContext): ChoosePlayers {
                 ),
             )
         },
+        // W7E: taking the kill now checks the target too. An Outsider death by a
+        // Fang Gu is the one case a storyteller must never resolve silently, so
+        // a picked Outsider raises the jump on the kill path as well.
+        onResolve = if (spent || outsiders.isEmpty()) {
+            emptyList()
+        } else {
+            listOf(
+                NightEffect.When(
+                    predicate = SeatPredicate.IS_OUTSIDER,
+                    on = Ref.Target,
+                    then = listOf(
+                        NightEffect.QueuePrompt(
+                            at = BriefingSlot.NOW,
+                            kind = PromptKind.DECIDE,
+                            sourceId = FANG_GU,
+                            title = "That was an OUTSIDER and the jump is unused: they may " +
+                                "become an evil Fang Gu, with the Fang Gu dying instead. " +
+                                "Undo the death here if the jump is taken.",
+                            on = Ref.Target,
+                        ),
+                    ),
+                ),
+            )
+        },
     )
 }
 
@@ -1365,14 +1425,14 @@ private fun vigormortis() = CharacterRule(
     ),
     onDeath = listOf(
         DeathTrigger(
-            gate = { state, event, holder ->
+            gate = { state, _, event, holder ->
                 diedAsSelf(event, holder, VIGORMORTIS) &&
                     (
                         svSeatsHolding(state, VIGORMORTIS, HAS_ABILITY).isNotEmpty() ||
                             svSeatsHolding(state, VIGORMORTIS, POISONED).isNotEmpty()
                         )
             },
-            produce = { state, _, holder ->
+            produce = { state, _, _, holder ->
                 val kept = svSeatsHolding(state, VIGORMORTIS, HAS_ABILITY)
                 val poisoned = svSeatsHolding(state, VIGORMORTIS, POISONED)
                 TriggerResult(
@@ -1399,18 +1459,35 @@ private fun vigormortisAction(ctx: NightContext): ChoosePlayers {
     val minions = aliveMinions(ctx.state, ctx.lookup)
     return demonAttack(
         sourceId = VIGORMORTIS,
+        // W7E: `NightEffect.When` asks "was the seat we just killed a Minion?",
+        // so the Has Ability marker is placed by the engine instead of advised.
+        // Which Townsfolk neighbour is poisoned stays the storyteller's call —
+        // the rule is genuinely ambiguous about skipping the dead (lead D12).
         onResolve = if (minions.isEmpty()) {
             emptyList()
         } else {
             listOf(
-                NightEffect.QueuePrompt(
-                    at = BriefingSlot.NOW,
-                    kind = PromptKind.PLACE_EFFECT,
-                    sourceId = VIGORMORTIS,
-                    title = "If the player the Vigormortis just killed was a Minion " +
-                        "(${names(minions)}): place Has Ability on them, then poison ONE of " +
-                        "their Townsfolk neighbours — clockwise or anticlockwise, your choice.",
+                NightEffect.When(
+                    predicate = SeatPredicate.REGISTERS_MINION,
                     on = Ref.Target,
+                    then = listOf(
+                        NightEffect.PlaceToken(
+                            sourceId = VIGORMORTIS,
+                            label = HAS_ABILITY,
+                            on = Ref.Target,
+                            kind = EffectKind.HAS_ABILITY,
+                            until = Until.FOREVER,
+                            note = "Vigormortis: a Minion this Demon killed keeps their ability.",
+                        ),
+                        NightEffect.QueuePrompt(
+                            at = BriefingSlot.NOW,
+                            kind = PromptKind.PLACE_EFFECT,
+                            sourceId = VIGORMORTIS,
+                            title = "That Minion keeps their ability — now poison ONE of their " +
+                                "Townsfolk neighbours, clockwise or anticlockwise, your choice.",
+                            on = Ref.Target,
+                        ),
+                    ),
                 ),
             )
         },

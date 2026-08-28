@@ -23,6 +23,7 @@ import com.clocktower.engine.ExecutionContext
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.GrantMode
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Memory
 import com.clocktower.engine.NightContext
@@ -305,14 +306,15 @@ private fun apprentice(): CharacterRule = CharacterRule(
                         until = Until.FOREVER,
                     ),
                     NightEffect.ShowCardTo(on = Ref.Source, card = "YOU ARE"),
-                    NightEffect.QueuePrompt(
-                        at = BriefingSlot.NOW,
-                        kind = PromptKind.PLACE_EFFECT,
+                    // W7E: the grant is REAL now. ADD, not REPLACE: the Apprentice
+                    // has no ability of its own to displace, and `characterId`
+                    // stays "apprentice" so every ability still detects them as
+                    // the Apprentice, and they are still a Traveller.
+                    NightEffect.GrantAbility(
+                        abilityId = "",
                         sourceId = "apprentice",
                         on = Ref.Source,
-                        title = "Apprentice: give this seat the chosen ability as a REPLACE grant. " +
-                            "Leave characterId = apprentice — every ability still detects them as " +
-                            "the Apprentice, and they are still a Traveller.",
+                        mode = GrantMode.ADD,
                     ),
                 ),
             )

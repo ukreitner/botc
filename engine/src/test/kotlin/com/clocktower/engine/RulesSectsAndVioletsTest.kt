@@ -168,13 +168,19 @@ class RulesSectsAndVioletsTest {
     fun `a working Snake Charmer raises the swap decision and a poisoned one does not`() {
         // Given a sober Snake Charmer and a living Demon,
         val sober = game("vortox", "witch", "snakecharmer", "chef", "oracle", "artist")
-        // When they point at somebody,
+        // When they point at the DEMON,
         val after = resolve(sober, fire(sober, "snakecharmer", 2L), picks(0L))
         // Then the choice is recorded and the swap is raised as a decision,
         assertEquals(listOf(0L), choices(after, "snakecharmer").single().targetIds)
         val decision = promptsFor(after, "snakecharmer", BriefingSlot.NOW).single()
         assertEquals(PromptKind.DECIDE, decision.kind)
         assertEquals(0L, decision.subjectPlayerId, "the decision names the seat they pointed at")
+
+        // W7E: pointing at a NON-Demon raises nothing at all — only a Demon does
+        // anything, and `NightEffect.When` is what finally lets the row say so.
+        val harmless = resolve(sober, fire(sober, "snakecharmer", 2L), picks(3L))
+        assertEquals(listOf(3L), choices(harmless, "snakecharmer").single().targetIds)
+        assertTrue(promptsFor(harmless, "snakecharmer", BriefingSlot.NOW).isEmpty())
 
         // Given the same charmer, poisoned,
         val poisoned = poison(sober, 2L)
@@ -279,11 +285,23 @@ class RulesSectsAndVioletsTest {
             fire(state, "philosopher", 2L),
             NightInput(characterIds = listOf("chef")),
         )
-        // Then the gain is raised as an obligation and the row never returns.
+        // Then the gain is REAL (W7E: `NightEffect.GrantAbility`), the drunkening
+        // of any in-play copy is still raised as an obligation, and the row never
+        // returns.
         assertEquals(listOf("chef"), choices(gained, "philosopher").single().characterIds)
+        val grant = assertNotNull(gained.player(2)).grants.single()
+        assertEquals("chef", grant.abilityId)
+        assertEquals("philosopher", grant.sourceId)
+        assertEquals(GrantMode.REPLACE, grant.mode)
+        assertTrue(
+            Identity.actingRoles(gained, lookup, assertNotNull(gained.player(2)))
+                .any { it.abilityId == "chef" },
+            "the Philosopher wakes as the Chef now",
+        )
         assertTrue(promptsFor(gained, "philosopher", BriefingSlot.NOW).isNotEmpty())
-        val tomorrow = assertNotNull(step(atNight(gained, 2), "philosopher"))
-        assertTrue(tomorrow.gate is StepGate.Skip, "once per game: ${tomorrow.gate}")
+        // A REPLACE grant retires the Philosopher's own role outright, so the row
+        // is not merely skipped tomorrow — it is gone.
+        assertNull(step(atNight(gained, 2), "philosopher"), "the Philosopher row never returns")
     }
 
     @Test
@@ -596,8 +614,16 @@ class RulesSectsAndVioletsTest {
         // Then the Mad token is on the Oracle and only on the Oracle,
         assertTrue(DayRules.hasToken(state, 3L, "cerenovus", "Mad"))
         assertFalse(DayRules.hasToken(state, 2L, "cerenovus", "Mad"))
-        // and the character the madness is about is in the record.
+        // and the character the madness is about is in the record…
         assertEquals(listOf("chef"), choices(state, "cerenovus").single().characterIds)
+        // …AND on the token itself (W7E: `PlaceToken.characterId`), so the
+        // grimoire shows what they are mad about without reading the ledger.
+        assertEquals(
+            "chef",
+            assertNotNull(
+                Status.effectsOn(state, lookup, 3L).firstOrNull { it.kind == EffectKind.MAD },
+            ).characterId,
+        )
 
         // Given the Vigormortis killed the Cerenovus and it kept its ability,
         var dead = atNight(state, 2)
@@ -724,21 +750,28 @@ class RulesSectsAndVioletsTest {
         // Then the Minion is dead and the two markers are raised as an obligation.
         assertFalse(alive(state, 1L))
         assertEquals(DeathCause.DEMON_KILL, state.deaths.last().cause)
+        // W7E: the Has Ability marker is PLACED by the engine now, because
+        // `NightEffect.When` can finally ask "was that seat a Minion?". Which
+        // Townsfolk neighbour is poisoned is still the storyteller's call (D12).
+        assertTrue(
+            Status.effectsOn(state, lookup, 1L).any {
+                it.kind == EffectKind.HAS_ABILITY &&
+                    Character.normalizeId(it.sourceCharacterId) == "vigormortis"
+            },
+            "the killed Minion keeps their ability",
+        )
+        assertTrue(Status.hasAbility(state, lookup, 1L), "a preserved Minion still acts")
         val owed = promptsFor(state, "vigormortis", BriefingSlot.NOW).single()
         assertEquals(1L, owed.subjectPlayerId)
-        assertTrue("Has Ability" in owed.title, owed.title)
+        assertTrue("Townsfolk neighbour" in owed.title, owed.title)
 
-        // Given the markers are placed and the Vigormortis then dies,
-        state = Effects.place(
-            state = state,
-            target = 1L,
-            kind = EffectKind.HAS_ABILITY,
-            sourceCharacterId = "vigormortis",
-            sourcePlayerId = 0L,
-            until = Until.FOREVER,
-            label = "Has Ability",
-        ).state
-        assertTrue(Status.hasAbility(state, lookup, 1L), "a preserved Minion still acts")
+        // A non-Minion kill places nothing and raises nothing.
+        val townsfolk = atNight(game("vigormortis", "witch", "chef", "oracle", "artist", "juggler"), 2)
+            .let { resolve(it, fire(it, "vigormortis", 0L), picks(2L)) }
+        assertTrue(
+            Status.effectsOn(townsfolk, lookup, 2L).none { it.kind == EffectKind.HAS_ABILITY },
+        )
+        assertTrue(promptsFor(townsfolk, "vigormortis", BriefingSlot.NOW).isEmpty())
         state = Deaths.attempt(state, lookup, 0L, KillCause(DeathCause.EXECUTION)).state
 
         // Then the teardown is raised and the preserved Minion goes inert.

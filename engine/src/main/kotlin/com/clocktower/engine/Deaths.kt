@@ -572,9 +572,7 @@ object Deaths {
      * the Hindu's reincarnation are declared in `RulesFabled.kt` and were inert
      * until this loop stopped being seats-only.
      *
-     * [lookup] is unused today; it keeps the signature stable for the WP7 rows.
      */
-    @Suppress("UNUSED_PARAMETER")
     private fun fireDeathTriggers(
         state: GameState,
         lookup: (String) -> Character?,
@@ -588,8 +586,8 @@ object Deaths {
         } + CharacterRules.fabledRows(state).map { it to CharacterRules.GRIMOIRE_HOLDER }
         for ((rule, holder) in rows) {
             for (trigger in rule.onDeath) {
-                if (!trigger.gate(state, event, holder)) continue
-                val result = trigger.produce(state, event, holder)
+                if (!trigger.gate(state, lookup, event, holder)) continue
+                val result = trigger.produce(state, lookup, event, holder)
                 for (p in result.prompts) {
                     next = Prompts.queue(next, p.copy(causeEventId = event.id))
                     queued += next.prompts.last()

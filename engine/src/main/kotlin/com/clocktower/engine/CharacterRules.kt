@@ -141,10 +141,25 @@ data class DayAbility(
 /**
  * Fires when someone dies. [gate] must include `Status.hasAbility(holder)` unless
  * the character's text says "even if dead" (lead D35).
+ *
+ * `lookup` was added in wave 7: without it a row could not ask a team question
+ * or a status question, so the Scarlet Woman read stored effects directly and
+ * the Imp's heir check was "anyone else alive" rather than "a Minion is alive".
+ * For a Fabled, `holder` is [CharacterRules.GRIMOIRE_HOLDER] — there is no seat.
  */
 data class DeathTrigger(
-    val gate: (state: GameState, event: DeathEvent, holder: Player) -> Boolean,
-    val produce: (state: GameState, event: DeathEvent, holder: Player) -> TriggerResult,
+    val gate: (
+        state: GameState,
+        lookup: (String) -> Character?,
+        event: DeathEvent,
+        holder: Player,
+    ) -> Boolean,
+    val produce: (
+        state: GameState,
+        lookup: (String) -> Character?,
+        event: DeathEvent,
+        holder: Player,
+    ) -> TriggerResult,
 )
 
 data class TriggerResult(

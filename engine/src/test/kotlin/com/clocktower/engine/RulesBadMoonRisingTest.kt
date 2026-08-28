@@ -382,6 +382,15 @@ class RulesBadMoonRisingTest {
         assertEquals(DeathCause.GOOD_ABILITY, death.cause)
         assertEquals("gossip", death.killerCharacterId)
         assertTrue(holds(state, victim, "gossip", "Dead"))
+
+        // W7E: the statement is CONSUMED, so it is never offered a second time.
+        assertNotNull(
+            state.ledger.first { it.id == entry.id }.resolvedCycle,
+            "the statement the step acted on is resolved",
+        )
+        val night3 = nextNight(state)
+        val gate = assertIs<StepGate.Skip>(require(night3, "gossip").gate)
+        assertTrue("no Gossip statement" in gate.reason, gate.reason)
     }
 
     @Test
