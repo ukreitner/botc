@@ -199,15 +199,20 @@ private fun SeatRing(
     onTap: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
-    BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .height(RING_HEIGHT),
-    ) {
-        val width = maxWidth
-        val height = maxHeight
-        val seatWidth = NominationModel.seatWidthDp(ring.size, width.value).dp
-        for (seat in ring) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // The ring sizes ITSELF: the height it needs is the height that keeps
+        // two adjacent 48 dp hit targets apart at this table size, plus a clear
+        // strip under the lowest seat. A fixed 240 dp box put twelve seats
+        // 38 dp apart and let the list scroll up against the bottom row.
+        val widthDp = maxWidth.value
+        val maxRy = NominationModel.maxRadiusYFor(maxHeight.value)
+        val seatWidth = NominationModel.seatWidthDp(ring.size, widthDp, maxRy).dp
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(NominationModel.ringHeightDp(ring.size, widthDp, maxRy).dp),
+        ) {
+        for ((index, seat) in ring.withIndex()) {
             val tint = when (seat.pick) {
                 SeatPick.NOMINATOR -> AgedGold
                 SeatPick.NOMINEE -> EmberRed
@@ -217,13 +222,14 @@ private fun SeatRing(
                     FadedInk
                 }
             }
+            val (cx, cy) = NominationModel.seatCentreDp(index, ring.size, widthDp, maxRy)
             Box(
                 Modifier
                     .offset(
-                        x = width * seat.x - seatWidth / 2,
-                        y = height * seat.y - SEAT_HEIGHT / 2,
+                        x = cx.dp - seatWidth / 2,
+                        y = (cy - NominationModel.SEAT_HEIGHT_DP / 2f).dp,
                     )
-                    .size(width = seatWidth, height = SEAT_HEIGHT),
+                    .size(width = seatWidth, height = NominationModel.SEAT_HEIGHT_DP.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Surface(
@@ -293,6 +299,7 @@ private fun SeatRing(
             textAlign = TextAlign.Center,
             modifier = Modifier.align(Alignment.Center),
         )
+        }
     }
 }
 
@@ -483,9 +490,19 @@ private fun VotePanel(
     Row(
         Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = { if (view.secret) peek = false },
-                onLongClick = { if (view.secret) peek = true },
+            // Hold-to-peek belongs to the Organ Grinder and nobody else: a
+            // full-width click target that did nothing on an ordinary day was
+            // the node `audit` caught overlapping the ring by 34 % once the
+            // list scrolled up against it (D-6).
+            .then(
+                if (view.secret) {
+                    Modifier.combinedClickable(
+                        onClick = { peek = false },
+                        onLongClick = { peek = true },
+                    )
+                } else {
+                    Modifier
+                },
             ),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom,
@@ -630,5 +647,3 @@ private fun VotePanel(
 
 /** 48 sp: readable at arm's length while counting hands (§F). */
 private const val TALLY_SP = 48f
-private val RING_HEIGHT = 240.dp
-private val SEAT_HEIGHT = 40.dp

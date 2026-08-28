@@ -233,18 +233,99 @@ class DayScreenTest {
 
     @Test
     fun `ring positions run clockwise from the top and stay inside the box`() {
-        val positions = (0 until 12).map { NominationModel.position(it, 12) }
+        val w = PHONE_WIDTH_DP
+        val h = NominationModel.ringHeightDp(12, w)
+        val positions = (0 until 12).map { NominationModel.seatCentreDp(it, 12, w) }
         val (topX, topY) = positions.first()
-        assertEquals(0.5f, topX, 0.001f)
-        assertTrue("seat 1 sits at the top: $topY", topY < 0.5f)
+        assertEquals(w / 2f, topX, 0.01f)
+        assertTrue("seat 1 sits at the top: $topY", topY < h / 2f)
         // Clockwise: seat 4 of 12 is a quarter turn round, on the right.
-        assertTrue("seat 4 is on the right: ${positions[3]}", positions[3].first > 0.5f)
+        assertTrue("seat 4 is on the right: ${positions[3]}", positions[3].first > w / 2f)
         assertTrue(
             "every seat stays inside the box: $positions",
-            positions.all { it.first in 0f..1f && it.second in 0f..1f },
+            positions.all { it.first in 0f..w && it.second in 0f..h },
         )
         // Degenerate table: never divide by zero.
-        assertEquals(0.5f to 0.5f, NominationModel.position(0, 0))
+        assertEquals(w / 2f, NominationModel.seatCentreDp(0, 0, w).first, 0.01f)
+    }
+
+    // ------------------------------------------------------------------
+    // The measured half: the ring may not overlap anything (playtest D-6)
+    // ------------------------------------------------------------------
+
+    /** The reference phone the app is judged on, in dp. */
+    private val PHONE_WIDTH_DP = 411f
+
+    private fun hitRects(
+        count: Int,
+        w: Float = PHONE_WIDTH_DP,
+        maxRy: Float = NominationModel.MAX_RADIUS_Y_DP,
+    ): List<FloatArray> {
+        val seatW = NominationModel.seatWidthDp(count, w, maxRy)
+        return (0 until count).map { i ->
+            val (cx, cy) = NominationModel.seatCentreDp(i, count, w, maxRy)
+            floatArrayOf(
+                cx - seatW / 2f,
+                cy - NominationModel.SEAT_HIT_DP / 2f,
+                cx + seatW / 2f,
+                cy + NominationModel.SEAT_HIT_DP / 2f,
+            )
+        }
+    }
+
+    private fun overlaps(a: FloatArray, b: FloatArray): Boolean =
+        a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]
+
+    @Test
+    fun `no two seats on the nomination ring share a pixel of hit target`() {
+        // `ui.py audit` reported ten overlapping clickable pairs on this
+        // screen, the worst at 41 %: two 48 dp targets 38 dp apart. Tapping a
+        // vote landed on the seat behind it and silently re-picked the nominee.
+        for (n in 5..16) {
+            val rects = hitRects(n)
+            for (i in rects.indices) {
+                for (j in i + 1 until rects.size) {
+                    assertFalse(
+                        "at $n seats, seat ${i + 1} ${rects[i].toList()} overlaps " +
+                            "seat ${j + 1} ${rects[j].toList()}",
+                        overlaps(rects[i], rects[j]),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the ring keeps a clear strip between its lowest seat and the list below`() {
+        for (n in 5..16) {
+            val height = NominationModel.ringHeightDp(n, PHONE_WIDTH_DP)
+            val lowest = hitRects(n).maxOf { it[3] }
+            assertTrue(
+                "at $n seats the lowest hit target ends at $lowest of a $height dp ring",
+                lowest <= height - NominationModel.RING_GAP_DP + 0.01f,
+            )
+            val highest = hitRects(n).minOf { it[1] }
+            assertTrue("at $n seats a seat is clipped off the top: $highest", highest >= -0.01f)
+        }
+    }
+
+    @Test
+    fun `the ring grows only as much as the table needs, and never owns the screen`() {
+        val small = NominationModel.ringHeightDp(8, PHONE_WIDTH_DP)
+        val large = NominationModel.ringHeightDp(15, PHONE_WIDTH_DP)
+        assertTrue("a 15-seat ring needs more room than an 8-seat one: $small / $large", large > small)
+        assertTrue("and a small table does not waste the screen: $small", small <= 260f)
+
+        // On a short screen the ring is capped rather than pushing the vote
+        // panel off the phone — the cap still keeps the strip below it.
+        val cramped = NominationModel.maxRadiusYFor(500f)
+        val capped = NominationModel.ringHeightDp(15, PHONE_WIDTH_DP, cramped)
+        assertTrue("capped to its share of 500 dp: $capped", capped <= 500f * 0.56f)
+        val lowest = hitRects(15, PHONE_WIDTH_DP, cramped).maxOf { it[3] }
+        assertTrue(
+            "and the clear strip survives the cap: $lowest of $capped",
+            lowest <= capped - NominationModel.RING_GAP_DP + 0.01f,
+        )
     }
 
     @Test
@@ -252,18 +333,11 @@ class DayScreenTest {
         val phone = 360f
         val seven = NominationModel.seatWidthDp(7, phone)
         val twelve = NominationModel.seatWidthDp(12, phone)
-        val twenty = NominationModel.seatWidthDp(20, phone)
+        val fifteen = NominationModel.seatWidthDp(15, phone)
 
-        assertTrue("a bigger table means narrower seats", seven > twelve && twelve > twenty)
-        assertTrue("never below the text floor: $twenty", twenty >= NominationModel.MIN_SEAT_DP)
+        assertTrue("a bigger table means narrower seats", seven > twelve && twelve > fifteen)
+        assertTrue("never below the text floor: $fifteen", fifteen >= NominationModel.MIN_SEAT_DP)
         assertTrue("never absurd at 7: $seven", seven <= NominationModel.MAX_SEAT_DP)
-
-        // No overlap at 12 — the arc each seat owns is at least its width.
-        val circumference = 2 * Math.PI * NominationModel.RADIUS * phone
-        assertTrue(
-            "12 seats fit round the ring: $twelve vs ${circumference / 12}",
-            twelve <= circumference / 12 + 0.01,
-        )
         // Degenerate tables must not divide by zero.
         assertEquals(NominationModel.MAX_SEAT_DP, NominationModel.seatWidthDp(0, phone), 0.01f)
     }
