@@ -225,6 +225,10 @@ fun SetupScreen(
         Setup.seatFillingBag(selected, residentCount, seatlessIds, null, emptyList())
     }
     val seatFilling = dealable.size
+    // A choice bracket is a QUESTION, not a silent default (D54).
+    val branches = remember(selected) {
+        selected.mapNotNull(Setup::modifierFor).filter { it.choice }
+    }
     val ready = script != null && validCount && seatFilling == residentCount && issues.isEmpty()
 
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -340,16 +344,11 @@ fun SetupScreen(
                             selected = selected,
                             targets = targets,
                             counts = bagCounts,
-                            outsiderBranch = outsiderBranch,
-                            onBranch = { outsiderBranch = it },
-                            issues = issues,
-                            warnings = warnings,
                             allowDuplicates = allowDuplicates,
                             onAllowDuplicates = { allowDuplicates = it },
                             seatlessNote = seatlessCandidates.firstOrNull()?.second?.note.orEmpty(),
                             seatlessAck = seatlessAck,
                             onSeatlessAck = { seatlessAck = it },
-                            message = bagMessage,
                             onRandomize = { keep ->
                                 val required = if (keep) bagIds else pinnedIds
                                 val bag = rollBag(
@@ -430,6 +429,22 @@ fun SetupScreen(
             }
             item("tail") { Spacer(Modifier.height(8.dp)) }
         }
+
+        // ---- the sticky bag status ------------------------------------------
+        // A-9: the issue list, the warnings and the branch chips used to sit
+        // ABOVE the scrolling character list, in the same scroll container, and
+        // their combined height changed by 40-160 px every time the bag's
+        // legality did — so ticking a character moved the row you were about to
+        // tap next. Pinned below the list, they can grow and shrink freely.
+        BagStatus(
+            branches = branches,
+            branchOptions = targets[Team.OUTSIDER]?.counts.orEmpty(),
+            outsiderBranch = outsiderBranch,
+            onBranch = { outsiderBranch = it },
+            issues = issues,
+            warnings = warnings,
+            message = bagMessage,
+        )
 
         // ---- the sticky bag tray --------------------------------------------
         // The only place the storyteller needs to look to know the bag (§S1).
@@ -786,17 +801,12 @@ private fun BagHeader(
     targets: Map<Team, com.clocktower.engine.TeamTarget>,
     /** What the bag actually holds per team, seatless tokens excluded. */
     counts: Map<Team, Int>,
-    outsiderBranch: Int?,
-    onBranch: (Int?) -> Unit,
-    issues: List<String>,
-    warnings: List<String>,
     allowDuplicates: Boolean,
     onAllowDuplicates: (Boolean) -> Unit,
     /** The BagShape note for a character in play with no bag token; "" for none. */
     seatlessNote: String,
     seatlessAck: Boolean,
     onSeatlessAck: (Boolean) -> Unit,
-    message: String?,
     onRandomize: (keepCurrent: Boolean) -> Unit,
     onClear: () -> Unit,
 ) {
@@ -858,44 +868,11 @@ private fun BagHeader(
             }
         }
 
-        // A choice bracket is a QUESTION, not a silent default (D54).
-        val branches = remember(selected) {
-            selected.mapNotNull(Setup::modifierFor).filter { it.choice }
-        }
-        if (branches.isNotEmpty()) {
-            val options = targets[Team.OUTSIDER]?.counts.orEmpty()
-            Text(
-                branches.joinToString(", ") { "${it.characterId} [${it.text}]" } +
-                    " — which are you running?",
-                style = MaterialTheme.typography.bodySmall,
-                color = AgedGold,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (option in options) {
-                    FilterChip(
-                        selected = outsiderBranch == option,
-                        onClick = { onBranch(if (outsiderBranch == option) null else option) },
-                        label = { Text("$option outsiders") },
-                    )
-                }
-            }
-        }
-
         if (seatlessNote.isNotBlank()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = seatlessAck, onCheckedChange = onSeatlessAck)
                 Text(seatlessNote, style = MaterialTheme.typography.bodySmall)
             }
-        }
-
-        for (issue in issues) {
-            Text(issue, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-        for (warning in warnings) {
-            Text(warning, color = AgedGold, style = MaterialTheme.typography.bodySmall)
-        }
-        message?.let {
-            Text(it, color = EmberRed, style = MaterialTheme.typography.bodySmall)
         }
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -952,6 +929,64 @@ private fun FabledPicker(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Everything about the bag whose HEIGHT changes as the bag does: the branch
+ * question, the validator's issues, the advisory warnings and the last builder
+ * message. Pinned between the scrolling card list and the tray, so none of it
+ * can move the character rows (A-9).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BagStatus(
+    branches: List<com.clocktower.engine.SetupModifier>,
+    branchOptions: List<Int>,
+    outsiderBranch: Int?,
+    onBranch: (Int?) -> Unit,
+    issues: List<String>,
+    warnings: List<String>,
+    message: String?,
+) {
+    if (branches.isEmpty() && issues.isEmpty() && warnings.isEmpty() && message == null) return
+    HorizontalDivider()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            // A long issue list scrolls inside the strip rather than eating the
+            // screen the character list needs.
+            .heightIn(max = 190.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (branches.isNotEmpty()) {
+            Text(
+                branches.joinToString(", ") { "${it.characterId} [${it.text}]" } +
+                    " — which are you running?",
+                style = MaterialTheme.typography.bodySmall,
+                color = AgedGold,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (option in branchOptions) {
+                    FilterChip(
+                        selected = outsiderBranch == option,
+                        onClick = { onBranch(if (outsiderBranch == option) null else option) },
+                        label = { Text("$option " + teamWord(Team.OUTSIDER, option)) },
+                    )
+                }
+            }
+        }
+        for (issue in issues) {
+            Text(issue, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        for (warning in warnings) {
+            Text(warning, color = AgedGold, style = MaterialTheme.typography.bodySmall)
+        }
+        message?.let {
+            Text(it, color = EmberRed, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
