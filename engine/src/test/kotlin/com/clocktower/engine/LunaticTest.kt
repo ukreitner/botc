@@ -311,6 +311,56 @@ class LunaticTest {
     }
 
     // ==================================================================
+    // "Show them the THIS PLAYER IS token, then the Lunatic token" (P0-3)
+    // ==================================================================
+
+    private fun demonInfoRow(state: GameState): NightStep = assertNotNull(
+        NightPlan.build(state, lookup).steps.firstOrNull {
+            it.slotId == NightMarkers.DEMON_INFO
+        },
+        "no Demon info row: ${NightPlan.build(state, lookup).steps.map { it.slotId }}",
+    )
+
+    @Test
+    fun `the real Demon is told who the Lunatic is on the first night`() {
+        val (state, lunatic) = poLunaticNightOne()
+        val info = demonInfoRow(state)
+        val who = name(state, lunatic)
+
+        assertTrue(
+            "LUNATIC" in info.banner && who in info.banner,
+            "the Demon info row says it in ember, not only in the drawer: '${info.banner}'",
+        )
+        assertTrue(who in info.detail, "and in the detail: ${info.detail}")
+
+        val offer = assertNotNull(
+            info.cards.firstOrNull { it.card is ShowCardSpec.PointCard },
+            "a card to actually show it with: ${info.cards.map { it.label }}",
+        )
+        val card = assertIs<ShowCardSpec.PointCard>(offer.card)
+        assertEquals("lunatic", card.characterId, "the Lunatic token is on the card")
+        assertEquals(listOf(who), card.playerNames)
+        assertEquals(listOf(state.seats.indexOfFirst { it.id == lunatic } + 1), card.seatNumbers)
+        assertTrue(offer.truthful)
+        assertTrue(who.uppercase() in offer.label, "the button names them: ${offer.label}")
+    }
+
+    @Test
+    fun `a game with no Lunatic says nothing about one`() {
+        val state = bmrGame(
+            "po", "godfather", "assassin", "sailor",
+            "fool", "gossip", "chambermaid", "tealady",
+        )
+        val info = demonInfoRow(state)
+        assertEquals("", info.banner, "nothing to say: '${info.banner}'")
+        assertFalse("LUNATIC" in info.detail, info.detail)
+        assertTrue(
+            info.cards.none { it.card is ShowCardSpec.PointCard },
+            "and no card to point with: ${info.cards.map { it.label }}",
+        )
+    }
+
+    // ==================================================================
     // Every other believer — the Drunk, who owns no marker
     // ==================================================================
 
