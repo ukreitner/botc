@@ -311,6 +311,16 @@ object Setup {
         playerCount: Int,
         random: Random = Random,
         attempts: Int = 200,
+        /** The Fabled in play, so a Sentinel game may draw its extra Outsider. */
+        fabledIds: Collection<String> = emptyList(),
+        /**
+         * Characters in play WITHOUT a bag token — the acknowledged Lil' Monsta.
+         * Playtest A-8: without this the one-tap builders ignored the box they
+         * are shown beside and rolled 7/0/2/1 for a game the app's own validator
+         * had just told them wanted 7/0/3/0.
+         */
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
     ): List<Character>? {
         val byTeam = available.groupBy { it.team }
         val teamsInOrder = listOf(Team.DEMON, Team.MINION, Team.OUTSIDER, Team.TOWNSFOLK)
@@ -342,7 +352,7 @@ object Setup {
                         available.find { it.id == companionId }?.let { bag.add(it) }
                     }
                 }
-                val shapes = shapesFor(bag, playerCount)
+                val shapes = shapesFor(bag, playerCount, inPlayIds, state)
                 val forbidden = forbiddenIds(shapes)
                 val target = shapeTarget(
                     shapes.values,
@@ -381,8 +391,16 @@ object Setup {
                 }
             }
 
-            val seatFilling = bag.count { it.id !in forbiddenIds(shapesFor(bag, playerCount)) }
-            if (seatFilling == playerCount && validateBag(bag, playerCount).isEmpty()) {
+            val forbidden = forbiddenIds(shapesFor(bag, playerCount, inPlayIds, state))
+            val seatFilling = bag.count { Character.normalizeId(it.id) !in forbidden }
+            val legal = validateBag(
+                bag = bag,
+                playerCount = playerCount,
+                fabledIds = fabledIds,
+                inPlayIds = inPlayIds,
+                state = state,
+            ).isEmpty()
+            if (seatFilling == playerCount && legal) {
                 return bag
             }
         }

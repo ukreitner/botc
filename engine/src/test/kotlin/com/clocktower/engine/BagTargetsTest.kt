@@ -185,4 +185,42 @@ class BagTargetsTest {
         assertEquals(3, outsider.target(5))
         assertEquals(1, outsider.target(0))
     }
+
+    // ---- A-8: the one-tap builders honour the acknowledgement --------------
+
+    /**
+     * With the box ticked the validator wants 7/0/3/0 at ten players. Randomize
+     * used to come back 7/0/2/1 — a Demon in a seat and a Minion short —
+     * rejected on the spot by the app's own checker.
+     */
+    @Test
+    fun `randomBag respects an acknowledged centre token`() {
+        val script = data.builtInScripts().first { it.id == "tb" }
+        val pool = data.resolve(script).filter { it.team.isTownResident } +
+            listOfNotNull(data.character("lilmonsta"), data.character("marionette"))
+        val bag = Setup.randomBag(
+            available = pool,
+            playerCount = 10,
+            random = kotlin.random.Random(7),
+            inPlayIds = listOf("lilmonsta"),
+        )
+        kotlin.test.assertNotNull(bag, "no legal Lil' Monsta bag was found")
+        val issues = Setup.validateBag(
+            bag = bag,
+            playerCount = 10,
+            inPlayIds = listOf("lilmonsta"),
+        )
+        assertEquals(emptyList(), issues, issues.toString())
+        assertEquals(10, Setup.seatFillingBag(bag, 10, listOf("lilmonsta")).size)
+    }
+
+    /** And an ordinary roll is still an ordinary legal bag. */
+    @Test
+    fun `randomBag stays legal with no context at all`() {
+        val script = data.builtInScripts().first { it.id == "tb" }
+        val pool = data.resolve(script).filter { it.team.isTownResident }
+        val bag = Setup.randomBag(pool, 8, kotlin.random.Random(3))
+        kotlin.test.assertNotNull(bag)
+        assertEquals(emptyList(), Setup.validateBag(bag, 8))
+    }
 }

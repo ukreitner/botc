@@ -352,13 +352,36 @@ fun SetupScreen(
                             message = bagMessage,
                             onRandomize = { keep ->
                                 val required = if (keep) bagIds else pinnedIds
-                                val bag = rollBag(characters, residentCount, required, bannedIds)
+                                val bag = rollBag(
+                                    characters = characters,
+                                    playerCount = residentCount,
+                                    required = required,
+                                    banned = bannedIds,
+                                    fabledIds = fabledIds,
+                                    seatlessIds = seatlessIds,
+                                )
                                 if (bag == null) {
                                     bagMessage = "Couldn't make a legal bag for $residentCount " +
                                         "players with those pins and bans. Loosen one and try again."
                                 } else {
                                     bagMessage = null
-                                    bagIds = ArrayList(bag.map { it.id })
+                                    val ids = ArrayList(bag.map { it.id })
+                                    // A-8: the one-tap builders must respect the
+                                    // acknowledgement they are shown beside. The
+                                    // acknowledged centre token fills no seat, so
+                                    // the roll never draws it — put it back, so
+                                    // the tray shows what is actually in play…
+                                    for ((character, _) in seatlessCandidates) {
+                                        if (seatlessAck && character.id !in ids) ids.add(character.id)
+                                    }
+                                    // …and the other way round: a roll that came
+                                    // back holding one IS a seatless game, so tick
+                                    // the box rather than leaving the storyteller
+                                    // with a bag its own validator rejects.
+                                    if (!seatlessAck && seatlessCandidates.any { it.first.id in ids }) {
+                                        seatlessAck = true
+                                    }
+                                    bagIds = ids
                                 }
                             },
                             onClear = { bagIds = ArrayList(); bagMessage = null },
@@ -1118,17 +1141,30 @@ private fun rollBag(
     playerCount: Int,
     required: List<String>,
     banned: List<String>,
+    /** The Fabled the storyteller has already chosen — the Sentinel bends the bag. */
+    fabledIds: List<String>,
+    /** Acknowledged centre tokens: in play, filling no seat (A-8). */
+    seatlessIds: List<String>,
 ): List<Character>? {
     val pool = characters.filterNot { it.id in banned && it.id !in required }
     val random = Random(Time.epochMillis())
+    val roll = {
+        Setup.randomBag(
+            available = pool,
+            playerCount = playerCount,
+            random = random,
+            fabledIds = fabledIds,
+            inPlayIds = seatlessIds,
+        )
+    }
     repeat(40) {
-        val bag = Setup.randomBag(pool, playerCount, random) ?: return@repeat
+        val bag = roll() ?: return@repeat
         val remaining = bag.map { it.id }.toMutableList()
         val honoured = required.all { remaining.remove(it) }
         if (honoured) return bag
     }
     // Last resort: no pins at all is still better than nothing.
-    return if (required.isEmpty()) null else Setup.randomBag(pool, playerCount, random)
+    return if (required.isEmpty()) null else roll()
 }
 
 /** "1 outsider" / "2 outsiders" — the bag header speaks English (A-13). */
