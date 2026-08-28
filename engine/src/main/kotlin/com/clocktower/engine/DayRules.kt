@@ -467,7 +467,12 @@ object DayRules {
 
         // Goblin: "If you publicly claim to be the Goblin when nominated, and are
         // executed that day, your team wins."
-        if (nominee != null && nominee.characterId != null) {
+        //
+        // Anyone may CLAIM it, in-play or not — but only on a script that has a
+        // Goblin at all. Asking "Did Erin claim to be the Goblin?" in a Bad Moon
+        // Rising game is a caveat about a character nobody could be
+        // (playtest D, P2-15).
+        if (nominee != null && nominee.characterId != null && onScript(state, "goblin")) {
             add(
                 NominationTrigger(
                     kind = TriggerKind.CHOICE,
@@ -731,6 +736,17 @@ object DayRules {
     /** True for a seat whose TRUE character is the Beggar. */
     private fun isBeggar(player: Player): Boolean =
         player.characterId?.let(Character::normalizeId) == BEGGAR
+
+    /**
+     * Is [characterId] on THIS game's script? A caveat about a character the
+     * script has never heard of is noise the storyteller has to read past
+     * (playtest D, P2-15). Script membership, not in-play: a Goblin claim is a
+     * claim, and the claimant need not hold the token.
+     */
+    private fun onScript(state: GameState, characterId: String): Boolean {
+        val id = Character.normalizeId(characterId)
+        return state.script.characterIds.any { Character.normalizeId(it) == id }
+    }
 
     /**
      * "If a dead player gives you their vote token, you learn their alignment."

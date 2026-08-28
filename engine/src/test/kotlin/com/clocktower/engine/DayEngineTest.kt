@@ -274,6 +274,26 @@ class DayEngineTest {
     }
 
     @Test
+    fun `a script with no Goblin never asks whether somebody claimed one`() {
+        // Playtest D P2-15: every Bad Moon Rising nomination carried
+        // "! Did Erin claim to be the Goblin?" — a caveat about a character
+        // nobody at that table could be.
+        val bmr = data.builtInScripts().first { it.id == "bmr" }
+        assertFalse(
+            bmr.characterIds.any { Character.normalizeId(it) == "goblin" },
+            "Bad Moon Rising has no Goblin",
+        )
+        var state = GameActions.newGame(bmr, (1..8).map { "P$it" })
+        state = GameActions.advancePhase(GameActions.advancePhase(state))
+        state = assign(state, 4L, "grandmother")
+
+        assertNull(
+            DayRules.checkNomination(state, lookup, 1L, 4L).triggers.find { it.sourceId == "goblin" },
+            "no Goblin caveat off-script",
+        )
+    }
+
+    @Test
     fun `withdrawn nominations are recordable and consume both rights`() {
         var state = day1()
         state = DayRules.record(
