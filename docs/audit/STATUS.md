@@ -111,3 +111,5 @@ RESUME STEP 0: merge WP8 then WP9 (expect conflicts in GameActionsApi.kt imports
 ## 2026-08-28 RESUMED. WP8 + WP9 MERGED (no conflicts). Suite 756/0/6; uicheck 82; web green. D66–D71 recorded.
 Wave 6 LAUNCHED: (A) UI integration — DayScreen onDusk/onOpenSeat wiring in GameShell; PhaseFlow BriefingSheet `onItem` + actionId navigation; newGame on GameActionsApi + flip view-model gate; promote DayScreenTest id gate into SourceGatesTest. (C) Data pass — FOLLOWUPS §Wave 4 data items via tools/app-overlay.json + regen + patch-night-guide; matching TokenRule copies/spentLabel gates in rules/*.kt + their tests; DATA.md.
 Wave 7 (after C merges): schema pass. Wave 8: WP12 pass 2 → final verify → push.
+W6A DONE + MERGED (3 commits). All CI gates LIVE (view-model gate flipped; day-package id gate promoted into SourceGatesTest). Suite 755/0/5 (remaining skips = BmrSessionPlaytestTest DA + Pukka fixtures → WP12 pass 2); uicheck 81; web green. Note: BriefingSheet.onItem is (BriefingItem) -> Boolean (ticks consumed lines in place); `execute:` has no shell handler by design (dusk sheet's primary button does it).
+Waiting on W6C (data pass) → then Wave 7 schema pass.
