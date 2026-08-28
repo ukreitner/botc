@@ -142,6 +142,46 @@ object PhaseFlow {
 }
 
 /**
+ * The two buttons of the dusk sheet, as a pure function of the day's state
+ * (playtest C-16).
+ *
+ * The rule: **the primary is whatever records what happened today, and its
+ * label says so.** The sheet used to lead with a bare `BEGIN NIGHT n →` — the
+ * irreversible half, which records nothing — while the `NO_EXECUTION` record
+ * that the Mayor, the Vortox and the Zombuul all read sat in a text button
+ * beside "Not yet". Beginning the night is still reachable without a record,
+ * but only from a button that says that is what it does: the advance must never
+ * *imply* "no execution" (lead D30 — the record is the day-closed signal).
+ */
+object DuskActions {
+
+    /** The primary. [onBlockName] is the seat the vote put on the block, if any. */
+    fun confirmLabel(nextCycle: Int, onBlockName: String?, executionSpent: Boolean): String = when {
+        onBlockName != null -> "EXECUTE ${onBlockName.uppercase()} & BEGIN NIGHT"
+        !executionSpent -> "NO EXECUTION — BEGIN NIGHT $nextCycle →"
+        else -> "BEGIN NIGHT $nextCycle →"
+    }
+
+    /** True when the primary writes a `NO_EXECUTION` record before advancing. */
+    fun confirmRecordsNoExecution(onBlockName: String?, executionSpent: Boolean): Boolean =
+        onBlockName == null && !executionSpent
+
+    /**
+     * The secondary, or null when the day already has its record and the only
+     * thing left to do is begin the night.
+     */
+    fun secondaryLabel(onBlockName: String?, executionSpent: Boolean): String? = when {
+        executionSpent -> null
+        onBlockName != null -> "No execution"
+        else -> "Begin night without recording"
+    }
+
+    /** True when the secondary writes a `NO_EXECUTION` record before advancing. */
+    fun secondaryRecordsNoExecution(onBlockName: String?, executionSpent: Boolean): Boolean =
+        onBlockName != null && !executionSpent
+}
+
+/**
  * The guards and sheets the phase button can raise, as UI state. WP0 moved these
  * out of `GameShell`; WP6 drives them from [PhaseFlow.request] so `GameShell`
  * owns only tabs, scaffold, top bar and scrim.
@@ -369,14 +409,13 @@ internal fun PhaseGuardDialogs(
 
     guards.dusk?.let { briefing ->
         val onBlock = guards.onBlockId?.let { state.player(it) }
+        val spent = DayRules.executionSpent(state)
+        val recordOnConfirm = DuskActions.confirmRecordsNoExecution(onBlock?.name, spent)
+        val recordOnSecondary = DuskActions.secondaryRecordsNoExecution(onBlock?.name, spent)
         BriefingSheet(
             briefing = briefing,
             title = "Dusk · day ${briefing.cycle}",
-            confirmLabel = if (onBlock == null) {
-                "BEGIN NIGHT ${briefing.cycle + 1} →"
-            } else {
-                "EXECUTE ${onBlock.name.uppercase()} & BEGIN NIGHT"
-            },
+            confirmLabel = DuskActions.confirmLabel(briefing.cycle + 1, onBlock?.name, spent),
             advisories = guards.duskAdvisories,
             onConfirm = {
                 val target = onBlock?.id
@@ -386,16 +425,15 @@ internal fun PhaseGuardDialogs(
                 target?.let {
                     viewModel.execute(it, via = ExecutionVia.VOTE, nominationIndex = index)
                 }
+                if (recordOnConfirm) viewModel.noExecution()
                 viewModel.advancePhase()
                 onTab(GameTab.NIGHT)
             },
             onDismiss = { guards.clear() },
-            // A day that closes with nobody executed is a RECORD, not an absence
-            // (lead D30): the Mayor, the Vortox and the Zombuul all read it.
-            secondaryLabel = "No execution".takeIf { !DayRules.executionSpent(state) },
+            secondaryLabel = DuskActions.secondaryLabel(onBlock?.name, spent),
             onSecondary = {
                 guards.clear()
-                viewModel.noExecution()
+                if (recordOnSecondary) viewModel.noExecution()
                 viewModel.advancePhase()
                 onTab(GameTab.NIGHT)
             },
