@@ -79,3 +79,6 @@
 - `GrimoireScreen.kt` — `audit` reports a 40 % overlap between the "fabled +" button and the Search field (pre-existing; also filed by the harness author for GrimoireHeader).
 - `SeatSheet.kt` character picker (`Change…`) — audits "top 8px under the status bar" + "bottom 21px under the gesture inset"; needs the token picker's treatment (F-5) plus a bottom fix.
 - `GameShell.kt` bottom `NavigationBar` — three of four tab items end 21 px under the gesture inset on every in-game screen (pre-existing, centres tappable). Fix = give the bar `mandatorySystemGestures` insets, which lifts all in-game content by 21 px — schedule as ONE deliberate shell change with a full scenario re-run, not mid-wave.
+- (from Fix-G) `GameShell.kt:452` — pass `viewModel.lookup` to `GameLogDialog(state, lookup, onDismiss)` so ledger rows name the Empath, not `empath` (defaulted fallback = the script's homebrew lookup). → wave-2 polish.
+- (from Fix-G) `GameActionsApi.kt` — `setHouseRules` is an extension in GameExtras.kt; move it into the interface's per-WP block for D26 to be literal. → wave-2 polish.
+- (from Fix-G) `tools/emu/ui.py` — `tap`/`audit` should skip or refuse a node whose centre falls outside its nearest scrollable ancestor's bounds (the phantom hit band under a sticky footer is what A-20 tapped; G-3's residual).
