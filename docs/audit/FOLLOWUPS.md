@@ -66,3 +66,4 @@
 ### Voudon (lead verification after user report "didn't work at all")
 - Engine + nomination panel are correct (`DayRules.voteRules` → eligible = Voudon + dead, threshold 1, no ghost vote spent). But the day STAT STRIP (`day/DayModel.kt:98`) computes `Voting.executionThreshold(alive)` directly and shows "N to execute" + a ghost-vote count that are wrong under a Voudon (and under any rule that rewrites the threshold). Fix: read `DayRules.voteRules(state, lookup, isExile = false)` and render its threshold/reasons; hide the ghost-vote count when `spendsGhostVotes` is false.
 - Likely also: user on the cached pre-rebuild PWA — build id is shown on the boot screen and Home footer; deployed = b3f2f41.
+- Follow-up from the stat-strip fix: `GrimoireScreen.kt:269` header prints `GameState.executionThreshold` + its own ghost count — same bug, needs `lookup` to route through `VoteRules`. Fold into the next UI fix wave.
