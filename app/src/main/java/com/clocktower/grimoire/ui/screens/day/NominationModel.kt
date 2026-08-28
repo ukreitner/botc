@@ -229,6 +229,22 @@ object NominationModel {
         }
     }
 
+    /**
+     * The pinned ring takes no taps while the day is closed and the storyteller
+     * has not said otherwise — a nomination taken now would be dropped by
+     * `DayRules.record` and never appear anywhere (C-4).
+     */
+    fun ringLocked(closedReason: String, reopened: Boolean): Boolean =
+        closedReason.isNotBlank() && !reopened
+
+    /**
+     * True when **Lock in** would write nothing: `DayRules.record` refuses an
+     * illegal nomination and returns the state untouched, so the button must
+     * say so instead of clearing the draft.
+     */
+    fun lockInRefused(blockers: List<String>, force: Boolean): Boolean =
+        blockers.isNotEmpty() && !force
+
     /** The one-line prompt above the ring. */
     fun ringPrompt(nominatorId: Long?, nomineeId: Long?, nominatorName: String?): String = when {
         nominatorId == null -> "Tap who nominates, then who they nominate."

@@ -67,31 +67,66 @@ import com.clocktower.grimoire.ui.theme.PoisonGreen
  * [Allow anyway] (finding 14: a dead Banshee, a Butcher's second nomination
  * and a Riot re-nomination are all legal somewhere).
  */
+@Suppress("LongParameterList")
 @Composable
 fun SeatRingPanel(
     viewModel: GameViewModel,
     state: GameState,
     nominatorId: Long?,
     nomineeId: Long?,
+    /** The storyteller has explicitly reopened a closed day. */
+    reopened: Boolean,
     onPickSeat: (Long) -> Unit,
     onSay: (Long) -> Unit,
+    onReopen: () -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
     val ring = remember(state, nominatorId, nomineeId) {
         NominationModel.ring(state, lookup, nominatorId, nomineeId)
     }
+    val closedReason = remember(state) { DayRules.nominationsClosedReason(state, lookup) }
+    // A closed day disables the ring instead of pretending to take a
+    // nomination it will drop on the floor (C-4). The reason is stated where
+    // the taps would have gone, and reopening is one deliberate tap.
+    val locked = NominationModel.ringLocked(closedReason, reopened)
     Column(Modifier.fillMaxWidth()) {
+        if (closedReason.isNotBlank()) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    closedReason,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                    modifier = Modifier.weight(1f),
+                )
+                if (locked) {
+                    TextButton(onClick = onReopen) { Text("Nominate anyway") }
+                }
+            }
+        }
         Text(
-            NominationModel.ringPrompt(
-                nominatorId,
-                nomineeId,
-                nominatorId?.let { state.player(it)?.name },
-            ),
+            if (locked) {
+                "Nominations are closed. Tap Nominate anyway to take one regardless."
+            } else {
+                NominationModel.ringPrompt(
+                    nominatorId,
+                    nomineeId,
+                    nominatorId?.let { state.player(it)?.name },
+                )
+            },
             style = MaterialTheme.typography.bodyMedium,
-            color = PaleGold,
+            color = if (locked) FadedInk else PaleGold,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
         )
-        SeatRing(ring = ring, onTap = onPickSeat, onLongPress = onSay)
+        SeatRing(
+            ring = ring,
+            enabled = !locked,
+            onTap = onPickSeat,
+            onLongPress = onSay,
+        )
     }
 }
 
@@ -114,19 +149,11 @@ fun NominationDetail(
     onForce: () -> Unit,
     onReset: () -> Unit,
 ) {
-    val lookup: (String) -> Character? = viewModel::characterById
-    if (DayRules.nominationsClosed(state, lookup)) {
-        Text(
-            DayRules.nominationsClosedReason(state, lookup),
-            style = MaterialTheme.typography.bodyMedium,
-            color = FadedInk,
-        )
+    val check = remember(state, nominatorId, nomineeId) {
+        viewModel.nominationCheck(state, nominatorId, nomineeId)
     }
 
     if (nominatorId != null || nomineeId != null) {
-        val check = remember(state, nominatorId, nomineeId) {
-            viewModel.nominationCheck(state, nominatorId, nomineeId)
-        }
         // Per chip tap — the NOMINATION slot's default pair is the last
         // RECORDED nomination, which is wrong for "the 1st time you are
         // nominated" (the Virgin). WP6 merger note.
@@ -151,8 +178,10 @@ fun NominationDetail(
             nominatorId = nominatorId,
             nomineeId = nomineeId,
             voters = voters,
+            blockers = check.blockers,
             force = force,
             onToggleVoter = onToggleVoter,
+            onForce = onForce,
             onReset = onReset,
         )
     }
@@ -166,6 +195,7 @@ fun NominationDetail(
 @Composable
 private fun SeatRing(
     ring: List<RingSeat>,
+    enabled: Boolean,
     onTap: (Long) -> Unit,
     onLongPress: (Long) -> Unit,
 ) {
@@ -206,6 +236,7 @@ private fun SeatRing(
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
+                            enabled = enabled,
                             onClick = { onTap(seat.id) },
                             // Long-press a seat to record what they said (§C).
                             onLongClick = { onLongPress(seat.id) },
@@ -408,8 +439,11 @@ private fun VotePanel(
     nominatorId: Long,
     nomineeId: Long,
     voters: Set<Long>,
+    /** Why the engine would refuse this nomination — empty when it would not. */
+    blockers: List<String>,
     force: Boolean,
     onToggleVoter: (Long) -> Unit,
+    onForce: () -> Unit,
     onReset: () -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
@@ -555,8 +589,24 @@ private fun VotePanel(
         )
     }
 
+    // `DayRules.record` refuses an illegal nomination and returns the state
+    // untouched, so a live Lock in on a closed day cleared the draft and wrote
+    // nothing at all — the storyteller believed the vote was on the record
+    // (C-4). The button now says it will not be recorded, and says why.
+    val refused = NominationModel.lockInRefused(blockers, force)
+    if (refused) {
+        Text(
+            "This will NOT be recorded: ${blockers.first()}",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = EmberRed,
+        )
+        TextButton(onClick = onForce) { Text("Record it anyway") }
+    }
+
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilledTonalButton(
+            enabled = !refused,
             modifier = Modifier.weight(1f),
             onClick = {
                 viewModel.nominate(

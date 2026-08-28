@@ -108,6 +108,8 @@ fun DayScreen(
     var nomineeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var voters by rememberSaveable { mutableStateOf(setOf<Long>()) }
     var forceNomination by rememberSaveable { mutableStateOf(false) }
+    /** The storyteller has deliberately reopened a day the rules closed (§F). */
+    var reopenedDay by rememberSaveable { mutableStateOf(false) }
 
     var openStage by rememberSaveable { mutableStateOf<DayStage?>(null) }
     var ticked by rememberSaveable { mutableStateOf(setOf<String>()) }
@@ -124,6 +126,8 @@ fun DayScreen(
         if (nomineeId !in currentPlayerIds) nomineeId = null
         voters = voters.intersect(currentPlayerIds)
     }
+    // Reopening a closed day is a decision about TODAY and never survives it.
+    LaunchedEffect(state.cycle) { reopenedDay = false }
 
     val dayStart = remember(state) { viewModel.dayBriefing(state) }
     val dawn = state.lastDawn?.takeIf { it.slot == BriefingSlot.DAWN && it.cycle == state.cycle }
@@ -159,6 +163,7 @@ fun DayScreen(
                 state = state,
                 nominatorId = nominatorId,
                 nomineeId = nomineeId,
+                reopened = reopenedDay,
                 onPickSeat = { id ->
                     when {
                         nominatorId == id -> nominatorId = null
@@ -169,9 +174,15 @@ fun DayScreen(
                             voters = emptySet()
                         }
                     }
-                    forceNomination = false
+                    // A day the storyteller reopened stays overridden across
+                    // the two ring taps; anything else asks again.
+                    forceNomination = reopenedDay
                 },
                 onSay = { openSay(it, null) },
+                onReopen = {
+                    reopenedDay = true
+                    forceNomination = true
+                },
             )
         }
 

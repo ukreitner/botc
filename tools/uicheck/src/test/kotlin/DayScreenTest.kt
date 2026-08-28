@@ -281,13 +281,20 @@ class DayScreenTest {
 
     @Test
     fun `the nomination check reaches the day screen with its triggers`() {
-        val state = day()
-        val check = DayRules.checkNomination(state, lookup, seat(state, "Bo"), seat(state, "Fay"))
+        var state = day()
 
-        assertTrue("a plain nomination is legal", check.legal)
-        // The Goblin CHOICE row is offered for every seated nominee: that IS
-        // the "Claims to be the Goblin" affordance, and it is data, not a
-        // character-id branch in the screen.
+        // C-2: the Goblin CHOICE row is data, not a character-id branch in the
+        // screen — but it is only offered where a Goblin can actually claim.
+        // On a plain Trouble Brewing table nobody can be one.
+        val plain = DayRules.checkNomination(state, lookup, seat(state, "Bo"), seat(state, "Fay"))
+        assertTrue("a plain nomination is legal", plain.legal)
+        assertNull(
+            "no Goblin, no question: ${plain.triggers.map { it.sourceId }}",
+            plain.triggers.firstOrNull { it.sourceId == "goblin" },
+        )
+
+        state = Seats.assignCharacter(state, seat(state, "Kit"), "goblin")
+        val check = DayRules.checkNomination(state, lookup, seat(state, "Bo"), seat(state, "Fay"))
         val goblin = check.triggers.firstOrNull { it.sourceId == "goblin" }
         assertNotNull("the goblin claim is offered: ${check.triggers.map { it.sourceId }}", goblin)
         assertEquals(TriggerKind.CHOICE, goblin!!.kind)
@@ -337,6 +344,47 @@ class DayScreenTest {
         assertEquals(4, view.tally)
         assertEquals(3, view.weights[bo])
         assertTrue("the reason is shown", view.reasons.any { it.contains("3 times") })
+    }
+
+    @Test
+    fun `a closed day locks the ring and never discards a vote in silence`() {
+        // Playtest C-4: after a Virgin execution every card said "the day is
+        // over" while the ring, the chips and a live "Lock in: … SAFE (0 of 5)"
+        // stayed up — and locking in cleared the draft and recorded nothing.
+        var state = day()
+        val fay = seat(state, "Fay")
+        state = Execution.execute(state, lookup, fay)
+        assertTrue(DayRules.nominationsClosed(state, lookup))
+
+        val reason = DayRules.nominationsClosedReason(state, lookup)
+        assertTrue("the reason is in storyteller voice: '$reason'", reason.contains("the day is over"))
+        assertTrue("the ring is dead", NominationModel.ringLocked(reason, reopened = false))
+        assertFalse("until the ST reopens it", NominationModel.ringLocked(reason, reopened = true))
+
+        val ana = seat(state, "Ana")
+        val bo = seat(state, "Bo")
+        val check = DayRules.checkNomination(state, lookup, ana, bo)
+        assertFalse(check.legal)
+        assertTrue(
+            "and Lock in refuses rather than swallowing it",
+            NominationModel.lockInRefused(check.blockers, force = false),
+        )
+        assertFalse(NominationModel.lockInRefused(check.blockers, force = true))
+
+        // Why the button must refuse: the engine really does drop it.
+        val dropped = DayRules.record(
+            state,
+            lookup,
+            Nomination(day = state.cycle, nominatorId = ana, nomineeId = bo, voterIds = listOf(ana)),
+        )
+        assertEquals("nothing was recorded", state.nominations.size, dropped.nominations.size)
+        val forced = DayRules.record(
+            state,
+            lookup,
+            Nomination(day = state.cycle, nominatorId = ana, nomineeId = bo, voterIds = listOf(ana)),
+            force = true,
+        )
+        assertEquals(state.nominations.size + 1, forced.nominations.size)
     }
 
     @Test
