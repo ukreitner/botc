@@ -261,6 +261,44 @@ object Briefings {
                 )
             }
 
+            // 4b. YOUR NOTES: what the night actually did. The per-step
+            //     summaries on the night sheet are scoped to that sheet and go
+            //     with it, so the one place the storyteller could read back who
+            //     chose whom, what was shown and whether it was a lie was their
+            //     own memory (playtest B P2 #19). The transcript already renders
+            //     every one of those rows; this is tonight's slice of it.
+            for (row in GameLog.rows(state, lookup)) {
+                if (row.cycle != night || !row.atNight) continue
+                add(
+                    BriefingItem(
+                        key = "dawn:$night:note:${row.seq}",
+                        kind = BriefingKind.PRIVATE,
+                        severity = BriefingSeverity.INFO,
+                        text = row.text,
+                    ),
+                )
+            }
+
+            // 4c. …and what does NOT lift when the sun comes up. The sweep list
+            //     below says what is about to be taken off the grimoire; this
+            //     says what stays on it.
+            for (seat in state.seats) {
+                for (reason in Status.impairment(state, lookup, seat.id)) {
+                    val effect = reason.effect
+                    if (effect.until == Until.DAWN) continue
+                    add(
+                        BriefingItem(
+                            key = "dawn:$night:standing:${seat.id}:${effect.id}",
+                            kind = BriefingKind.STANDING_FACT,
+                            severity = BriefingSeverity.INFO,
+                            sourceId = effect.sourceCharacterId,
+                            text = "${seat.name}: ${reason.text} — this does not lift at dawn.",
+                            playerId = seat.id,
+                        ),
+                    )
+                }
+            }
+
             // 5. Obligations that come due now, and any first night still owed.
             addAll(prompts(state, BriefingSlot.DAWN))
             for (prompt in Prompts.due(state, BriefingSlot.TONIGHT)) {
