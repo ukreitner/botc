@@ -46,6 +46,7 @@ import com.clocktower.grimoire.ui.screens.night.primaryEnabled
 import com.clocktower.grimoire.ui.screens.night.primaryLabel
 import com.clocktower.grimoire.ui.screens.night.progress
 import com.clocktower.grimoire.ui.screens.night.promptBelongsTo
+import com.clocktower.grimoire.ui.screens.night.promptDoneLabel
 import com.clocktower.grimoire.ui.screens.night.promptPrimaryLabel
 import com.clocktower.grimoire.ui.screens.night.promptedToken
 import com.clocktower.grimoire.ui.screens.night.rowMark
@@ -398,6 +399,9 @@ class NightRowsTest {
         assertEquals("PICK ONE", promptPrimaryLabel(picked = null, becomes = "Imp"))
         assertEquals("BEN BECOMES THE IMP", promptPrimaryLabel(picked = "Ben", becomes = "Imp"))
         assertEquals("BEN — CONFIRM", promptPrimaryLabel(picked = "Ben", becomes = null))
+        // An obligation with nothing to choose is discharged, not answered.
+        assertEquals("DONE — THEY HAVE SEEN IT", promptDoneLabel(hasCard = true))
+        assertEquals("DONE — CARRY ON", promptDoneLabel(hasCard = false))
     }
 
     // ---- the one picker ----------------------------------------------------

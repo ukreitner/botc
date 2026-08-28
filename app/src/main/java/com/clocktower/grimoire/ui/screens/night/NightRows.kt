@@ -231,6 +231,13 @@ fun promptedToken(steps: List<NightStep>, prompts: List<Prompt>): String? =
     steps.firstOrNull { step -> prompts.any { promptBelongsTo(it, step) } }?.key?.token
 
 /**
+ * The primary of an obligation that only has to be DISCHARGED — an identity
+ * change whose new token still has to be shown to the player.
+ */
+fun promptDoneLabel(hasCard: Boolean): String =
+    if (hasCard) "DONE — THEY HAVE SEEN IT" else "DONE — CARRY ON"
+
+/**
  * The primary of an obligation: it states what answering it DOES, exactly like
  * every other primary on the night sheet.
  */

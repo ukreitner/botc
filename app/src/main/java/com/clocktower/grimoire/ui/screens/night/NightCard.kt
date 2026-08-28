@@ -50,6 +50,7 @@ import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Prompt
+import com.clocktower.engine.PromptKind
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -283,6 +284,8 @@ fun NightCard(
                     state = state,
                     prompt = owed,
                     onAnswer = { seatId -> viewModel.answerPromptWithPlayer(owed.id, seatId) },
+                    onDone = { viewModel.resolvePrompt(owed.id) },
+                    onShow = onShow,
                     onDismiss = { viewModel.dismissPrompt(owed.id) },
                 )
                 return@Column
@@ -488,6 +491,7 @@ fun NightCard(
  * `answerPromptWithPlayer` applies both in one state change. A prompt the
  * storyteller rules does not apply is dismissed, and the row carries on.
  */
+@Suppress("LongParameterList")
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NightPromptAsk(
@@ -495,13 +499,26 @@ private fun NightPromptAsk(
     state: GameState,
     prompt: Prompt,
     onAnswer: (Long) -> Unit,
+    onDone: () -> Unit,
+    onShow: (ShowCard, Long?, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var picked by remember(prompt.id) { mutableStateOf<Long?>(null) }
     val becomes = viewModel.characterById(prompt.becomesCharacterId)
-    val choices = remember(prompt.id, state.players) {
-        val offered = prompt.targetIds.mapNotNull { state.player(it) }
-        offered.ifEmpty { state.seats.filter { it.alive && it.id != prompt.subjectPlayerId } }
+    // Only a question that asks for a SEAT gets a picker. An obligation that
+    // just has to be discharged — "show Ben his new character" — is a card and
+    // a confirmation, not a grid of every player.
+    val choices = remember(prompt.id, prompt.kind, state.players) {
+        if (prompt.kind != PromptKind.CHOOSE_PLAYER) {
+            emptyList()
+        } else {
+            val offered = prompt.targetIds.mapNotNull { state.player(it) }
+            offered.ifEmpty { state.seats.filter { it.alive && it.id != prompt.subjectPlayerId } }
+        }
+    }
+    // The token the obligation names — the heir's new "YOU ARE" card.
+    val card = remember(prompt.id) {
+        prompt.characterIds.firstOrNull()?.let { ShowCard.CharacterCard("YOU ARE", it) }
     }
 
     Text(
@@ -520,7 +537,23 @@ private fun NightPromptAsk(
         )
     }
     if (choices.isEmpty()) {
-        PrimaryButton(label = "DONE — NOTHING TO CHOOSE", onConfirm = onDismiss)
+        if (card != null) {
+            CardOffers(
+                offers = listOf(
+                    UiOffer(
+                        label = "SHOW: YOU ARE " +
+                            (viewModel.characterById(prompt.characterIds.first())?.name ?: "?"),
+                        card = card,
+                        truthful = true,
+                    ),
+                ),
+                recipientId = prompt.subjectPlayerId,
+                chosen = null,
+                onShow = { offer -> onShow(offer.card, prompt.subjectPlayerId, true) },
+                onEdit = {},
+            )
+        }
+        PrimaryButton(label = promptDoneLabel(card != null), onConfirm = onDone)
         return
     }
     FlowRow(
