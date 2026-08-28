@@ -351,6 +351,9 @@ object SetupRequirements {
                     candidateFilter = { s, l -> s.seats.filterNot { it.isEvil(l) } },
                 )
 
+                // "You start knowing a good player & their character" — ANOTHER
+                // good player. The evil filter was there; the holder was not, so
+                // the picker offered the Grandmother herself (playtest D, P2-18).
                 "grandmother" -> rows += exclusiveTokenRow(
                     id = "grandmother.grandchild:${seat.id}",
                     characterId = "grandmother",
@@ -358,7 +361,8 @@ object SetupRequirements {
                     title = "The Grandchild",
                     prompt = "Mark the good player the Grandmother knows.",
                     problem = "Grandmother: mark the Grandchild",
-                    candidateFilter = { s, l -> s.seats.filterNot { it.isEvil(l) } },
+                    candidateFilter = { s, l -> s.seats.filterNot { it.isEvil(l) || it.id == seat.id } },
+                    holderOk = { _, l, holder -> !holder.isEvil(l) && holder.id != seat.id },
                 )
 
                 "balloonist" -> rows += exclusiveTokenRow(
