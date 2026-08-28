@@ -257,6 +257,54 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Pukka's row names the standing victim, and dawn announces the death`() {
+        // Playtest D P1-9: the deferred kill lives in `pending`, so nothing on
+        // the card mentioned the victim — the storyteller tapped the poison
+        // button and somebody died silently.
+        var state = game("pukka", "gossip", "chambermaid", "professor", "gambler", "courtier")
+        val victim = seat(state, "gossip")
+        val victimName = assertNotNull(state.player(victim)).name
+
+        assertEquals("", require(state, "pukka").banner, "night 1 has nobody standing")
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(victim)))
+        state = nextNight(state)
+
+        val row = require(state, "pukka")
+        assertTrue(victimName in row.banner, "the row names them: '${row.banner}'")
+        assertTrue("dies now" in row.banner, "and says they die: '${row.banner}'")
+
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(seat(state, "chambermaid"))))
+        assertFalse(assertNotNull(state.player(victim)).alive)
+        val dawn = Briefings.at(state, lookup, BriefingSlot.DAWN)
+        assertTrue(
+            dawn.announce.any { victimName in it.text },
+            "and dawn announces it out loud: ${dawn.announce.map { it.text }}",
+        )
+    }
+
+    @Test
+    fun `an Exorcised Pukka still names the victim its silenced row will kill`() {
+        var state = game("pukka", "exorcist", "gossip", "chambermaid", "professor", "fool")
+        val pukka = seat(state, "pukka")
+        val victim = seat(state, "gossip")
+        val victimName = assertNotNull(state.player(victim)).name
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(victim)))
+        state = nextNight(state)
+        state = resolve(state, "exorcist", NightInput(playerIds = listOf(pukka)))
+
+        val row = require(state, "pukka")
+        val reduced = assertIs<StepGate.Reduced>(row.gate)
+        assertTrue(
+            row.banner.startsWith(reduced.reason),
+            "the reason the ability is cut back still comes first: '${row.banner}'",
+        )
+        assertTrue(
+            victimName in row.banner,
+            "and the death it still carries is not hidden behind it: '${row.banner}'",
+        )
+    }
+
+    @Test
     fun `a protected Pukka victim lives and still becomes healthy`() {
         var state = game("pukka", "gossip", "chambermaid", "innkeeper", "professor", "gambler")
         val victim = seat(state, "gossip")

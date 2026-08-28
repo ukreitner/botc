@@ -758,14 +758,17 @@ data class NightPlan(
                 style = style,
                 gate = gate,
                 // The planner's own banner (impaired, silenced, dead-but-acts)
-                // always wins: a row must never hide the reason its ability will
-                // not work tonight behind the registry's evidence quote. The
-                // briefing is appended rather than merged away — the real Demon
-                // must see the Lunatic's picks even on a night they are silenced.
+                // comes FIRST: a row must never hide the reason its ability will
+                // not work tonight. Everything else is appended rather than
+                // merged away — the real Demon must see the Lunatic's picks even
+                // on a night they are silenced, and an Exorcised Pukka's standing
+                // victim still dies, so the row still has to name them (P1-9).
                 banner = withEvidence(
                     withEvidence(
-                        bannerFor(ctx, role, holder, gate)
-                            .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
+                        withEvidence(
+                            bannerFor(ctx, role, holder, gate),
+                            nightRule?.banner?.invoke(nightCtx).orEmpty(),
+                        ),
                         // The hand-over is the point of a believer's first night,
                         // so it goes in ember rather than in the drawer nobody
                         // opens — even when the believed ability has a row of its

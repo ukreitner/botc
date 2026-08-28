@@ -1133,6 +1133,18 @@ private fun zombuul() = CharacterRule(
 private fun pukka(): CharacterRule {
     val rule = NightRule(
         gate = Gates.all(Gates.aliveHolder, Gates.notExorcised),
+        // The deferred kill is in `pending`, not in the action, so nothing on the
+        // card named the victim: the storyteller tapped `DEV — POISONED` and Ben
+        // died silently (playtest D, P1-9). It rides in ember, and it survives an
+        // Exorcised night, which is exactly the night it matters (lead D24/D63).
+        banner = { ctx ->
+            val victims = standingVictims(ctx).mapNotNull { ctx.state.player(it)?.name }
+            when {
+                victims.isEmpty() -> ""
+                else -> "${victims.joinToString(" and ")} dies now — poisoned by the Pukka " +
+                    "last night. Shroud them and announce the death at dawn."
+            }
+        },
         prompt = "The Pukka points at a player: that player is POISONED. The player " +
             "poisoned on the previous night dies now, still poisoned, then becomes healthy.",
         action = {
