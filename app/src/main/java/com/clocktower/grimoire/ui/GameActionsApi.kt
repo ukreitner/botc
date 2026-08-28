@@ -18,6 +18,7 @@ import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.ExecutionRecord
 import com.clocktower.engine.ExecutionVia
+import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Identity
@@ -41,6 +42,7 @@ import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.Prompts
 import com.clocktower.engine.RenderedToken
+import com.clocktower.engine.Script
 import com.clocktower.engine.SeatNote
 import com.clocktower.engine.Seats
 import com.clocktower.engine.Selection
@@ -769,4 +771,18 @@ interface GameActionsApi {
      * acknowledgement it took before the game existed.
      */
     fun applySetupRequirementAck(id: String) = update { Decisions.set(it, id, "true") }
+
+    // ---- W6: game lifecycle ----
+
+    /**
+     * A brand-new game state for [script] and [playerNames].
+     *
+     * The one engine verb that cannot go through [update]: it does not
+     * transform the game in progress, it replaces it, and the view models
+     * archive the old one in the same breath. Exposing it here is what lets
+     * `GameViewModel`/`WebGameViewModel` hold no `GameActions.` call at all —
+     * the last gate of D26 / ARCHITECTURE §3.4.5.
+     */
+    fun newGame(script: Script, playerNames: List<String>): GameState =
+        GameActions.newGame(script, playerNames)
 }

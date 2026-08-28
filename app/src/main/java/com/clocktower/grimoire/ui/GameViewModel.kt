@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.clocktower.engine.Character
-import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NotesActions
@@ -105,7 +104,7 @@ class GameViewModel(application: Application) :
         // Stamp the game id here as well as at load (Migrations step 8), so the
         // archive can tell two games apart before the first reload.
         val now = System.currentTimeMillis()
-        val fresh = GameActions.newGame(script, playerNames)
+        val fresh = newGame(script, playerNames)
             .copy(id = "g" + now.toString(36), updatedAt = now)
         _game.value = fresh
         _canUndo.value = false

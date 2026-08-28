@@ -1,8 +1,6 @@
 package com.clocktower.engine
 
-import org.junit.Ignore
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -11,18 +9,18 @@ import kotlin.test.assertTrue
  * unit test can express, run as JUnit so `./gradlew :engine:test` enforces them.
  *
  * Three invariants:
- *  1. **I1 / §3.4.3** — no character id in `NightScreen.kt` or `DayScreen.kt`.
- *     Per-character behaviour belongs in the `engine/rules/` registry.
+ *  1. **I1 / §3.4.3** — no character id in `NightScreen.kt` or anywhere in
+ *     the Day tab's package. Per-character behaviour belongs in `engine/rules/`.
  *  2. **D26 / §3.4.5** — `GameViewModel.kt` and `WebGameViewModel.kt` contain no
  *     `GameActions.` call; every verb goes through `GameActionsApi`.
  *  3. **D5 / §3.4.1** — no reminder label literal outside `engine/rules/` is
  *     compared with `==`; use `Tokens.key(sourceId, label)`.
  *
- * Each gate ships as a pair: the real gate, `@Ignore`d while the package that
- * owns the offending file has not landed, and a **live baseline** test that
- * fails the moment a NEW violation appears. The merger flips the `@Ignore`
- * off when the named package lands; the baseline test stops the count growing
- * in the meantime. The `@Ignore` reason records the census as of this commit.
+ * Every gate is LIVE as of W6A: the last `@Ignore` came off gate 2 when
+ * `GameActionsApi.newGame` landed and both view models stopped naming
+ * `GameActions` at all. Gate 3 keeps its live baseline test alongside the real
+ * one, because three tolerated `label ==` sites still stand (lead D5); a new
+ * one fails the baseline immediately rather than waiting for a cleanup.
  */
 class SourceGatesTest {
 
@@ -32,6 +30,19 @@ class SourceGatesTest {
     private val dayScreen = "app/src/main/java/com/clocktower/grimoire/ui/screens/DayScreen.kt"
     private val androidViewModel = "app/src/main/java/com/clocktower/grimoire/ui/GameViewModel.kt"
     private val webViewModel = "web/src/wasmJsMain/kotlin/com/clocktower/grimoire/ui/WebGameViewModel.kt"
+
+    /** Everything the Day tab is made of (WP9 split it up); `DayScreen.kt` leads. */
+    private val daySources = listOf(
+        dayScreen,
+        "app/src/main/java/com/clocktower/grimoire/ui/screens/day/DayModel.kt",
+        "app/src/main/java/com/clocktower/grimoire/ui/screens/day/DayCards.kt",
+        "app/src/main/java/com/clocktower/grimoire/ui/screens/day/SaidModel.kt",
+        "app/src/main/java/com/clocktower/grimoire/ui/screens/day/SaidSheet.kt",
+        "app/src/main/java/com/clocktower/grimoire/ui/screens/day/NominationModel.kt",
+        "app/src/main/java/com/clocktower/grimoire/ui/screens/day/NominationPanel.kt",
+        "app/src/main/java/com/clocktower/grimoire/ui/screens/day/ExecutionSheet.kt",
+        "app/src/main/java/com/clocktower/grimoire/ui/components/Timer.kt",
+    )
 
     /** Any double-quoted literal on a line. */
     private val stringLiteral = Regex("\"([^\"\\\\\\n]*)\"")
@@ -74,28 +85,26 @@ class SourceGatesTest {
     }
 
     @Test
-    fun `DayScreen branches on no character id`() {
-        val hits = characterIdLiterals(dayScreen)
-        assertTrue(hits.isEmpty(), "character ids in DayScreen.kt (I1):\n" + hits.joinToString("\n"))
-    }
-
-    @Test
     fun `NightScreen branches on no character id`() {
         val hits = characterIdLiterals(nightScreen)
         assertTrue(hits.isEmpty(), "character ids in NightScreen.kt (I1):\n" + hits.joinToString("\n"))
     }
 
+    /**
+     * The Day tab is more than one file: WP9 split the composer, the models,
+     * the nomination panel and the execution sheet out of `DayScreen.kt`, and
+     * the shared timer moved to `components/Timer.kt`. The gate follows them,
+     * so "no character id in the day screen" cannot be satisfied by moving the
+     * `when (characterId)` one directory down. Promoted here from
+     * `tools/uicheck` (WP9) so `./gradlew :engine:test` is the one place the
+     * structural rules run.
+     */
     @Test
-    fun `character ids in the night screen do not spread further`() {
-        // Live baseline while WP8 is outstanding: the four legacy resolvers may
-        // stay, but no NEW character id may appear.
-        val known = setOf("snakecharmer", "fanggu", "professor", "imp", "scarletwoman")
-        val hits = characterIdLiterals(nightScreen)
-        val fresh = hits.filterNot { it.what in known }
-        assertTrue(fresh.isEmpty(), "new character ids in NightScreen.kt (I1):\n" + fresh.joinToString("\n"))
+    fun `the day package names no character id`() {
+        val hits = daySources.flatMap { characterIdLiterals(it) }
         assertTrue(
-            hits.size <= 7,
-            "NightScreen.kt character-id count grew from 7 to ${hits.size}:\n" + hits.joinToString("\n"),
+            hits.isEmpty(),
+            "per-character behaviour belongs in engine/rules/ (I1):\n" + hits.joinToString("\n"),
         )
     }
 
@@ -111,7 +120,6 @@ class SourceGatesTest {
     }
 
     @Test
-    @Ignore("WP0 — GameViewModel.kt:85 and WebGameViewModel.kt:67 each still call GameActions.newGame(...) (1 hit per file); expose newGame through GameActionsApi and enable")
     fun `view models contain no GameActions call`() {
         val hits = gameActionsCalls(androidViewModel) + gameActionsCalls(webViewModel)
         assertTrue(
@@ -119,21 +127,6 @@ class SourceGatesTest {
             "the view models must call engine verbs through GameActionsApi (D26):\n" +
                 hits.joinToString("\n"),
         )
-    }
-
-    @Test
-    fun `view models add no new GameActions call`() {
-        // Live baseline while the last WP0 leftover stands: exactly one call in
-        // each file, and both are `newGame`.
-        for (relative in listOf(androidViewModel, webViewModel)) {
-            val hits = gameActionsCalls(relative)
-            assertEquals(1, hits.size, "$relative GameActions. call count:\n" + hits.joinToString("\n"))
-            assertTrue(
-                hits.all { "GameActions.newGame(" in it.text },
-                "$relative gained a GameActions call that is not newGame (D26):\n" +
-                    hits.joinToString("\n"),
-            )
-        }
     }
 
     // ------------------------------------------------------------------
@@ -203,7 +196,7 @@ class SourceGatesTest {
 
     @Test
     fun `the gates can find every file they police`() {
-        for (relative in listOf(nightScreen, dayScreen, androidViewModel, webViewModel)) {
+        for (relative in listOf(nightScreen, androidViewModel, webViewModel) + daySources) {
             assertNotNull(RepoFiles.textOrNull(relative), "gate target not found: $relative")
         }
         for (root in scannedRoots) {
