@@ -11,6 +11,7 @@ import com.clocktower.engine.DayAbility
 import com.clocktower.engine.DayRule
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.DeathTrigger
+import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
 import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
@@ -19,12 +20,14 @@ import com.clocktower.engine.GameState
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
+import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.RequirementKind
 import com.clocktower.engine.SetupRequirement
+import com.clocktower.engine.StandingRule
 import com.clocktower.engine.Status
 import com.clocktower.engine.StepGate
 import com.clocktower.engine.Team
@@ -47,29 +50,23 @@ import com.clocktower.engine.WakePredicate
  * seats or in `GameState.storytellerReminders`, and its per-game configuration
  * lives in `FabledEntry.config` under the typed keys of lead D45.
  *
- * That has three consequences for the rows below, all of them filed to WP2 in
- * this package's final report:
+ * As of wave 7 every hook below is LIVE. The engine walks `state.fabled`
+ * alongside `state.seats` and hands a Fabled row
+ * `CharacterRules.GRIMOIRE_HOLDER` as its holder — a stand-in seat that is
+ * never read, because a Fabled row reads `state.fabled` for everything:
  *
- * 1. **`standing` never fires for a Fabled.** `Standing.emitSelf` /
- *    `emitPositional` iterate `state.seats` and look the registry up by the
- *    seat's character id. The Storm Catcher's `ONLY_EXECUTION_KILLS` is
- *    therefore emitted by WP1's own `fabledConfig` block in `Effects.kt` — this
- *    file AGREES with it and never duplicates it.
- * 2. **`onDeath` never fires for a Fabled.** `Deaths.fireDeathTriggers` iterates
- *    seats too. The Angel's and the Hindu's triggers are declared here so they
- *    start working the moment that loop also walks `state.fabled`.
- * 3. **`day.onNomination` / `day.onExecution` never fire for a Fabled**, for the
- *    same reason (`DayRules.triggersFor`, `Execution.consequences`).
- *
- * What IS live today for a Fabled row:
- *
+ * - `standing` — `Standing.emitPositional`. The Storm Catcher's
+ *   `ONLY_EXECUTION_KILLS` moved here out of WP1's hardcoded `Effects.kt` block.
+ * - `onDeath` — `Deaths.fireDeathTriggers` (Angel, Hindu).
+ * - `day.onNomination` / `day.onExecution` — `DayRules.triggersFor`,
+ *   `Execution.consequences` (Big Wig, Ventriloquist).
  * - [CharacterRule.tokens] — `Tokens.all` layers `CharacterRules.tokenRules`
  *   over WP1's `Tokens.BASE` and later rows win, so a Fabled owns its own token
  *   lifecycle (the Duchess's dawn sweep, the Toymaker's marker) without editing
  *   `Tokens.kt`.
- * - [NightRule.pending] — `NightPlan.resolve` looks the registry up by
- *   `step.abilityId`, which for a Fabled's own night-order slot IS the Fabled
- *   id. The Toymaker's obligation is placed and enforced through it.
+ * - The whole [NightRule] — `NightPlan.fabledStep` honours
+ *   `CharacterRules.of(slot)`: gate, action, prompt, cards, `infoId` and
+ *   [NightRule.pending] all apply to a seatless Fabled row.
  *
  * ## Conventions
  *
@@ -1177,6 +1174,33 @@ private fun stormCatcher() = CharacterRule(
             endsWithSource = false, protects = true,
         ),
     ),
+    // W7A: moved out of WP1's hardcoded `Effects.emitPositional` block. The
+    // holder is `CharacterRules.GRIMOIRE_HOLDER` and is never read — a Fabled
+    // has no seat, so the rule reads `state.fabled` for its configuration.
+    standing = StandingRule("stormcatcher") { state, _, _ ->
+        val wanted = fabledConfig(state, "stormcatcher", STORM_CATCHER_CHARACTER)
+            ?: return@StandingRule emptyList()
+        val seat = state.seats.firstOrNull {
+            it.characterId?.let(Character::normalizeId) == Character.normalizeId(wanted)
+        } ?: return@StandingRule emptyList()
+        listOf(
+            Effect(
+                id = seat.standingSince,
+                kind = EffectKind.ONLY_EXECUTION_KILLS,
+                targetId = seat.id,
+                sourceCharacterId = "stormcatcher",
+                // A Fabled holds no seat, so nothing can stop sustaining it.
+                sourcePlayerId = null,
+                until = Until.FOREVER,
+                endsWithSource = false,
+                label = "Stormcaught",
+                note = "Storm Catcher: can only die by execution.",
+                createdCycle = state.cycle,
+                createdAtNight = state.phase != Phase.DAY,
+                derived = true,
+            ),
+        )
+    },
     firstNight = NightRule(
         gate = fabledAlwaysFires(),
         prompt = "Announce which character is stormcaught. If that character is in play, mark " +

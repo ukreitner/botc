@@ -597,7 +597,13 @@ object Status {
  */
 internal object Standing {
 
-    /** Rules whose effects land on their own holder and read nothing else. */
+    /**
+     * Rules whose effects land on their own holder and read nothing else.
+     *
+     * Seats only, deliberately: a Fabled holds no seat and everything it emits
+     * lands on OTHER seats, so its `standing` row is emitted by [emitPositional]
+     * instead — emitting it here as well would double every effect.
+     */
     fun emitSelf(state: GameState, lookup: (String) -> Character?): List<Effect> = buildList {
         for (p in state.seats) {
             val id = p.characterId?.let(Character::normalizeId) ?: continue
@@ -625,7 +631,14 @@ internal object Standing {
         }
     }
 
-    /** Rules that read the board: neighbours, teams, and self-protections. */
+    /**
+     * Rules that read the board: neighbours, teams, and self-protections — plus
+     * every Fabled's own `standing` row.
+     *
+     * A Fabled has no seat, so its standing rule is emitted here with
+     * [CharacterRules.GRIMOIRE_HOLDER]: it lands on OTHER seats (the Storm
+     * Catcher's stormcaught player) and is therefore positional by nature.
+     */
     fun emitPositional(q: StatusQuery): List<Effect> = buildList {
         val state = q.state
         for (p in state.seats) {
@@ -637,27 +650,9 @@ internal object Standing {
                 "xaan" -> addAll(xaan(q, p))
             }
         }
-        for (entry in state.fabled) {
-            if (Character.normalizeId(entry.id) != "stormcatcher") continue
-            val wanted = entry.config["stormcatcher.favouredCharacterId"] ?: continue
-            val seat = state.seats.firstOrNull {
-                it.characterId?.let(Character::normalizeId) == Character.normalizeId(wanted)
-            } ?: continue
-            add(
-                Effect(
-                    id = seat.standingSince,
-                    kind = EffectKind.ONLY_EXECUTION_KILLS,
-                    targetId = seat.id,
-                    sourceCharacterId = "stormcatcher",
-                    sourcePlayerId = null,
-                    until = Until.FOREVER,
-                    label = "Stormcaught",
-                    note = "Storm Catcher: can only die by execution.",
-                    createdCycle = state.cycle,
-                    createdAtNight = state.phase != Phase.DAY,
-                    derived = true,
-                ),
-            )
+        for (rule in CharacterRules.fabledRows(state)) {
+            val standing = rule.standing ?: continue
+            addAll(standing.emit(state, CharacterRules.GRIMOIRE_HOLDER, q.lookup))
         }
     }
 

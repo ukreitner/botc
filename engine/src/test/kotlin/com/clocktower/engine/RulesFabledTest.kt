@@ -620,6 +620,140 @@ class RulesFabledTest {
         assertTrue(requirement.satisfied(wrapped, lookup))
     }
 
+    // =======================================================================
+    // W7A — the seatless hooks are LIVE, not just declared
+    // =======================================================================
+
+    @Test
+    fun `angel - the responsibility question is raised by the kill funnel itself`() {
+        var state = night("chef", "empath", "mayor", "soldier", "imp").withFabled("angel")
+        state = Effects.addReminder(state, state.seat("chef"), PlacedReminder("angel", "Protected"))
+
+        // When the protected seat dies through the ONE funnel every caller uses…
+        val attempt = Deaths.attempt(
+            state,
+            lookup,
+            state.seat("chef"),
+            KillCause(DeathCause.DEMON_KILL, "imp", state.seat("imp")),
+        )
+
+        // Then the Angel's own prompt is queued — and no seat holds the Angel.
+        val prompt = attempt.state.prompts.single { it.sourceId == "angel" }
+        assertEquals(PromptKind.DECIDE, prompt.kind)
+        assertEquals(listOf(state.seat("imp")), prompt.targetIds)
+
+        // And with the Angel out of play the same death raises nothing.
+        val without = Deaths.attempt(
+            GameActions.setFabled(state, emptyList()),
+            lookup,
+            state.seat("chef"),
+            KillCause(DeathCause.DEMON_KILL, "imp", state.seat("imp")),
+        )
+        assertTrue(without.state.prompts.none { it.sourceId == "angel" })
+    }
+
+    @Test
+    fun `hindu - the reincarnation prompt is raised by the kill funnel itself`() {
+        val state = night("chef", "empath", "mayor", "soldier", "imp").withFabled("hindu")
+        val attempt = Deaths.attempt(
+            state,
+            lookup,
+            state.seat("chef"),
+            KillCause(DeathCause.DEMON_KILL, "imp"),
+        )
+        val prompt = attempt.state.prompts.single { it.sourceId == "hindu" }
+        assertEquals(PromptKind.CHOOSE_CHARACTER, prompt.kind)
+        assertEquals(state.seat("chef"), prompt.subjectPlayerId)
+    }
+
+    @Test
+    fun `big wig - the nomination trigger reaches DayRules with no seat to hold it`() {
+        val state = Phases.advancePhase(
+            night("imp", "chef", "empath", "mayor", "soldier"),
+            lookup,
+        ).withFabled("bigwig")
+        val check = DayRules.checkNomination(state, lookup, state.seat("chef"), state.seat("mayor"))
+        val trigger = check.triggers.single { it.sourceId == "bigwig" }
+        assertEquals(TriggerKind.CHOICE, trigger.kind)
+        assertEquals(state.seat("mayor"), trigger.actorId)
+
+        val without = GameActions.setFabled(state, emptyList())
+        assertTrue(
+            DayRules.checkNomination(without, lookup, state.seat("chef"), state.seat("mayor"))
+                .triggers.none { it.sourceId == "bigwig" },
+        )
+    }
+
+    @Test
+    fun `ventriloquist - the execution consequence reaches Execution with no seat`() {
+        var state = Phases.advancePhase(
+            night("imp", "chef", "empath", "mayor", "soldier"),
+            lookup,
+        ).withFabled("ventriloquist")
+        val chef = state.seat("chef")
+        state = Effects.place(
+            state, chef, EffectKind.MAD, "ventriloquist", null, Until.DUSK, "Mad",
+        ).state
+        val record =
+            ExecutionRecord(day = state.cycle, outcome = ExecutionOutcome.DIED, playerId = chef)
+
+        assertEquals(
+            1,
+            Execution.consequences(state, lookup, record).count { it.sourceId == "ventriloquist" },
+        )
+        val without = GameActions.setFabled(state, emptyList())
+        assertTrue(
+            Execution.consequences(without, lookup, record)
+                .none { it.sourceId == "ventriloquist" },
+        )
+    }
+
+    @Test
+    fun `storm catcher - the stormcaught effect comes from the registry standing rule`() {
+        // The registry row owns it now; WP1's hardcoded block in Effects.kt is gone.
+        assertNotNull(
+            CharacterRules.all.getValue("stormcatcher").standing,
+            "stormcatcher must declare a standing rule",
+        )
+
+        var state = night("chef", "empath", "mayor", "soldier", "imp").withFabled("stormcatcher")
+        state = state.configure("stormcatcher", STORM_CATCHER_CHARACTER, "chef")
+        val marks = Status.effectsOn(state, lookup, state.seat("chef"))
+            .filter { it.kind == EffectKind.ONLY_EXECUTION_KILLS }
+        assertEquals(1, marks.size, "exactly one Stormcaught effect, never two")
+        assertEquals("stormcatcher", marks.single().sourceCharacterId)
+        assertTrue(marks.single().derived)
+    }
+
+    @Test
+    fun `duchess - the night step is built from the registry row and computes the count`() {
+        var state = night("imp", "poisoner", "chef", "empath", "mayor").withFabled("duchess")
+        state = Phases.advancePhase(state, lookup) // -> DAY 1
+        state = Phases.advancePhase(state, lookup) // -> NIGHT 2
+
+        // With fewer than 3 visitors marked the registry gate skips the step…
+        val idle = assertNotNull(NightPlan.build(state, lookup).step(StepKey("duchess")))
+        assertIs<StepGate.Skip>(idle.gate)
+
+        // …and with exactly 3 it fires, carrying the registry's own prompt.
+        for (id in listOf("imp", "poisoner")) {
+            state = Effects.place(
+                state, state.seat(id), EffectKind.MARKER, "duchess", null, Until.DAWN, "Visitor",
+            ).state
+        }
+        state = Effects.place(
+            state, state.seat("chef"), EffectKind.MARKER, "duchess", null, Until.DAWN, "False Info",
+        ).state
+        val live = assertNotNull(NightPlan.build(state, lookup).step(StepKey("duchess")))
+        assertIs<StepGate.Fire>(live.gate)
+        assertTrue(live.prompt.startsWith("Wake each player marked"), "registry prompt: ${live.prompt}")
+
+        // And InfoCalc answers with the number of EVIL visitors (Imp + Poisoner).
+        val info = assertNotNull(InfoCalc.compute(state, lookup, "duchess", null))
+        assertEquals(Answer.Count(2, 0, 3), info.answer)
+        assertTrue(info.alternatives.isNotEmpty(), "the False Info visitor needs another number")
+    }
+
     @Test
     fun `ventriloquist - a mad nominee's execution raises a might-not-die question`() {
         var state = Phases.advancePhase(

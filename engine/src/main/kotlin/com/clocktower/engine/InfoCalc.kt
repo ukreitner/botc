@@ -81,6 +81,8 @@ object InfoCalc {
         "grandmother",
         // WP2 additions (ARCHITECTURE §2.12, friction §10).
         "godfather", "juggler", "exorcist", "courtier", "savant", "tealady",
+        // W7A: the one Fabled that computes a number (it has no seat).
+        "duchess",
     )
 
     /**
@@ -134,6 +136,7 @@ object InfoCalc {
             "courtier" -> courtier(ctx)
             "savant" -> savant(ctx)
             "tealady" -> teaLady(ctx)
+            "duchess" -> duchess(ctx)
             else -> null
         } ?: return null
         return finish(ctx, id, result)
@@ -868,5 +871,51 @@ object InfoCalc {
             detail = neighbours.joinToString { "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})" },
             caveats = misregistrations(ctx, neighbours),
         )
+    }
+
+    /**
+     * Duchess — "each visitor learns how many EVIL players visited today". The
+     * number counts the visitors themselves (the "False Info" player included)
+     * and is legally 0..3; the "False Info" visitor is shown any OTHER number,
+     * which is what [InfoResult.alternatives] already offers.
+     *
+     * The Duchess holds no seat, so [Ctx.holder] is null here by construction:
+     * the answer is a property of the marked seats, not of a holder.
+     */
+    private fun duchess(ctx: Ctx): InfoResult {
+        val visitors = duchessVisitors(ctx)
+        val evil = visitors.count { ctx.isEvil(it) }
+        return InfoResult(
+            answer = Answer.Count(evil, 0, DUCHESS_VISITORS),
+            headline = if (visitors.isEmpty()) {
+                "No visitors are marked yet — mark 3 players during the day"
+            } else {
+                "$evil of ${visitors.size} marked visitors ${if (evil == 1) "is" else "are"} evil"
+            },
+            detail = visitors.joinToString {
+                "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})"
+            },
+            caveats = misregistrations(ctx, visitors),
+        )
+    }
+
+    /** How many players the Duchess marks each day. */
+    private const val DUCHESS_VISITORS = 3
+
+    /**
+     * Seats carrying either Duchess mark, in seat order. Matched on
+     * `Tokens.key(sourceId, label)`, never on the label alone (lead D5).
+     */
+    private fun duchessVisitors(ctx: Ctx): List<Player> {
+        val keys = setOf(
+            Tokens.key("duchess", "Visitor"),
+            Tokens.key("duchess", "False Info"),
+        )
+        return ctx.state.seats.filter { seat ->
+            seat.reminders.any { Tokens.key(it) in keys } ||
+                ctx.state.effects.any {
+                    it.targetId == seat.id && Tokens.key(it.sourceCharacterId, it.label) in keys
+                }
+        }
     }
 }

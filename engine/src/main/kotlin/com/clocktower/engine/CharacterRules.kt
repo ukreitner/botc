@@ -166,6 +166,45 @@ object CharacterRules {
     val tokenRules: List<TokenRule> get() = all.values.flatMap { it.tokens }
 
     // ------------------------------------------------------------------
+    // Fabled — registry rows with no seat (WP7 wave 7)
+    // ------------------------------------------------------------------
+
+    /**
+     * Seat id of [GRIMOIRE_HOLDER]. Distinct from
+     * [GameState.STORYTELLER_SEAT_ID] (-1), which is a real nominee.
+     */
+    const val GRIMOIRE_SEAT_ID: Long = -2L
+
+    /**
+     * The stand-in "seat" a Fabled's registry row is handed.
+     *
+     * A Fabled holds no seat — it lives in [GameState.fabled] and its rules act
+     * on the grimoire as a whole — but `onDeath`, `day.onNomination`,
+     * `day.onExecution`, `day.briefing` and `standing` are all written against a
+     * holder. Fabled rows never read it (they read `state.fabled`); this value
+     * exists so the engine can walk them with the same loop that walks seated
+     * rows.
+     *
+     * `leftGame = true` keeps it out of `state.seats` and `state.player(id)`
+     * returns null for it, so a row that reached for it fails visibly rather
+     * than corrupting a real seat.
+     */
+    val GRIMOIRE_HOLDER: Player = Player(
+        id = GRIMOIRE_SEAT_ID,
+        name = "the grimoire",
+        leftGame = true,
+    )
+
+    /**
+     * The registry rows of every Fabled in play, in the order the storyteller
+     * added them. Fabled have no seat, so every engine loop that walks
+     * `state.seats` looking for rows must walk this too (WP7-FAB's load-bearing
+     * follow-up).
+     */
+    fun fabledRows(state: GameState): List<CharacterRule> =
+        state.fabled.mapNotNull { all[Character.normalizeId(it.id)] }
+
+    // ------------------------------------------------------------------
     // Generic fallback — no character id, only `characters.json` data
     // ------------------------------------------------------------------
 

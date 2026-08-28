@@ -288,6 +288,10 @@ object DayRules {
     /**
      * Registry rows first (WP7), then the built-in table of ARCHITECTURE §2.8 for
      * every character the registry does not yet cover.
+     *
+     * Fabled hold no seat, so their rows are walked separately with
+     * [CharacterRules.GRIMOIRE_HOLDER] — the Big Wig's per-nominee madness would
+     * otherwise never fire.
      */
     private fun triggersFor(
         state: GameState,
@@ -300,6 +304,14 @@ object DayRules {
             val id = holder.characterId?.let(Character::normalizeId) ?: continue
             val hook = CharacterRules.all[id]?.day?.onNomination ?: continue
             fromRegistry += hook(NominationContext(state, lookup, nominatorId, nomineeId, holder))
+        }
+        for (rule in CharacterRules.fabledRows(state)) {
+            val hook = rule.day?.onNomination ?: continue
+            fromRegistry += hook(
+                NominationContext(
+                    state, lookup, nominatorId, nomineeId, CharacterRules.GRIMOIRE_HOLDER,
+                ),
+            )
         }
         val covered = fromRegistry.map { Character.normalizeId(it.sourceId) }.toSet()
         val builtIn = builtInTriggers(state, lookup, nominatorId, nomineeId)

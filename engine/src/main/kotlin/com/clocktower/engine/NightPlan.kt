@@ -632,10 +632,25 @@ data class NightPlan(
             is Answer.Message -> ShowCardSpec.Message(answer.text)
         }
 
-        /** An in-play Fabled with a night-order slot but no seat of its own. */
+        /**
+         * An in-play Fabled with a night-order slot but no seat of its own.
+         *
+         * The registry row is honoured in full — gate, action, prompt, cards,
+         * `infoId`, `wakeCounts` — exactly as for a seated row. The only
+         * difference is that `holder` is null: a Fabled holds no seat, so a
+         * gate like `Gates.aliveHolder` fires by construction and the Duchess's
+         * "3 visitors are marked" gate reads the board instead.
+         */
         private fun fabledStep(ctx: PlanContext, slot: String, at: Double): List<NightStep> {
             val character = ctx.lookup(slot) ?: return emptyList()
             val entry = ctx.state.fabled.firstOrNull { Character.normalizeId(it.id) == slot }
+            val rule = CharacterRules.of(slot, character)
+            val nightRule = rule.nightRule(ctx.isFirstNight)
+            val nightCtx = ctx.nightContext(role = null, holder = null, firstNightRules = ctx.isFirstNight)
+            val gate = nightRule?.gate?.gate(ctx.wakeContext(null, null))
+                ?: StepGate.Skip("no ability on this night")
+            val action = nightRule?.action?.invoke(nightCtx)
+                ?: infoAction(slot, nightRule)
             return listOf(
                 NightStep(
                     key = StepKey(slot),
@@ -645,11 +660,29 @@ data class NightPlan(
                     detail = detailFor(character, ctx.isFirstNight),
                     holderIds = entry?.playerIds.orEmpty(),
                     style = ctx.style,
-                    gate = StepGate.Fire,
-                    prompt = NightGuide.forStep(slot, ctx.style)?.instructions.orEmpty(),
-                    wakeCounts = WakeCount.NONE,
+                    gate = gate,
+                    banner = (gate as? StepGate.Reduced)?.reason.orEmpty(),
+                    prompt = nightRule?.prompt.orEmpty()
+                        .ifEmpty { NightGuide.forStep(slot, ctx.style)?.instructions.orEmpty() },
+                    action = action,
+                    cards = nightRule?.cards?.invoke(nightCtx).orEmpty() +
+                        fabledInfoCards(ctx, slot, nightRule),
+                    wakeCounts = nightRule?.wakeCounts ?: WakeCount.NONE,
                 ),
             )
+        }
+
+        /** Pre-filled cards for a seatless Fabled information step (the Duchess). */
+        private fun fabledInfoCards(
+            ctx: PlanContext,
+            slot: String,
+            nightRule: NightRule?,
+        ): List<CardOffer> {
+            val infoId = nightRule?.infoId.orEmpty()
+            if (infoId.isEmpty() || !InfoCalc.supports(infoId)) return emptyList()
+            if (InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
+            val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, null) ?: return emptyList()
+            return cardsFor(result)
         }
 
         /** A bluff set the holder of this row receives themselves (Lunatic, Summoner). */

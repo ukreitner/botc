@@ -234,6 +234,14 @@ object Execution {
             val hook = CharacterRules.all[id]?.day?.onExecution ?: continue
             fromRegistry += hook(ExecutionContext(state, lookup, record, holder))
         }
+        // Fabled hold no seat: the Ventriloquist's "might not die" question and
+        // the Big Wig's rows are walked with the grimoire as their holder.
+        for (rule in CharacterRules.fabledRows(state)) {
+            val hook = rule.day?.onExecution ?: continue
+            fromRegistry += hook(
+                ExecutionContext(state, lookup, record, CharacterRules.GRIMOIRE_HOLDER),
+            )
+        }
         val covered = fromRegistry.map { Character.normalizeId(it.sourceId) }.toSet()
         return fromRegistry +
             builtInConsequences(state, lookup, record)
