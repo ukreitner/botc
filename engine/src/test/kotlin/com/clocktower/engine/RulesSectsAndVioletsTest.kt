@@ -616,26 +616,57 @@ class RulesSectsAndVioletsTest {
         assertTrue(fire(dead, "cerenovus", 1L).gate is StepGate.Fire)
     }
 
+    /**
+     * W7D / lead D67 retires this row's old behaviour. `BecomeCharacter.evil` is
+     * nullable now, so "keep the alignment" is expressible and the Pit-Hag
+     * really changes the seat instead of only raising a prompt about it.
+     */
     @Test
-    fun `the Pit-Hag changes nobody by itself and raises the change as an obligation`() {
-        // Given a Pit-Hag on night 2,
+    fun `the Pit-Hag changes the seat and keeps its alignment`() {
+        // Given a Pit-Hag on night 2 and a GOOD Oracle,
         var state = atNight(game("vortox", "pithag", "chef", "oracle", "artist", "juggler"), 2)
-        val before = assertNotNull(state.player(3)).characterId
-        // When they point at the Oracle and at a character,
+        assertFalse(assertNotNull(state.player(3)).isEvil(lookup))
+        // When they point at the Oracle and at the Clockmaker,
         state = resolve(
             state,
             fire(state, "pithag", 1L),
             NightInput(playerIds = listOf(3L), characterIds = listOf("clockmaker")),
         )
-        // Then the seat has NOT silently changed — alignment preservation is the
-        // storyteller's to confirm — and the obligation names the seat.
-        assertEquals(before, assertNotNull(state.player(3)).characterId)
+        // Then the seat IS the Clockmaker, and is still good.
+        assertEquals("clockmaker", assertNotNull(state.player(3)).characterId)
+        assertFalse(assertNotNull(state.player(3)).isEvil(lookup))
+        assertEquals(ChangeReason.PIT_HAG, state.identityLog.last().reason)
+        // The obligation still names the seat, so the token is handed over.
         val owed = promptsFor(state, "pithag", BriefingSlot.NOW).single()
         assertEquals(3L, owed.subjectPlayerId)
-        assertTrue("alignment" in owed.title, owed.title)
         assertEquals(listOf("clockmaker"), choices(state, "pithag").single().characterIds)
         // The Pit-Hag never acts on the first night.
         assertNull(step(game("vortox", "pithag", "chef", "oracle", "artist", "juggler"), "pithag"))
+    }
+
+    @Test
+    fun `an impaired Pit-Hag points, and nothing changes`() {
+        var state = atNight(game("vortox", "pithag", "chef", "oracle", "artist", "juggler"), 2)
+        state = Effects.place(
+            state, 1L, EffectKind.POISONED, "storyteller", null, Until.DAWN, "",
+        ).state
+        val before = assertNotNull(state.player(3)).characterId
+        state = resolve(
+            state,
+            NightPlan.build(state, lookup).steps.first { it.abilityId == "pithag" },
+            NightInput(playerIds = listOf(3L), characterIds = listOf("clockmaker")),
+        )
+        assertEquals(before, assertNotNull(state.player(3)).characterId)
+        assertTrue(promptsFor(state, "pithag", BriefingSlot.NOW).single().title.contains("change nothing"))
+    }
+
+    @Test
+    fun `a Pit-Hag head-shake changes nobody and queues nothing`() {
+        var state = atNight(game("vortox", "pithag", "chef", "oracle", "artist", "juggler"), 2)
+        val before = state.players.map { it.characterId }
+        state = resolve(state, fire(state, "pithag", 1L), NightInput(none = true))
+        assertEquals(before, state.players.map { it.characterId }, "nothing changes on a head-shake")
+        assertTrue(promptsFor(state, "pithag", BriefingSlot.NOW).isEmpty())
     }
 
     // ==================================================================

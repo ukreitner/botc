@@ -34,6 +34,8 @@ data class ChooseCharacter(
     val pool: CharacterPool,
     val allowNone: Boolean = true,
     val onResolve: List<NightEffect> = emptyList(),
+    /** The head-shake: "they pointed at nothing". Never runs [onResolve]. */
+    val onNone: List<NightEffect> = emptyList(),
 ) : NightAction
 
 /** Pit-Hag, Summoner, Cerenovus, Engineer, Kazali. */
@@ -45,6 +47,8 @@ data class ChoosePlayerAndCharacter(
     val pool: CharacterPool,
     val requireNotInPlay: Boolean = false,
     val onResolve: List<NightEffect> = emptyList(),
+    /** The head-shake: "they pointed at nothing". Never runs [onResolve]. */
+    val onNone: List<NightEffect> = emptyList(),
 ) : NightAction
 
 /** Organ Grinder, Po head-shake, Professor pass. */
@@ -160,11 +164,25 @@ sealed interface NightEffect {
     @Serializable
     data class Resurrect(val on: Ref) : NightEffect
 
+    /**
+     * One seat becomes a different character.
+     *
+     * An empty [characterId] means "the character the storyteller picked on this
+     * step" ([NightInput.characterIds]). It NEVER means "no character": with no
+     * pick to fall back on the effect does nothing rather than wiping the seat.
+     */
     @Serializable
     data class BecomeCharacter(
         val on: Ref,
         val characterId: String,
-        val evil: Boolean,
+        /**
+         * Null = keep the seat's current alignment (lead D67). This is the
+         * default for every rule whose text does not say otherwise: a Pit-Hag's
+         * victim, a Cacklejack's, an Engineer's rebuild, a Hatter's swap. Set it
+         * only where the character's own text names the new side — a Kazali's
+         * created Minion, a Fang Gu's jump, a Riot conversion.
+         */
+        val evil: Boolean? = null,
         val reason: ChangeReason,
     ) : NightEffect
 

@@ -885,9 +885,10 @@ private fun riotConversion(ctx: NightContext): NightAction {
             NightEffect.BecomeCharacter(
                 on = Ref.Target,
                 characterId = "riot",
+                // The Riot's own text makes them evil: this is one of the few
+                // rows where the side is named rather than preserved (lead D67).
                 evil = true,
-                // FOLLOWUPS(WP2): no `ChangeReason.RIOT` exists yet.
-                reason = ChangeReason.STORYTELLER,
+                reason = ChangeReason.RIOT,
             ),
         ),
     )

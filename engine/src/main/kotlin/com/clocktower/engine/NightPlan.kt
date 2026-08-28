@@ -1096,14 +1096,28 @@ data class NightPlan(
                     }
                 }
 
+                // A head-shake is a real answer: it runs `onNone` and never
+                // `onResolve`, which would otherwise fire with nothing picked.
                 is ChooseCharacter -> {
                     scope.current = targets.firstOrNull()
-                    next = applyEffects(next, lookup, action.onResolve, scope)
+                    val none = input.none || input.characterIds.isEmpty()
+                    next = applyEffects(
+                        next,
+                        lookup,
+                        if (none) action.onNone else action.onResolve,
+                        scope,
+                    )
                 }
 
                 is ChoosePlayerAndCharacter -> {
                     scope.current = targets.firstOrNull()
-                    next = applyEffects(next, lookup, action.onResolve, scope)
+                    val none = input.none || input.characterIds.isEmpty() || targets.isEmpty()
+                    next = applyEffects(
+                        next,
+                        lookup,
+                        if (none) action.onNone else action.onResolve,
+                        scope,
+                    )
                 }
 
                 is YesNo -> {
@@ -1208,19 +1222,26 @@ data class NightPlan(
                         next = Deaths.resurrect(next, lookup, target)
                     }
 
-                is NightEffect.BecomeCharacter ->
-                    for (target in seats(next, lookup, effect.on, scope)) {
-                        next = Identity.changeCharacter(
-                            state = next,
-                            lookup = lookup,
-                            playerId = target,
-                            newCharacterId = effect.characterId.ifEmpty {
-                                scope.characterIds.firstOrNull()
-                            },
-                            reason = effect.reason,
-                            newEvil = effect.evil,
-                        )
+                is NightEffect.BecomeCharacter -> {
+                    // An empty id means "the character picked on this step". With
+                    // no pick to fall back on the effect does NOTHING: passing
+                    // null through would clear the seat's character, which is not
+                    // a rule any character has.
+                    val newId = effect.characterId.ifEmpty { scope.characterIds.firstOrNull() }
+                    if (!newId.isNullOrBlank()) {
+                        for (target in seats(next, lookup, effect.on, scope)) {
+                            next = Identity.changeCharacter(
+                                state = next,
+                                lookup = lookup,
+                                playerId = target,
+                                newCharacterId = newId,
+                                reason = effect.reason,
+                                // Null keeps the seat's alignment (lead D67).
+                                newEvil = effect.evil,
+                            )
+                        }
                     }
+                }
 
                 is NightEffect.SwapCharacters -> {
                     val a = seats(next, lookup, effect.a, scope).firstOrNull()

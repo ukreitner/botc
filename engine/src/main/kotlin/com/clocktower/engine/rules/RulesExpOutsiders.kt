@@ -290,14 +290,20 @@ private fun hatter() = CharacterRule(
                 pool = CharacterPool.EVIL,
                 requireNotInPlay = true,
                 onResolve = listOf(
+                    // W7D / lead D67: alignment is PRESERVED. The picker is
+                    // already restricted to evil seats and evil characters, so
+                    // forcing `evil = true` said nothing the pool did not — and
+                    // it would have overruled a Bounty Hunter's evil Townsfolk
+                    // or an Ogre-flipped seat sitting in the same chair.
                     NightEffect.BecomeCharacter(
                         on = Ref.Target,
                         characterId = "",
-                        evil = true,
                         reason = ChangeReason.HATTER,
                     ),
                     NightEffect.ShowCardTo(Ref.Target, "YOU ARE"),
                 ),
+                // The head-shake changes nothing at all.
+                onNone = listOf(NightEffect.RecordChoice()),
             )
         },
     ),

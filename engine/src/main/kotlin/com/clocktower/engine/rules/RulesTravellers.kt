@@ -5,6 +5,7 @@ import com.clocktower.engine.BriefingItem
 import com.clocktower.engine.BriefingKind
 import com.clocktower.engine.BriefingSeverity
 import com.clocktower.engine.BriefingSlot
+import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
@@ -751,10 +752,10 @@ private fun harlot(): CharacterRule = CharacterRule(
  * "Each day, choose a player: a different player changes character tonight."
  *
  * The day half marks one seat NOT ME; the night half hands a new character to
- * somebody else. `NightEffect.BecomeCharacter.evil` is a non-null `Boolean`, so
- * an alignment-preserving change is not expressible and the row must not guess
- * (a forced GOOD on a new Minion would silently corrupt every evil count).
- * The change is raised as a `DECIDE` obligation instead — see the report.
+ * somebody else. W7D / lead D67: `BecomeCharacter.evil` is nullable, so the
+ * change is REAL and the seat KEEPS its alignment — the row no longer has to
+ * guess (a forced GOOD on a new Minion would have corrupted every evil count).
+ * The storyteller may still overrule the side from the DECIDE prompt.
  */
 private fun cacklejack(): CharacterRule = CharacterRule(
     id = "cacklejack",
@@ -770,17 +771,23 @@ private fun cacklejack(): CharacterRule = CharacterRule(
                 pool = CharacterPool.SCRIPT,
                 requireNotInPlay = true,
                 onResolve = listOf(
+                    NightEffect.BecomeCharacter(
+                        on = Ref.Target,
+                        characterId = "",
+                        reason = ChangeReason.STORYTELLER,
+                    ),
                     NightEffect.ShowCardTo(on = Ref.Target, card = "YOU ARE"),
                     NightEffect.QueuePrompt(
                         at = BriefingSlot.NOW,
                         kind = PromptKind.DECIDE,
                         sourceId = "cacklejack",
                         on = Ref.Target,
-                        title = "Cacklejack: change this seat to the chosen character. Decide their " +
-                            "alignment — it follows the new character's team unless you rule " +
-                            "otherwise — and check they were not the seat marked Not Me.",
+                        title = "Cacklejack: this seat has changed and KEPT its alignment " +
+                            "(lead D67). Overrule the side here if the table played it the " +
+                            "other way, and check they were not the seat marked Not Me.",
                     ),
                 ),
+                onNone = listOf(NightEffect.RecordChoice()),
             )
         },
     ),

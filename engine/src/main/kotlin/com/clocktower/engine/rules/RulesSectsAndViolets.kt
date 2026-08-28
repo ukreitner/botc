@@ -1249,21 +1249,37 @@ private fun pitHagAction(ctx: NightContext): ChoosePlayerAndCharacter {
         ),
         pool = CharacterPool.SCRIPT,
         requireNotInPlay = true,
-        onResolve = listOf(
-            NightEffect.RecordChoice(),
-            NightEffect.QueuePrompt(
-                at = BriefingSlot.NOW,
-                kind = PromptKind.CHOOSE_CHARACTER,
-                sourceId = PIT_HAG,
-                title = if (works) {
-                    "Pit-Hag: change them into the chosen character, KEEPING their current " +
-                        "alignment. If a Demon is made, deaths tonight are arbitrary."
-                } else {
-                    "The Pit-Hag is drunk or poisoned — let them point, then change nothing."
-                },
-                on = Ref.Target,
-            ),
-        ),
+        onResolve = buildList {
+            add(NightEffect.RecordChoice())
+            // W7D / lead D67 closes this row's P0: the change is REAL now, and
+            // the seat keeps the alignment it had. Before `evil` was nullable
+            // the row could only raise a prompt and change nothing.
+            if (works) {
+                add(
+                    NightEffect.BecomeCharacter(
+                        on = Ref.Target,
+                        characterId = "",
+                        reason = ChangeReason.PIT_HAG,
+                    ),
+                )
+                add(NightEffect.ShowCardTo(Ref.Target, "YOU ARE"))
+            }
+            add(
+                NightEffect.QueuePrompt(
+                    at = BriefingSlot.NOW,
+                    kind = PromptKind.CHOOSE_CHARACTER,
+                    sourceId = PIT_HAG,
+                    title = if (works) {
+                        "Pit-Hag: the seat has changed and KEPT its alignment. Wake them, show " +
+                            "the new token. If a Demon was made, deaths tonight are arbitrary."
+                    } else {
+                        "The Pit-Hag is drunk or poisoned — let them point, then change nothing."
+                    },
+                    on = Ref.Target,
+                ),
+            )
+        },
+        onNone = listOf(NightEffect.RecordChoice()),
     )
 }
 

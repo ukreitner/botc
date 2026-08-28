@@ -7,6 +7,7 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChooseCharacter
+import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.DayAbility
 import com.clocktower.engine.DayRule
@@ -627,12 +628,16 @@ private fun cultLeader(): CharacterRule {
 /**
  * "Once per game, at night, choose which Minions or which Demon is in play."
  *
- * SCHEMA GAP (WP2): no `NightAction` can carry "these three seats become those
- * three characters" — `ChoosePlayerAndCharacter` is one pair and offers no
- * decline path, and `BecomeCharacter` with an empty character id wipes the seat.
- * The row therefore records WHICH seats are being rebuilt and spends the
- * ability; the storyteller assigns each new character from the seat sheet,
- * which already clears the old character's tokens (`Identity.changeCharacter`).
+ * The rebuild is SEVERAL seats and several characters at once, which no single
+ * `NightAction` carries: `ChoosePlayerAndCharacter` is one pair. The row
+ * therefore records WHICH seats are being rebuilt and spends the ability; the
+ * storyteller assigns each new character from the seat sheet, which already
+ * clears the old character's tokens (`Identity.changeCharacter`) and — since
+ * lead D67 — keeps the seat's alignment by default.
+ *
+ * W7D closed the dangerous half of this gap: `BecomeCharacter` with an empty
+ * character id and nothing picked used to WIPE the seat. It is now inert. An
+ * N-pair action for the multi-seat rebuild is still owed (wave 7b).
  */
 private fun engineer(): CharacterRule {
     val rule = NightRule(
