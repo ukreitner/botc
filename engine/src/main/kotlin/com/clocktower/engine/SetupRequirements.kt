@@ -124,9 +124,12 @@ data class SetupRequirement(
 /**
  * The data-driven setup checklist (WP4). Replaces `Setup.validateSetupState`.
  *
- * Every row is re-checkable AT ANY TIME, not only during SETUP: a Pit-Hag-created
- * Fortune Teller needs a red herring, a Kazali-created Widow needs a Know token,
- * a mid-game Snitch owes every Minion bluffs.
+ * Every PER-CHARACTER row is re-checkable AT ANY TIME, not only during SETUP: a
+ * Pit-Hag-created Fortune Teller needs a red herring, a Kazali-created Widow
+ * needs a Know token, a mid-game Snitch owes every Minion bluffs.
+ *
+ * The one exception is bag legality ([bagRows]), which is a question about the
+ * bag that was dealt and is asked only while `phase == SETUP`.
  */
 object SetupRequirements {
 
@@ -188,11 +191,30 @@ object SetupRequirements {
 
     // ---- the bag ------------------------------------------------------------
 
-    /** Each bag problem becomes one unsatisfiable ACK row, so the checklist shows it. */
+    /**
+     * Each bag problem becomes one unsatisfiable ACK row, so the checklist shows it.
+     *
+     * **Only while the game is being set up.** Bag legality is a question about
+     * the bag that was DEALT, and it stops being answerable the moment the game
+     * starts: a star pass, a Pit-Hag, a Kazali or a hand assignment all leave a
+     * grimoire the distribution table would reject (an Imp plus one fewer
+     * Minion), and by the rules that is exactly what is supposed to happen.
+     *
+     * Leaving the rows in raised the whole "Before the first night" checklist
+     * over whatever the storyteller was doing on day 4 (playtest C-9, and
+     * fix wave 1's star-pass report): `SetupIdentityPrompts` re-opens the sheet
+     * whenever the set of blocking rows changes, so an unfixable bag row that
+     * appeared mid-game could never be dismissed for good.
+     *
+     * Per-character obligations are NOT gated here — a Pit-Hag-made Fortune
+     * Teller still owes a red herring, a mid-game Snitch still owes bluffs.
+     * Those rows live in [seatRows] / [bluffRows] and stay live for ever.
+     */
     private fun bagRows(
         state: GameState,
         lookup: (String) -> Character?,
     ): List<SetupRequirement> {
+        if (state.phase != Phase.SETUP) return emptyList()
         val residents = state.seats.filterNot { it.isTraveller }
         if (residents.isEmpty()) return emptyList()
         val characters = residents.mapNotNull { it.characterId?.let(lookup) }
@@ -329,6 +351,9 @@ object SetupRequirements {
                     candidateFilter = { s, l -> s.seats.filterNot { it.isEvil(l) } },
                 )
 
+                // "You start knowing a good player & their character" — ANOTHER
+                // good player. The evil filter was there; the holder was not, so
+                // the picker offered the Grandmother herself (playtest D, P2-18).
                 "grandmother" -> rows += exclusiveTokenRow(
                     id = "grandmother.grandchild:${seat.id}",
                     characterId = "grandmother",
@@ -336,7 +361,8 @@ object SetupRequirements {
                     title = "The Grandchild",
                     prompt = "Mark the good player the Grandmother knows.",
                     problem = "Grandmother: mark the Grandchild",
-                    candidateFilter = { s, l -> s.seats.filterNot { it.isEvil(l) } },
+                    candidateFilter = { s, l -> s.seats.filterNot { it.isEvil(l) || it.id == seat.id } },
+                    holderOk = { _, l, holder -> !holder.isEvil(l) && holder.id != seat.id },
                 )
 
                 "balloonist" -> rows += exclusiveTokenRow(

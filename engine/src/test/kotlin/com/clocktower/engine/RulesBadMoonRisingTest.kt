@@ -283,6 +283,82 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Pukka's row carries the standing death as data, so the button can say it`() {
+        // Playtest D P1-9, second half: the banner said it, but the PRIMARY
+        // BUTTON still read `DEV — POISONED`. The deferred kill is declared in
+        // `pending`, which the card cannot see, so the step now carries the
+        // seats that die tonight with nobody choosing them.
+        var state = game("pukka", "gossip", "chambermaid", "professor", "gambler", "courtier")
+        val victim = seat(state, "gossip")
+        assertEquals(emptyList(), require(state, "pukka").deferredDeaths, "night 1 kills nobody")
+
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(victim)))
+        state = nextNight(state)
+
+        val row = require(state, "pukka")
+        assertEquals(
+            listOf(DeferredDeath(victim, DeathCause.DEMON_KILL)),
+            row.deferredDeaths,
+            "the standing victim, with the cause the registry declared",
+        )
+        // Tonight's pick is not on the list — it is the ACTION's business and
+        // is previewed from the picker.
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(seat(state, "chambermaid"))))
+        assertFalse(assertNotNull(state.player(victim)).alive)
+        assertEquals(
+            listOf(seat(state, "chambermaid")),
+            require(nextNight(state), "pukka").deferredDeaths.map { it.playerId },
+        )
+    }
+
+    @Test
+    fun `the Grandmother's first night opens on the marked Grandchild`() {
+        // Playtest D P2-19: the card says "show the MARKED Grandchild's
+        // character token" and the picker opened with nothing selected and a
+        // disabled primary.
+        var state = game("pukka", "grandmother", "gossip", "chambermaid", "gambler", "courtier")
+        val granny = seat(state, "grandmother")
+        val child = seat(state, "gossip")
+
+        val unmarked = assertIs<ShowInfo>(require(state, "grandmother").action)
+        assertEquals(emptyList(), unmarked.preselect, "nothing marked, nothing pre-selected")
+
+        state = Effects.placeExclusiveReminder(state, child, PlacedReminder("grandmother", "Grandchild"))
+        val marked = assertIs<ShowInfo>(require(state, "grandmother").action)
+        assertEquals(listOf(child), marked.preselect)
+        assertEquals(1, marked.targetsNeeded)
+
+        // Never the Grandmother herself, even if the token ends up on her seat.
+        val onHerself = Effects.placeExclusiveReminder(
+            state, granny, PlacedReminder("grandmother", "Grandchild"),
+        )
+        assertEquals(
+            emptyList(),
+            assertIs<ShowInfo>(require(onHerself, "grandmother").action).preselect,
+        )
+    }
+
+    @Test
+    fun `the Grandmother's row names her own death before the button lands it`() {
+        // The same shape: `pending` kills the holder, so the card must be able
+        // to promise it.
+        var state = game("pukka", "grandmother", "gossip", "chambermaid", "gambler", "courtier")
+        val granny = seat(state, "grandmother")
+        val child = seat(state, "gossip")
+        state = Effects.placeExclusiveReminder(state, child, PlacedReminder("grandmother", "Grandchild"))
+        state = nextNight(state)
+
+        assertEquals(emptyList(), require(state, "grandmother").deferredDeaths)
+        state = Deaths.attempt(
+            state, lookup, child, KillCause(DeathCause.DEMON_KILL, "pukka", seat(state, "pukka")),
+        ).state
+        assertEquals(
+            listOf(DeferredDeath(granny, DeathCause.GOOD_ABILITY)),
+            require(state, "grandmother").deferredDeaths,
+        )
+    }
+
+    @Test
     fun `an Exorcised Pukka still names the victim its silenced row will kill`() {
         var state = game("pukka", "exorcist", "gossip", "chambermaid", "professor", "fool")
         val pukka = seat(state, "pukka")

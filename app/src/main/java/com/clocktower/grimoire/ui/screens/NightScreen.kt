@@ -52,6 +52,7 @@ import com.clocktower.grimoire.ui.screens.night.actionEffects
 import com.clocktower.grimoire.ui.screens.night.color
 import com.clocktower.grimoire.ui.screens.night.dimAlpha
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
+import com.clocktower.grimoire.ui.screens.night.nextToken
 import com.clocktower.grimoire.ui.screens.night.nightSp
 import com.clocktower.grimoire.ui.screens.night.openRowKey
 import com.clocktower.grimoire.ui.screens.night.openRowToken
@@ -116,10 +117,16 @@ fun NightScreen(
 
     // The button that finished a step also advances to the next one: ticking is
     // a consequence of doing, never a separate act (defect #7).
+    //
+    // NEXT means the next unfinished row BELOW the one just finished, not the
+    // first unfinished row on the sheet: a storyteller who jumped ahead and
+    // resolved a step was thrown backwards, from step 6 to step 4 on the
+    // night-1 Godfather and from step 5 to step 1 on the night-3 Exorcist
+    // (fix wave 1 Fix-D; playtest D, P2-20).
     LaunchedEffect(done, plan.steps.size, pendingDawn, state.cycle) {
         val token = activeToken
         if (token == null || token in done || plan.steps.none { it.key.token == token }) {
-            openRow = openRowKey(state.cycle, openingToken(plan.steps, done))
+            openRow = openRowKey(state.cycle, nextToken(plan.steps, done, token))
         }
         // The dawn card's button ticked its own row a frame ago; the phase
         // button now sees a finished sheet and raises the dawn briefing. If
@@ -208,6 +215,10 @@ fun NightScreen(
                         onOpen = { openRow = openRowKey(state.cycle, row.token) },
                         onRunAnyway = {
                             forced = forced + row.token
+                            openRow = openRowKey(state.cycle, row.token)
+                        },
+                        onUndo = {
+                            viewModel.toggleNightStep(step.key)
                             openRow = openRowKey(state.cycle, row.token)
                         },
                     )
@@ -321,7 +332,12 @@ private fun fateOf(state: GameState, playerId: Long): String {
 
 /** One line of the collapsed sheet. Tapping it opens that step's card. */
 @Composable
-private fun NightRowLine(row: RowView, onOpen: () -> Unit, onRunAnyway: () -> Unit) {
+private fun NightRowLine(
+    row: RowView,
+    onOpen: () -> Unit,
+    onRunAnyway: () -> Unit,
+    onUndo: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -370,6 +386,22 @@ private fun NightRowLine(row: RowView, onOpen: () -> Unit, onRunAnyway: () -> Un
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
+            // The ONE way to un-tick a step. Every primary is idempotent, so
+            // correcting yourself is a deliberate, separate act and it lives
+            // here, on the collapsed line (fix wave 1, Fix-B).
+            if (row.undo) {
+                Text(
+                    text = "[Undo]",
+                    fontSize = NIGHT_MIN_SP.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AgedGold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onUndo)
+                        .heightIn(min = 44.dp)
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                )
+            }
         }
         if (row.mark == RowMark.SKIPPED) {
             Row(verticalAlignment = Alignment.CenterVertically) {

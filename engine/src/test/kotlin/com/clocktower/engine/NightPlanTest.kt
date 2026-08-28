@@ -541,6 +541,51 @@ class NightPlanTest {
     }
 
     // ==================================================================
+    // Ticking a row: the primary is idempotent, the undo is not
+    // ==================================================================
+
+    @Test
+    fun `resolving a step twice leaves it done`() {
+        var state = game(tb, "imp", "poisoner", "washerwoman", "empath", "chef", "monk", "mayor", "butler")
+        val row = assertNotNull(step(state, "poisoner", holderId = 1L))
+
+        state = NightPlan.resolve(state, lookup, row.key, NightInput(playerIds = listOf(4L)))
+        assertTrue(row.key.token in state.nightStepsDone)
+
+        // The same button, pressed again — a slow frame, a storyteller making
+        // sure. It must not put the step back on the sheet (fix wave 1, Fix-B).
+        state = NightPlan.resolve(state, lookup, row.key, NightInput(playerIds = listOf(4L)))
+        assertTrue(row.key.token in state.nightStepsDone, "the primary un-ticked its own row")
+    }
+
+    @Test
+    fun `resolving a row the plan no longer carries still ticks it`() {
+        // This is the path that broke: `resolve` fell back to the TOGGLE when a
+        // key was not in tonight's plan — a discharged prompt row, a consumed
+        // insertion — so pressing the primary again un-ticked it.
+        val state = game(tb, "imp", "poisoner", "washerwoman", "empath", "chef", "monk", "mayor", "butler")
+        val ghost = StepKey("washerwoman", 99L)
+        assertEquals(null, plan(state).step(ghost), "no such row tonight")
+
+        val once = NightPlan.resolve(state, lookup, ghost, NightInput())
+        assertTrue(ghost.token in once.nightStepsDone)
+        val twice = NightPlan.resolve(once, lookup, ghost, NightInput())
+        assertTrue(ghost.token in twice.nightStepsDone, "the fallback un-ticked the row")
+    }
+
+    @Test
+    fun `markDone only ever ticks, toggleDone is the undo`() {
+        val state = game(tb, "imp", "poisoner", "chef", "empath", "mayor")
+        val token = assertNotNull(step(state, "poisoner", holderId = 1L)).key.token
+
+        val done = NightPlan.markDone(NightPlan.markDone(state, token), token)
+        assertTrue(token in done.nightStepsDone, "markDone is idempotent")
+
+        val undone = NightPlan.toggleDone(done, token)
+        assertFalse(token in undone.nightStepsDone, "toggleDone is the storyteller's undo")
+    }
+
+    // ==================================================================
     // The source gate this package must pass (I1)
     // ==================================================================
 

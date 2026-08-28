@@ -104,6 +104,22 @@ data class CardOffer(
 )
 
 /**
+ * One death a step's STANDING half will attempt tonight, on a seat the registry
+ * already knows — nobody has to choose it.
+ *
+ * Carries the cause and the protection flag from the `NightEffect.Attack` that
+ * declared it, so the screen can preview it through the same kill funnel as an
+ * ordinary attack without knowing which character it belongs to (invariant I1).
+ */
+@Serializable
+data class DeferredDeath(
+    val playerId: Long,
+    val cause: DeathCause = DeathCause.DEMON_KILL,
+    /** false => nothing stops it (an unstoppable standing effect). */
+    val respectProtection: Boolean = true,
+)
+
+/**
  * One row of tonight's sheet. This IS the UI's view model — there is no
  * NightStepView, no NightHolder and no NightAsk. Per-holder rendering is
  * achieved by emitting one NightStep per holder.
@@ -140,6 +156,23 @@ data class NightStep(
     val promptId: Long? = null,
     /** Whether waking here counts for the Chambermaid (lead D13). */
     val wakeCounts: WakeCount = WakeCount.ACT,
+    /**
+     * Seats this row kills TONIGHT without anybody choosing them — the standing
+     * half of the step, which `NightRule.pending` declares and [action] cannot.
+     *
+     * The Pukka is the case: the seat it points at tonight is POISONED, and the
+     * seat it poisoned LAST night dies now. That death is in `pending`, so
+     * nothing on the card knew about it — the button read `DEV — POISONED`, the
+     * word "Ben" appeared nowhere, and tapping it killed Ben silently (playtest
+     * D, P1-9). The Grandmother's own death is the same shape.
+     *
+     * A PREVIEW, computed from the state as it is now, exactly as the banner and
+     * the cards are: `resolve` recomputes `pending` for real. Only seats a
+     * [Ref.Seat] names are listed — a death that depends on tonight's pick is
+     * the action's own [NightEffect.Attack] and is previewed through the kill
+     * funnel from the picker instead.
+     */
+    val deferredDeaths: List<DeferredDeath> = emptyList(),
 ) {
     val required: Boolean get() = gate !is StepGate.Skip
     val holderId: Long? get() = key.holderId
@@ -325,7 +358,11 @@ data class NightPlan(
             key: StepKey,
             input: NightInput,
         ): GameState {
-            val step = build(state, lookup).step(key) ?: return toggleDone(state, key.token)
+            // No such row tonight: the plan has moved on (a prompt row that was
+            // discharged, an insertion that has been consumed). Resolving is
+            // still "this step is finished", never "un-finish it" — the primary
+            // button is idempotent (fix wave 1, Fix-B).
+            val step = build(state, lookup).step(key) ?: return markDone(state, key.token)
             val ctx = PlanContext(state, lookup)
             val nightCtx = ctx.nightContext(step)
             val rule = CharacterRules.of(step.abilityId, lookup(step.abilityId))
@@ -398,7 +435,7 @@ data class NightPlan(
                 next = recordMalfunction(next, step, holderId)
             }
             next = discharge(next, step)
-            next = toggleDone(next, step.key.token, forceDone = true)
+            next = markDone(next, step.key.token)
             return Effects.reconcile(next, lookup)
         }
 
@@ -482,7 +519,28 @@ data class NightPlan(
             return nightRule.infoId != ""
         }
 
+        /**
+         * Un-ticks a ticked row and ticks an un-ticked one.
+         *
+         * This is the storyteller CORRECTING themselves — the "undo this step,
+         * put it back on the sheet" affordance in the card's drawer and the
+         * collapsed list. It is never what a primary button does: see
+         * [markDone].
+         */
         fun toggleDone(state: GameState, token: String): GameState = toggleDone(state, token, false)
+
+        /**
+         * Ticks a row and leaves a ticked row ticked.
+         *
+         * Every "do it" path is idempotent (playtest fix wave 1, Fix-B): a
+         * storyteller who presses the primary twice — on a slow frame, on a row
+         * whose card is still open, on a step the plan has since dropped
+         * (a discharged prompt row, a consumed insertion) — must not silently
+         * put the step back on the sheet. Before this, [resolve]'s own fallback
+         * for "this key is no longer in the plan" called the TOGGLE, so pressing
+         * the primary again un-ticked the very row it had just finished.
+         */
+        fun markDone(state: GameState, token: String): GameState = toggleDone(state, token, true)
 
         private fun toggleDone(state: GameState, token: String, forceDone: Boolean): GameState =
             state.copy(
@@ -785,8 +843,33 @@ data class NightPlan(
                 cards = nightRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule),
                 promptId = promptId,
                 wakeCounts = nightRule?.wakeCounts ?: WakeCount.ACT,
+                // A believer's row changes nothing at all, deferred half
+                // included (lead D70) — so it promises nothing either.
+                deferredDeaths = if (role.alwaysFalse) {
+                    emptyList()
+                } else {
+                    namedDeaths(nightRule?.pending?.invoke(nightCtx).orEmpty())
+                },
             )
         }
+
+        /**
+         * The seats a step's `pending` half attacks, when the rule already knows
+         * which they are.
+         *
+         * `Ref.Seat` is the registry saying "this seat, decided before tonight's
+         * question was asked" — the Pukka's standing victim, the Grandmother
+         * herself. Every other [Ref] resolves against the answer the storyteller
+         * has not given yet, so there is nothing to promise on the button.
+         */
+        private fun namedDeaths(pending: List<NightEffect>): List<DeferredDeath> = pending
+            .filterIsInstance<NightEffect.Attack>()
+            .mapNotNull { attack ->
+                (attack.on as? Ref.Seat)?.let {
+                    DeferredDeath(it.playerId, attack.cause, attack.respectProtection)
+                }
+            }
+            .distinctBy { it.playerId }
 
         // ---- the illusion: `ActingRole.alwaysFalse` (lead D70) -------------
 

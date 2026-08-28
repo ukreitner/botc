@@ -133,7 +133,17 @@ private fun grandmother() = CharacterRule(
     firstNight = NightRule(
         gate = Gates.aliveHolder,
         prompt = "Show the marked Grandchild's character token, then point to that player.",
-        action = { ShowInfo("grandmother", "WHICH PLAYER IS THE GRANDCHILD?", targetsNeeded = 1) },
+        // The card says "the MARKED Grandchild", so the marked seat arrives lit
+        // and the primary arrives armed — it opened empty and disabled, and the
+        // storyteller had to pick the seat a second time (playtest D, P2-19).
+        action = { ctx ->
+            ShowInfo(
+                "grandmother",
+                "WHICH PLAYER IS THE GRANDCHILD?",
+                targetsNeeded = 1,
+                preselect = grandchildSeats(ctx),
+            )
+        },
         infoId = "grandmother",
     ),
     otherNight = NightRule(
@@ -1472,6 +1482,18 @@ private fun gossipStatement(state: GameState): LedgerEntry? =
 private fun moonchildChoice(state: GameState, holderId: Long): LedgerEntry? =
     Memory.by(state, LedgerKind.STATEMENT, "moonchild", holderId)
         .lastOrNull { it.resolvedCycle == null && it.targetIds.isNotEmpty() }
+
+/**
+ * Seats carrying the `grandmother/Grandchild` token, the Grandmother's own seat
+ * excluded — the answer the storyteller already gave at setup.
+ */
+@Suppress("DEPRECATION")
+private fun grandchildSeats(ctx: NightContext): List<Long> {
+    val holderId = ctx.holder?.id
+    return ctx.state.seats
+        .filter { it.id != holderId && DayRules.hasToken(ctx.state, it.id, "grandmother", "Grandchild") }
+        .map { it.id }
+}
 
 /**
  * True when the seat marked `grandmother/Grandchild` was killed by a Demon's own

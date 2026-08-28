@@ -577,6 +577,24 @@ class BmrSessionPlaytestTest {
         )
         assertEquals("po", lunaticInfo.abilityId, "the Lunatic runs the believed Demon's ability (D70)")
         assertEquals(listOf(jonas), lunaticInfo.wakes, "one seat wakes on it: the Lunatic")
+        // Playtest D P0-2: the row was gated "no ability on this night" — the Po
+        // has no first night — and auto-ticked, so the storyteller never woke
+        // the Lunatic and the whole illusion was never handed over. Night 1 is
+        // the hand-over; the row is REQUIRED.
+        assertTrue(
+            lunaticInfo.required,
+            "the Lunatic must be woken on night 1: gate is ${lunaticInfo.gate}",
+        )
+        // …and the real Demon is told who they are, on the Demon-info step
+        // (playtest D P0-3).
+        val demonInfo = assertNotNull(
+            NightPlan.build(state, data::character).steps.find { it.slotId == NightMarkers.DEMON_INFO },
+        )
+        val jonasName = assertNotNull(state.player(jonas)).name
+        assertTrue(
+            "LUNATIC" in demonInfo.banner.uppercase() && jonasName in demonInfo.banner,
+            "Demon info must name the Lunatic: '${demonInfo.banner}'",
+        )
         assertTrue(
             lunaticInfo.prompt.contains(lunatic.label),
             "night 1 hands over the Lunatic's own bluff set: ${lunaticInfo.prompt}",

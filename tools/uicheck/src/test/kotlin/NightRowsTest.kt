@@ -3,6 +3,7 @@ package com.clocktower.grimoire.uicheck
 import com.clocktower.engine.Answer
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.DeathCause
+import com.clocktower.engine.DeferredDeath
 import com.clocktower.engine.InfoObligation
 import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.NightEffect
@@ -35,6 +36,7 @@ import com.clocktower.grimoire.ui.screens.night.gateBadge
 import com.clocktower.grimoire.ui.screens.night.isDestructive
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
 import com.clocktower.grimoire.ui.screens.night.mustNotShowTruth
+import com.clocktower.grimoire.ui.screens.night.nextToken
 import com.clocktower.grimoire.ui.screens.night.nightSp
 import com.clocktower.grimoire.ui.screens.night.offerAnswerText
 import com.clocktower.grimoire.ui.screens.night.openRowKey
@@ -42,6 +44,7 @@ import com.clocktower.grimoire.ui.screens.night.openRowToken
 import com.clocktower.grimoire.ui.screens.night.openingToken
 import com.clocktower.grimoire.ui.screens.night.placedLabels
 import com.clocktower.grimoire.ui.screens.night.pointPrefix
+import com.clocktower.grimoire.ui.screens.night.preselected
 import com.clocktower.grimoire.ui.screens.night.primaryEnabled
 import com.clocktower.grimoire.ui.screens.night.primaryLabel
 import com.clocktower.grimoire.ui.screens.night.progress
@@ -169,6 +172,66 @@ class NightRowsTest {
     @Test
     fun `chose nobody is a real answer with its own label`() {
         assertEquals("THEY CHOSE NOBODY", primaryLabel(picked = listOf("Ben"), none = true))
+    }
+
+    @Test
+    fun `a standing death is on the button beside tonight's own outcome`() {
+        // The Pukka: Dev is poisoned tonight, Ben — poisoned LAST night — dies
+        // now. The button used to read `DEV — POISONED` and Ben's name appeared
+        // nowhere on the card (playtest D, P1-9).
+        val dies = deathHeadline(KillOutcome.Dies(""), "Ben")
+        assertEquals(
+            "DEV — POISONED · BEN DIES",
+            primaryLabel(picked = listOf("Dev"), places = listOf("Poisoned"), deferredLine = dies),
+        )
+        // An Exorcised Pukka asks nothing at all — and still kills Ben.
+        assertEquals("BEN DIES", primaryLabel(deferredLine = dies))
+        // "They chose nobody" is a real answer, and Ben still dies.
+        assertEquals(
+            "THEY CHOSE NOBODY · BEN DIES",
+            primaryLabel(picked = listOf("Dev"), none = true, deferredLine = dies),
+        )
+        // The Grandmother: nothing is picked, she dies.
+        assertEquals(
+            "GRAN SURVIVES — NOBODY DIES",
+            primaryLabel(
+                deferredLine = deathHeadline(
+                    KillOutcome.Prevented(by = null, reason = "protected", announce = ""),
+                    "Gran",
+                ),
+            ),
+        )
+        // No standing death: nothing is appended.
+        assertEquals("DEV — POISONED", primaryLabel(picked = listOf("Dev"), places = listOf("Poisoned")))
+    }
+
+    @Test
+    fun `a step whose answer is already on the board opens with it picked and armed`() {
+        val marked = ShowInfo("grandmother", "WHICH PLAYER IS THE GRANDCHILD?", 1, preselect = listOf(4L))
+        assertEquals(listOf(4L), preselected(marked))
+        assertTrue(primaryEnabled(marked, PickState(playerIds = preselected(marked))))
+
+        // Nothing marked: the picker opens empty and the primary stays disabled.
+        val bare = ShowInfo("grandmother", "WHICH PLAYER IS THE GRANDCHILD?", 1)
+        assertEquals(emptyList<Long>(), preselected(bare))
+        assertFalse(primaryEnabled(bare, PickState(playerIds = preselected(bare))))
+
+        // Never more picks than the step accepts, and never on another shape.
+        val over = ShowInfo("s", "", targetsNeeded = 1, preselect = listOf(4L, 5L))
+        assertEquals(listOf(4L), preselected(over))
+        assertEquals(emptyList<Long>(), preselected(choose()))
+        assertEquals(emptyList<Long>(), preselected(null))
+    }
+
+    @Test
+    fun `the engine names the standing deaths, the screen never guesses them`() {
+        assertEquals(emptyList<Long>(), step().deferredDeaths.map { it.playerId })
+        val standing = step().copy(
+            deferredDeaths = listOf(DeferredDeath(7L, DeathCause.GOOD_ABILITY, respectProtection = false)),
+        )
+        assertEquals(listOf(7L), standing.deferredDeaths.map { it.playerId })
+        assertEquals(DeathCause.GOOD_ABILITY, standing.deferredDeaths.single().cause)
+        assertFalse(standing.deferredDeaths.single().respectProtection)
     }
 
     @Test
@@ -310,6 +373,38 @@ class NightRowsTest {
     }
 
     @Test
+    fun `only a done row offers the undo, and it is the only un-tick in the night UI`() {
+        val poisoner = step(ability = "a", action = choose())
+        val teller = step(ability = "b", action = choose())
+        val gated = step(ability = "c", gate = StepGate.Skip("dead — no ability"))
+        val plan = NightPlan(cycle = 2, isFirstNight = false, steps = listOf(poisoner, teller, gated))
+        val rows = rowViews(
+            plan = plan,
+            done = setOf(poisoner.key.token),
+            activeToken = teller.key.token,
+            forced = emptySet(),
+            holderNames = { "Gus" },
+            results = { "" },
+        )
+        assertTrue("a ticked row can be put back on the sheet", rows[0].undo)
+        assertFalse("nothing to undo on the open card", rows[1].undo)
+        assertFalse("the engine auto-ticked it; [Run anyway] is its control", rows[2].undo)
+        assertTrue(rows[2].runAnyway)
+
+        // …and the card itself no longer carries an un-tick: pressing something
+        // on the card that is DOING the step must never undo it (Fix-B).
+        val card = File(
+            appScreens(),
+            "night/NightCard.kt",
+        )
+        assertTrue("NightCard.kt not found at ${card.absolutePath}", card.isFile)
+        val code = card.readText().lines()
+            .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+            .joinToString("\n")
+        assertFalse("NightCard still un-ticks a step", code.contains("toggleNightStep"))
+    }
+
+    @Test
     fun `the ask summary reads in the storyteller's words`() {
         assertEquals("1 pick", askSummary(choose()))
         assertEquals("yes / no", askSummary(YesNo("s", "", "Yes", "No")))
@@ -358,6 +453,49 @@ class NightRowsTest {
         assertEquals(dawn.key.token, openingToken(steps, done = setOf(dusk.key.token)))
         assertEquals(dusk.key.token, openingToken(steps, done = emptySet()))
         assertNull(openingToken(emptyList(), done = emptySet()))
+    }
+
+    @Test
+    fun `finishing a step opens the next row BELOW it, never an earlier one`() {
+        // The night-1 Bad Moon Rising sheet the report was driven on.
+        val names = listOf(
+            "dusk", "minioninfo", "lunatic", "demoninfo", "sailor",
+            "godfather", "devilsadvocate", "pukka", "grandmother", "chambermaid", "dawn",
+        )
+        val steps = names.map { step(ability = it) }
+        fun token(name: String) = steps.first { it.abilityId == name }.key.token
+
+        // Steps 1-6 done, step 7 (Devil's Advocate) skipped over by hand: the
+        // Godfather at step 6 threw the sheet back to step 4, and the night-3
+        // Exorcist threw it back to step 1 (Fix-D; playtest D P2-20).
+        val doneThroughSix = names.take(6).map(::token).toSet()
+        assertEquals(token("devilsadvocate"), nextToken(steps, doneThroughSix, token("godfather")))
+
+        // Jump ahead to the Pukka, leaving the Devil's Advocate owed, and
+        // resolve it: the next row is the Grandmother, not the row above.
+        val jumped = doneThroughSix + token("pukka")
+        assertEquals(token("grandmother"), nextToken(steps, jumped, token("pukka")))
+
+        // Nothing left below: wrap round to whatever is still owed above.
+        val allButDa = names.filterNot { it == "devilsadvocate" }.map(::token).toSet()
+        assertEquals(token("devilsadvocate"), nextToken(steps, allButDa, token("chambermaid")))
+
+        // The closing card is never opened by "carry on" while anything else is
+        // owed — its primary opens the day (playtest B P0 #2).
+        val allButDaAndDawn = allButDa - token("dawn")
+        assertEquals(
+            token("devilsadvocate"),
+            nextToken(steps, allButDaAndDawn, token("chambermaid")),
+        )
+        // …and it IS opened once it is the only thing left.
+        val everythingButDawn = names.filterNot { it == "dawn" }.map(::token).toSet()
+        assertEquals(token("dawn"), nextToken(steps, everythingButDawn, token("chambermaid")))
+
+        // No current row (a fresh night, or one whose row the plan dropped):
+        // fall back to the sheet's opening row.
+        assertEquals(token("dusk"), nextToken(steps, emptySet(), after = null))
+        assertEquals(token("dusk"), nextToken(steps, emptySet(), after = "no-such-token"))
+        assertNull(nextToken(emptyList(), emptySet(), after = null))
     }
 
     @Test
@@ -535,16 +673,31 @@ class NightRowsTest {
 
     /** `NightScreen.kt` plus the whole `ui/screens/night/` package. */
     private fun nightSources(): List<File> {
-        val app = File(repoRoot(), "app/src/main/java/com/clocktower/grimoire/ui/screens")
-        return (File(app, "night").listFiles()?.toList().orEmpty() + File(app, "NightScreen.kt"))
+        val app = appScreens()
+        val files = (File(app, "night").listFiles()?.toList().orEmpty() + File(app, "NightScreen.kt"))
             .filter { it.isFile && it.extension == "kt" }
+        // A scan that found nothing is a green test that checks nothing.
+        assertTrue("no night sources found under ${app.absolutePath}", files.size >= 5)
+        return files
     }
 
-    /** Walks up from the working directory to the repository root. */
-    private fun repoRoot(): File {
+    /**
+     * `app/src/main/java/.../ui/screens`, found by walking up from the working
+     * directory.
+     *
+     * This project nests a second `settings.gradle.kts` under `tools/uicheck`,
+     * which is where Gradle runs these tests from — so "walk up to the first
+     * settings.gradle.kts" stopped at `tools/uicheck` and every source-scanning
+     * check here was silently reading an empty file list.
+     */
+    private fun appScreens(): File {
+        val suffix = "app/src/main/java/com/clocktower/grimoire/ui/screens"
         var dir: File? = File(".").absoluteFile
-        while (dir != null && !File(dir, "settings.gradle.kts").isFile) dir = dir.parentFile
-        return requireNotNull(dir) { "repository root not found from ${File(".").absolutePath}" }
+        while (dir != null && !File(dir, suffix).isDirectory) dir = dir.parentFile
+        return File(
+            requireNotNull(dir) { "app sources not found from ${File(".").absolutePath}" },
+            suffix,
+        )
     }
 
     // ---- the night screen names no character ------------------------------

@@ -94,6 +94,19 @@ data class RowView(
     val reason: String,
     /** True when the row offers `[Run anyway]`. */
     val runAnyway: Boolean,
+    /**
+     * True when the row offers `[Undo]` — the ONE place a ticked step can be put
+     * back on the sheet.
+     *
+     * Every "do it" control is idempotent (fix wave 1, Fix-B): pressing a
+     * primary twice must never un-tick the row it just finished. Correcting
+     * yourself is a different act from doing the step, so it has a control of
+     * its own, on the collapsed line, next to `[Run anyway]`.
+     *
+     * A `SKIPPED` row is auto-ticked by the engine, not by the storyteller, so
+     * there is nothing to undo — it offers `[Run anyway]` instead.
+     */
+    val undo: Boolean = false,
 )
 
 /** A gated row's badge, above the instructions. Null when the step simply fires. */
@@ -194,6 +207,7 @@ fun rowViews(
         tone = rowTone(mark, step.gate),
         reason = (step.gate as? StepGate.Skip)?.reason.orEmpty(),
         runAnyway = mark == RowMark.SKIPPED,
+        undo = mark == RowMark.DONE,
     )
 }
 
@@ -212,6 +226,43 @@ fun rowViews(
 fun openingToken(steps: List<NightStep>, done: Set<String>): String? =
     steps.firstOrNull { it.required && it.key.token !in done }?.key?.token
         ?: steps.lastOrNull()?.key?.token
+
+/**
+ * The row to open once the row [after] is finished: **the next unfinished row
+ * BELOW it**.
+ *
+ * Finishing a step and opening a sheet are two different questions and the
+ * screen used to answer both with [openingToken] — the first unfinished row on
+ * the whole sheet. So a storyteller who jumped ahead (tap a row in the
+ * collapsed list, or `[Run anyway]` on a gated one) and then resolved it was
+ * thrown BACKWARDS: the night-1 Godfather at step 6 landed on step 4, and
+ * playtest D's night-3 Exorcist at step 5 landed on step 1, needing four more
+ * presses to walk back (fix wave 1 Fix-D; playtest D, P2-20).
+ *
+ * The rows they stepped over are not lost: they stay `·` in the collapsed list
+ * and in the progress strip, and the dawn guard still refuses a night with
+ * anything outstanding.
+ *
+ * Two fallbacks to [openingToken]: nothing below is owed (so wrap round to
+ * whatever is still owed above), and — never silently — the closing card. Its
+ * primary is "OPEN THE DAY →", so "carry on" must not land there while any
+ * other row is still owed (playtest B P0 #2).
+ */
+fun nextToken(steps: List<NightStep>, done: Set<String>, after: String?): String? {
+    val index = steps.indexOfFirst { it.key.token == after }
+    if (index >= 0) {
+        val forward = steps.drop(index + 1).firstOrNull { it.required && it.key.token !in done }
+        if (forward != null) {
+            val nothingElseOwed = steps.none {
+                it.required && it.key.token !in done && it.key.token != forward.key.token
+            }
+            if (forward.key.token != steps.last().key.token || nothingElseOwed) {
+                return forward.key.token
+            }
+        }
+    }
+    return openingToken(steps, done)
+}
 
 /**
  * True when [prompt] is the question this row still owes — the engine raised it
@@ -285,6 +336,17 @@ fun primaryLabel(
     places: List<String> = emptyList(),
     /** The kill funnel's own words when the action ends in a death attempt. */
     deathLine: String = "",
+    /**
+     * The kill funnel's words for a death this row causes tonight that NOBODY
+     * chooses tonight — `NightStep.deferredDeaths`, which is the Pukka's
+     * standing victim and the Grandmother's own death.
+     *
+     * It is APPENDED to whatever else the button promises rather than replacing
+     * it, because both things happen: tonight's pick is poisoned AND last
+     * night's pick dies. The button read `DEV — POISONED` and killed Ben without
+     * printing his name anywhere on the card (playtest D, P1-9).
+     */
+    deferredLine: String = "",
     /** The information to be shown, already formatted ("1", "YES", "POISONER"). */
     answer: String = "",
     /** Who is being woken — "SHOW 1 TO BEN". */
@@ -303,9 +365,10 @@ fun primaryLabel(
      */
     impairedHolder: String = "",
 ): String {
+    val also = if (deferredLine.isBlank()) "" else " · ${deferredLine.uppercase()}"
     if (dawn) return "OPEN THE DAY →"
-    if (none) return "THEY CHOSE NOBODY"
-    if (deathLine.isNotBlank()) return deathLine.uppercase()
+    if (none) return "THEY CHOSE NOBODY$also"
+    if (deathLine.isNotBlank()) return deathLine.uppercase() + also
     if (impairedHolder.isNotBlank()) return "PICK WHAT TO SHOW — ${impairedHolder.uppercase()} IS IMPAIRED"
     if (answer.isNotBlank()) {
         val shown = "SHOW “${answer.uppercase()}”"
@@ -313,10 +376,15 @@ fun primaryLabel(
     }
     if (picked.isNotEmpty()) {
         val names = picked.joinToString(", ") { it.uppercase() }
-        if (places.isNotEmpty()) return "$names — ${places.joinToString(" + ") { it.uppercase() }}"
-        return "CONFIRM: $names"
+        if (places.isNotEmpty()) {
+            return "$names — ${places.joinToString(" + ") { it.uppercase() }}$also"
+        }
+        return "CONFIRM: $names$also"
     }
     if (skipped) return "RUN IT ANYWAY"
+    // A row with nothing to ask and a standing death to land — an Exorcised
+    // Pukka. `DONE — NEXT STEP` said nothing while a player died (playtest D).
+    if (deferredLine.isNotBlank()) return deferredLine.uppercase()
     return "DONE — NEXT STEP"
 }
 
@@ -525,6 +593,18 @@ fun picksNeeded(action: NightAction?): Int = when (action) {
     is ShowInfo -> action.targetsNeeded
     is ChoosePlayerAndCharacter -> 1
     else -> 0
+}
+
+/**
+ * Seats an action arrives with already picked, because the engine read the
+ * answer off the grimoire — `ShowInfo.preselect`.
+ *
+ * Capped at what the action will actually accept, so a stale mark can never
+ * arm a primary with more picks than the step allows.
+ */
+fun preselected(action: NightAction?): List<Long> = when (action) {
+    is ShowInfo -> action.preselect.take(maxOf(action.targetsNeeded, 0))
+    else -> emptyList()
 }
 
 /** The most seats an action accepts. 0 = no player picking at all. */
