@@ -383,8 +383,9 @@ private fun ogre() = CharacterRule(
     id = OGRE,
     tokens = listOf(TokenRule(OGRE, FRIEND, null, Until.FOREVER)),
     firstNight = ogreRule(),
-    // The same rule on other nights, for an Ogre created mid-game. (The official
-    // otherNight list has no `ogre` entry yet — filed to WP5.)
+    // The same rule on other nights, for an Ogre created mid-game: "on your 1st
+    // night" is the night they ENTER PLAY. WP6C put `ogre` into the otherNight
+    // order, in the same place it sits on the first night (after the Spy).
     otherNight = ogreRule(),
 )
 
@@ -496,8 +497,9 @@ private fun plagueDoctor() = CharacterRule(
         ),
     ),
     // The safety net for a death the storyteller resolved without the picker.
-    // Emitted on the first night too, for a night-1 death. (The official
-    // firstNight list has no `plaguedoctor` entry yet — filed to WP5.)
+    // Emitted on the first night too, for a night-1 death. WP6C put
+    // `plaguedoctor` into the firstNight order for exactly that case; the gate
+    // ("dead, and no ability taken yet") keeps it silent in every other game.
     firstNight = plagueDoctorRule(),
     otherNight = plagueDoctorRule(),
 )
@@ -637,8 +639,9 @@ private fun snitch() = CharacterRule(
             "The Marionette is never woken and gets nothing.",
         wakeCounts = WakeCount.INFORMED,
     ),
-    // A Snitch or a Minion created mid-game still owes a set. (The official
-    // otherNight list has no `snitch` entry yet — filed to WP5.)
+    // A Snitch or a Minion created mid-game still owes a set. WP6C put `snitch`
+    // into the otherNight order, before summoner/lunatic, mirroring its
+    // first-night place straight after MINION INFO.
     otherNight = NightRule(
         gate = snitchGate(midGame = true),
         prompt = "A Minion has not been given bluffs yet and a Snitch is in play. " +

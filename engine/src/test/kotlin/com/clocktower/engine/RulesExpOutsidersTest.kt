@@ -694,6 +694,29 @@ class RulesExpOutsidersTest {
     }
 
     // ==================================================================
+    // The night-order rows WP6C added (FOLLOWUPS: the official sheet has none)
+    // ==================================================================
+
+    @Test
+    fun `the mid-game Ogre Snitch and night-one Plague Doctor rows now render`() {
+        // Before WP6C these three registry rows were unreachable: the official
+        // nightsheet has no other-night Ogre or Snitch and no first-night Plague
+        // Doctor, and `NightPlan.build` only emits what the order lists.
+        val ogre = game("imp", "poisoner", "ogre", "chef", "empath", "mayor", "monk", "soldier")
+        assertNotNull(step(atNight(ogre, 3), "ogre", 2L), "an other-night Ogre row")
+
+        val snitch = game(
+            "imp", "poisoner", "baron", "snitch", "chef", "empath", "mayor", "monk", "soldier", "virgin",
+        )
+        assertNotNull(step(atNight(snitch, 3), "snitch"), "an other-night Snitch row")
+
+        val pd = game("imp", "poisoner", "plaguedoctor", "chef", "empath", "mayor", "monk", "soldier")
+        val row = assertNotNull(step(pd, "plaguedoctor", 2L), "a first-night Plague Doctor row")
+        // …and it is silent in an ordinary game: nobody is dead on night 1.
+        assertTrue(row.gate is StepGate.Skip, "nothing to take yet: ${row.gate}")
+    }
+
+    // ==================================================================
     // Zealot — the vote obligation, surfaced at nomination time
     // ==================================================================
 

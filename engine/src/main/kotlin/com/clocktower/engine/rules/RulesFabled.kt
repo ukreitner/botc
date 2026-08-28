@@ -78,9 +78,11 @@ import com.clocktower.engine.WakePredicate
  * "source seat" stopped working. (There is no source seat — a Fabled holds none.)
  *
  * Official Title Case labels only, with `copies` matching `characters.json`
- * exactly (`TokensTest` fails the build otherwise). Characters whose official
- * reminder set is empty declare no tokens at all, even where the audit digest
- * wants one — those are listed as WP5 data follow-ups, never invented here.
+ * exactly (`TokensTest` fails the build otherwise). Where the official reminder
+ * set was empty but the character's own wiki run-book names a state, WP6C added
+ * the label through `tools/app-overlay.json` and it is declared here (Angel,
+ * Buddhist, Doomsayer, Hell's Librarian). Where the wiki names none either, the
+ * row still invents nothing — see `bigWig`.
  */
 internal val FABLED_RULES: List<CharacterRule> = listOf(
     // ---- Fabled (14) ----
@@ -194,9 +196,9 @@ internal fun aliveResidents(state: GameState): List<Player> =
  * pins the Angel's own copies as pure markers so the two can never merge.
  *
  * The penalty itself is a storyteller ruling: the death trigger asks, it never
- * decides. The official token set is `Protected ×2` + `Something Bad`, so the
- * "no ability today" / "can't vote today" penalties have no data label yet —
- * filed to WP5.
+ * decides. The official token set is `Protected ×2` + `Something Bad`; WP6C
+ * added the `No Ability` and `Can't Vote` labels the wiki's own sentence names,
+ * so a chosen penalty is now placeable and is swept at dusk.
  */
 private fun angel() = CharacterRule(
     id = "angel",

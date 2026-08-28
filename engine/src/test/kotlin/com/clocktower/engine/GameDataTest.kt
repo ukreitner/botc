@@ -57,6 +57,44 @@ class GameDataTest {
     }
 
     @Test
+    fun `the night order carries the four rows the official sheet omits`() {
+        // WP6C, `nightOrder` in tools/app-overlay.json. The official sheet
+        // describes a game that starts as it is dealt: "on your 1st night" gets
+        // no other-night row, so a Pit-Hag'd Widow / Ogre / Snitch had no step
+        // at all, and a Plague Doctor who died before the first night ended had
+        // nowhere to hand the storyteller the Minion ability. Each row sits
+        // beside the neighbour it has on the other sheet.
+        fun after(order: List<String>, id: String): String {
+            val at = order.indexOf(id)
+            assertTrue(at > 0, "$id is missing from the night order")
+            return order[at - 1]
+        }
+        assertEquals("poisoner", after(data.otherNightOrder, "widow"))
+        assertEquals("scarletwoman", after(data.otherNightOrder, "snitch"))
+        assertEquals("spy", after(data.otherNightOrder, "ogre"))
+        assertEquals("pixie", after(data.firstNightOrder, "plaguedoctor"))
+        // The whole official sheet is still there, in order, underneath.
+        assertEquals(81, data.firstNightOrder.size)
+        assertEquals(102, data.otherNightOrder.size)
+        // The converse of the test above: an order entry with no reminder would
+        // render an empty step (`regen-data.py` fails on it too).
+        for (id in data.firstNightOrder) {
+            if (id in NightMarkers.all) continue
+            assertTrue(
+                assertNotNull(data.character(id)).firstNightReminder.isNotBlank(),
+                "$id is in the first night order with no reminder",
+            )
+        }
+        for (id in data.otherNightOrder) {
+            if (id in NightMarkers.all) continue
+            assertTrue(
+                assertNotNull(data.character(id)).otherNightReminder.isNotBlank(),
+                "$id is in the other night order with no reminder",
+            )
+        }
+    }
+
+    @Test
     fun `jinxes reference known characters`() {
         for (j in data.jinxes) {
             assertNotNull(data.character(j.id1), "unknown jinx id ${j.id1}")
