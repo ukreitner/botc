@@ -7,10 +7,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -346,7 +352,25 @@ fun GameShell(
             }
         },
         bottomBar = {
-            NavigationBar {
+            // `NavigationBarDefaults.windowInsets` is the NAVIGATION BAR only —
+            // 63 px on the reference phone. The strip the home indicator
+            // actually swallows is `mandatorySystemGestures`, 84 px, so three
+            // of the four tab items ended 21 px inside it: their labels were
+            // drawn in a band where a tap becomes a system gesture. Every
+            // wave-2 agent's `ui.py audit` reported it on every in-game screen.
+            //
+            // The union is the same pair `GrimoireTheme` measures at the root
+            // (components/SafeArea.kt): whichever is bigger wins, and the
+            // Compose insets are consumption-aware — nothing is added twice on
+            // a platform that already applied them, and on the web, where the
+            // shell root is padded by the measured `env(safe-area-inset-*)`
+            // instead, both halves are zero here. Only Horizontal + Bottom, so
+            // the bar never inherits a status-bar top.
+            NavigationBar(
+                windowInsets = WindowInsets.navigationBars
+                    .union(WindowInsets.mandatorySystemGestures)
+                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+            ) {
                 GameTabItem(tab == GameTab.GRIMOIRE, { tab = GameTab.GRIMOIRE }, "Grimoire") {
                     Icon(Icons.Filled.Groups, contentDescription = null)
                 }
