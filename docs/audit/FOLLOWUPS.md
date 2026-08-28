@@ -67,3 +67,9 @@
 - Engine + nomination panel are correct (`DayRules.voteRules` → eligible = Voudon + dead, threshold 1, no ghost vote spent). But the day STAT STRIP (`day/DayModel.kt:98`) computes `Voting.executionThreshold(alive)` directly and shows "N to execute" + a ghost-vote count that are wrong under a Voudon (and under any rule that rewrites the threshold). Fix: read `DayRules.voteRules(state, lookup, isExile = false)` and render its threshold/reasons; hide the ghost-vote count when `spendsGhostVotes` is false.
 - Likely also: user on the cached pre-rebuild PWA — build id is shown on the boot screen and Home footer; deployed = b3f2f41.
 - Follow-up from the stat-strip fix: `GrimoireScreen.kt:269` header prints `GameState.executionThreshold` + its own ghost count — same bug, needs `lookup` to route through `VoteRules`. Fold into the next UI fix wave.
+### Fix-wave 2 queue (from Fix-B/Fix-C reports)
+- Mid-game character change (star pass, Pit-Hag) re-raises the "Before the first night" checklist because `SetupRequirements` still checks bag legality once the game is running — gate bag-legality rows on `phase == SETUP` (WP4 file).
+- Pressing the primary on an already-ticked night row un-ticks it (`NightPlan.toggleDone`) — primary should be idempotent; un-tick only from the collapsed list.
+- `GameLogDialog` (GameExtras.kt:59-98) builds rows from deaths+nominations; render the engine's `GameLog.rows` (statements, executions, ledger) instead.
+- Dusk-sheet button order / moon button during the day (GameShell — C-16/C-18); traveller tokens missing from the token picker (SeatSheet — C-20); KillSheet primary below the fold on open (C-17); Organ Grinder house-rule toggle needs a UI home (SetupScreen "house rules" card).
+- Emulator harness: dismiss/disable the in-app "New build available" banner for emulator installs.
