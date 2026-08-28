@@ -206,11 +206,17 @@ fun FullScreenShow(
             // HOLD TO CLOSE came to be drawn inside the gesture strip, sliced
             // in half and untappable (playtest B P1 #5).
             val safeBottom = dialogSafeBottom()
+            // …plus the height the window itself pushed the content down by,
+            // which is exactly how far it now hangs off the bottom edge.
+            val overflow = dialogTopOverflow()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars)
-                    .padding(top = dialogSafeTop(), bottom = bottomActionClearance(safeBottom))
+                    .padding(
+                        top = overlaySafeTop(),
+                        bottom = bottomActionClearance(safeBottom) + overflow,
+                    )
                     .graphicsLayer { rotationZ = if (flipped) 180f else 0f },
                 contentAlignment = Alignment.Center,
             ) {
@@ -224,7 +230,7 @@ fun FullScreenShow(
                     // Bottom only: a side navigation bar in landscape must not
                     // shift a row that is meant to stay centred.
                     .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))
-                    .padding(bottom = bottomActionPadding(safeBottom)),
+                    .padding(bottom = bottomActionPadding(safeBottom) + overflow),
             ) {
                 FilledTonalButton(onClick = { flipped = !flipped }, modifier = Modifier.heightIn(min = 56.dp)) {
                     Text("⟳ FLIP", fontSize = 16.sp)

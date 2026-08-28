@@ -6,6 +6,7 @@ import com.clocktower.grimoire.ui.components.BottomActionMargin
 import com.clocktower.grimoire.ui.components.bottomActionClearance
 import com.clocktower.grimoire.ui.components.bottomActionPadding
 import com.clocktower.grimoire.ui.components.dialogSafeInset
+import com.clocktower.grimoire.ui.components.dialogTopConsumed
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -105,6 +106,28 @@ class SafeAreaTest {
     }
 
     /**
+     * An Android dialog window fits system windows: it is inset at the TOP by
+     * the status bar and then given the whole screen's height, so its content
+     * hangs off the bottom by exactly that inset. Measured on the reference
+     * device: the action row asked for 56 dp of clearance and landed 12 px
+     * from the physical bottom.
+     */
+    @Test
+    fun `a dialog compensates for the height its own window pushed it down by`() {
+        // Android: the root knows 51 dp of status bar, the overlay seam knows
+        // nothing, so the window consumed all of it.
+        assertEquals(51.dp, dialogTopConsumed(root = 51.dp, overlay = 0.dp))
+        // Web: the overlay seam carries env(safe-area-inset-top) and no window
+        // consumed anything.
+        assertEquals(0.dp, dialogTopConsumed(root = 0.dp, overlay = 47.dp))
+        assertEquals(0.dp, dialogTopConsumed(root = 0.dp, overlay = 0.dp))
+        assertTrue(
+            "the row must end up above the gesture strip",
+            bottomActionPadding(dialogSafeInset(0.dp, 32.dp)) + dialogTopConsumed(51.dp, 0.dp) > 51.dp + 32.dp,
+        )
+    }
+
+    /**
      * The root-measured inset only exists if something provides it. The theme
      * wraps the whole app on both platforms, so that is where it is done.
      */
@@ -124,7 +147,10 @@ class SafeAreaTest {
     fun `the show card asks for the inset a dialog cannot measure`() {
         val text = uiSource("ShowCards.kt").readText()
         assertTrue("FullScreenShow must use dialogSafeBottom()", text.contains("dialogSafeBottom()"))
-        assertTrue("FullScreenShow must use dialogSafeTop()", text.contains("dialogSafeTop()"))
+        assertTrue(
+            "FullScreenShow must compensate for the height its window pushed it down by",
+            text.contains("dialogTopOverflow()"),
+        )
     }
 
     // ---- the call sites ---------------------------------------------------

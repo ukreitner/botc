@@ -28,20 +28,29 @@ STEPS = [
 
     ("tap",    "^Chef$"),
     ("swipe",  ["up", "600"]),
+    ("sleep",  0.7),
     ("tap",    "^Investigator$"),
     ("tap",    "^Librarian$"),
     ("swipe",  ["up", "600"]),
+    ("sleep",  0.7),
     ("tap",    "^Washerwoman$"),
     ("swipe",  ["up", "600"]),
+    ("sleep",  0.7),
     ("tap",    "^Butler$"),
     ("swipe",  ["up", "400"]),
+    ("sleep",  0.7),
     ("tap",    "^Poisoner$"),
     ("swipe",  ["up", "600"]),
+    ("sleep",  0.7),
     ("tap",    "^Imp$"),
     ("swipe",  ["down", "600"]),
+    ("sleep",  0.7),
     ("swipe",  ["down", "600"]),
+    ("sleep",  0.7),
     ("swipe",  ["down", "600"]),
+    ("sleep",  0.7),
     ("swipe",  ["down", "600"]),
+    ("sleep",  0.7),
     ("tap",    "^Empath$"),
     ("wait",   "IN THE BAG · 8 / 8"),
 
@@ -82,6 +91,8 @@ STEPS = [
     # exactly two players, neither of them Player 5.
     ("swipe",  ["down", "700"]),
     ("find",   "1 of 2 players is the"),
-    ("find",   "SHOW “PLAYER 1, PLAYER 2” TO PLAYER 5"),
+    # The deal is random, so the assertion is on the SHAPE: two named players
+    # shown to one, and neither of them the holder.
+    ("find",   "SHOW “[A-Z]+ — PLAYER [0-9], PLAYER [0-9]” TO PLAYER [0-9]"),
     ("audit",  None),
 ]

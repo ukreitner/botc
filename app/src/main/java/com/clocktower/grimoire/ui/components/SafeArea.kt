@@ -129,6 +129,24 @@ val LocalRootSafeBottom: ProvidableCompositionLocal<Dp> = staticCompositionLocal
 /** The larger of the two inset sources — pure, so `tools/uicheck` can measure it. */
 fun dialogSafeInset(overlay: Dp, root: Dp): Dp = if (root > overlay) root else overlay
 
+/**
+ * How far a full-screen `Dialog`'s content is pushed DOWN by its own window,
+ * and therefore how far it overflows the bottom of the screen.
+ *
+ * An Android dialog window fits system windows, so the platform insets its TOP
+ * by the status bar — and then hands the content the whole screen's height as
+ * its constraint. The content is 136 px too tall and starts 136 px too low, so
+ * everything pinned to its bottom edge is off screen by the same 136 px.
+ * Measured: `FullScreenShow`'s action row asked for 56 dp of clearance and
+ * landed 12 px from the physical bottom, still under the home indicator.
+ *
+ * The amount is exactly what the window already consumed at the top: the root
+ * inset minus whatever this platform's overlay layers still have to apply
+ * themselves. Zero on the web, where dialogs are hosted at the scene root and
+ * nothing is consumed.
+ */
+fun dialogTopConsumed(root: Dp, overlay: Dp): Dp = if (root > overlay) root - overlay else 0.dp
+
 /** [overlaySafeTop] for content inside a `Dialog`'s own window. */
 @Composable
 fun dialogSafeTop(): Dp = dialogSafeInset(overlaySafeTop(), LocalRootSafeTop.current)
@@ -136,6 +154,10 @@ fun dialogSafeTop(): Dp = dialogSafeInset(overlaySafeTop(), LocalRootSafeTop.cur
 /** [overlaySafeBottom] for content inside a `Dialog`'s own window. */
 @Composable
 fun dialogSafeBottom(): Dp = dialogSafeInset(overlaySafeBottom(), LocalRootSafeBottom.current)
+
+/** [dialogTopConsumed] with the live insets already read. */
+@Composable
+fun dialogTopOverflow(): Dp = dialogTopConsumed(LocalRootSafeTop.current, overlaySafeTop())
 
 /** [bottomActionPadding] with the live inset already read. */
 @Composable
@@ -158,4 +180,10 @@ fun overlayBodyClearance(): Dp = bottomActionClearance(overlaySafeBottom())
 fun Modifier.overlaySafeAreaPadding(): Modifier =
     this
         .windowInsetsPadding(WindowInsets.systemBars)
-        .padding(top = dialogSafeTop(), bottom = dialogSafeBottom())
+        .padding(
+            // The window already inset the top on Android; on the web it did
+            // not, and `overlaySafeTop` is the env() value. Either way the
+            // bottom carries the overflow the window's own top inset caused.
+            top = overlaySafeTop(),
+            bottom = dialogSafeBottom() + dialogTopOverflow(),
+        )
