@@ -96,8 +96,8 @@ object Identity {
     /** Seats a Drunk / Marionette / Lunatic believes-token is projected from. */
     private val BELIEVED_ROLE_SOURCES = setOf("drunk", "marionette", "lunatic")
 
-    /** The Cannibal's "recently killed executee" marker. */
-    private const val CANNIBAL_LUNCH = "Lunch"
+    /** The Cannibal's "recently killed executee" marker; `Execution` places it. */
+    internal const val CANNIBAL_LUNCH = "Lunch"
 
     /** Seat-note prefix the setup prompts write; cleared on every character change. */
     private const val BELIEF_NOTE_PREFIX = "Believes they are"

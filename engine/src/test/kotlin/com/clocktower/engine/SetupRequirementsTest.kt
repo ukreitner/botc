@@ -388,6 +388,49 @@ class SetupRequirementsTest {
         assertEquals(listOf("0", "1", "2", "3", "4", "5"), row.candidates(state, lookup).map { it.id })
     }
 
+    // ==================================================================
+    // W7G — `CharacterRule.setup` has a consumer
+    // ==================================================================
+
+    @Test
+    fun `a registry setup row reaches the checklist, for a seat and for a Fabled`() {
+        // A seated character's own row (the Lycanthrope's Faux Paw)…
+        val lycanthrope = game("imp", "lycanthrope", "chef", "empath", "mayor")
+        assertTrue("lycanthrope.fauxpaw" in ids(lycanthrope), ids(lycanthrope).toString())
+        val marked = Effects.addReminder(
+            lycanthrope,
+            1L,
+            PlacedReminder("lycanthrope", "Faux Paw"),
+        )
+        assertTrue("lycanthrope.fauxpaw" !in ids(marked), "marking one satisfies it")
+
+        // …and a FABLED's, which holds no seat at all.
+        val storm = GameActions.setFabled(
+            game("imp", "chef", "empath", "mayor", "monk"),
+            listOf("stormcatcher"),
+        )
+        assertTrue("stormcatcher.favouredCharacterId" in ids(storm), ids(storm).toString())
+        val named = storm.copy(
+            fabled = storm.fabled.map {
+                it.copy(config = it.config + ("stormcatcher.favouredCharacterId" to "chef"))
+            },
+        )
+        assertTrue("stormcatcher.favouredCharacterId" !in ids(named))
+
+        // Nothing is added for a character that is not in play.
+        assertTrue("stormcatcher.favouredCharacterId" !in ids(lycanthrope))
+    }
+
+    @Test
+    fun `no two setup rows share an id`() {
+        val state = GameActions.setFabled(
+            game("imp", "lycanthrope", "chef", "empath", "mayor"),
+            listOf("stormcatcher", "sentinel", "djinn"),
+        )
+        val all = SetupRequirements.all(state, lookup).map { it.id }
+        assertEquals(all.size, all.toSet().size, "duplicate rows: $all")
+    }
+
     @Test
     fun `the Lord of Typhon's evil line is checked around the middle seat`() {
         // poisoner · lordoftyphon · baron — a line with the Typhon in the middle.

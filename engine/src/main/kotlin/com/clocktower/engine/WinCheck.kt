@@ -151,33 +151,43 @@ object WinCheck {
      */
     fun endGameQuestions(state: GameState, lookup: (String) -> Character?): List<EndGameQuestion> =
         buildList {
+            // W7G: a Fiddler is a FABLED — it holds no seat, so iterating seats
+            // for `characterId == "fiddler"` could never fire. Its question is
+            // asked from `state.fabled` instead.
+            if (state.fabledIds.any { Character.normalizeId(it) == "fiddler" }) {
+                add(
+                    EndGameQuestion(
+                        id = "fiddler",
+                        sourceId = "fiddler",
+                        question = "Did the Fiddler's duel happen? Whose side won it?",
+                        options = listOf(
+                            TriggerOption("good", "Good"),
+                            TriggerOption("evil", "Evil"),
+                            TriggerOption("none", "No duel", isDefault = true),
+                        ),
+                    ),
+                )
+            }
             for (seat in state.seats) {
                 when (seat.characterId?.let(Character::normalizeId)) {
-                    "politician" -> add(
-                        EndGameQuestion(
-                            id = "politician:${seat.id}",
-                            sourceId = "politician",
-                            question = "Was ${seat.name} (Politician) the player most responsible " +
-                                "for their team losing?",
-                            options = listOf(
-                                TriggerOption("yes", "Yes — they change alignment and win alone"),
-                                TriggerOption("no", "No", isDefault = true),
+                    // W7G: only when it can matter. The Politician changes side
+                    // if they were most responsible for their TEAM LOSING, so
+                    // asking it while their team is winning is noise — and D40
+                    // makes every question BLOCK the victory dialog.
+                    "politician" -> if (politicianCouldFlip(state, lookup, seat)) {
+                        add(
+                            EndGameQuestion(
+                                id = "politician:${seat.id}",
+                                sourceId = "politician",
+                                question = "Was ${seat.name} (Politician) the player most " +
+                                    "responsible for their team losing?",
+                                options = listOf(
+                                    TriggerOption("yes", "Yes — they change alignment and win alone"),
+                                    TriggerOption("no", "No", isDefault = true),
+                                ),
                             ),
-                        ),
-                    )
-
-                    "fiddler" -> add(
-                        EndGameQuestion(
-                            id = "fiddler:${seat.id}",
-                            sourceId = "fiddler",
-                            question = "Did the Fiddler's duel happen? Whose side won it?",
-                            options = listOf(
-                                TriggerOption("good", "Good"),
-                                TriggerOption("evil", "Evil"),
-                                TriggerOption("none", "No duel", isDefault = true),
-                            ),
-                        ),
-                    )
+                        )
+                    }
 
                     "cultleader" -> add(
                         EndGameQuestion(
@@ -195,6 +205,23 @@ object WinCheck {
                 }
             }
         }
+
+    /**
+     * True when a Politician's side is the one about to LOSE, which is the only
+     * situation their question can change anything in (W7G).
+     *
+     * With no verdict yet — the game is still running — the question is asked, so
+     * the storyteller can settle it before the reveal.
+     */
+    private fun politicianCouldFlip(
+        state: GameState,
+        lookup: (String) -> Character?,
+        seat: Player,
+    ): Boolean {
+        val goodWins = check(state, lookup)?.goodWins ?: return true
+        val evil = Registration.alignment(state, lookup, seat) == Alignment.EVIL
+        return evil == goodWins
+    }
 
     /**
      * Per-player win/lose for the reveal sheet, after the questions are answered.
@@ -462,8 +489,11 @@ object WinCheck {
         lookup: (String) -> Character?,
         advisories: List<Advisory>,
     ): List<Advisory> {
-        val heretic = state.seats.firstOrNull {
-            it.characterId?.let(Character::normalizeId) == "heretic"
+        // W7G: EFFECTIVE in-play, not `characterId == "heretic"`. A Hermit holds
+        // every Outsider on the script, the Heretic included, so this pass could
+        // never fire for the one seat most likely to be holding it.
+        val heretic = state.seats.firstOrNull { seat ->
+            Identity.actingRoles(state, lookup, seat).any { it.abilityId == "heretic" }
         } ?: return advisories
         if (Status.isImpaired(state, lookup, heretic.id)) return advisories
         return advisories.map { advisory ->

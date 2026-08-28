@@ -124,7 +124,24 @@ object SetupRequirements {
         rows += seatRows(state, lookup)
         rows += bluffRows(state, lookup)
         rows += choiceRows(state, lookup)
-        return rows
+        rows += registryRows(state)
+        // A row written here and a registry row with the same id are the same
+        // obligation; the built-in wins, so a registry file can add without
+        // silently replacing (lead D48 makes the ids canonical).
+        return rows.distinctBy { it.id }
+    }
+
+    /**
+     * `CharacterRule.setup` rows for every in-play character and every in-play
+     * Fabled (W7G). Before this the slot had no consumer at all, so ten Fabled
+     * requirement rows — the Storm Catcher's named character, the Sentinel's
+     * Outsider delta, the Djinn's rule, the Revolutionary's pair — were declared
+     * and never shown.
+     */
+    private fun registryRows(state: GameState): List<SetupRequirement> {
+        val ids = state.seats.mapNotNull { it.characterId?.let(Character::normalizeId) } +
+            state.fabledIds.map(Character::normalizeId)
+        return ids.distinct().flatMap { CharacterRules.all[it]?.setup.orEmpty() }
     }
 
     fun unmet(state: GameState, lookup: (String) -> Character?): List<SetupRequirement> =

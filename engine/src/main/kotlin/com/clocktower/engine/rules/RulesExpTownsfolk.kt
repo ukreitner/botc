@@ -17,6 +17,7 @@ import com.clocktower.engine.DeathEvent
 import com.clocktower.engine.DeathTrigger
 import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
+import com.clocktower.engine.Effects
 import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
@@ -33,6 +34,8 @@ import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
+import com.clocktower.engine.RequirementKind
+import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.StandingRule
 import com.clocktower.engine.Status
@@ -1048,6 +1051,25 @@ private fun lycanthrope() = CharacterRule(
                 )
             }
     },
+    // W7G: "One good player registers as evil" is a SETUP fact — the token goes
+    // down before the first night, and the standing rule above reads it. The
+    // slot had no consumer until wave 7, so this row was owed and never written.
+    setup = listOf(
+        SetupRequirement(
+            id = "lycanthrope.fauxpaw",
+            characterId = "lycanthrope",
+            kind = RequirementKind.REMINDER,
+            title = "Lycanthrope: mark one good player Faux Paw",
+            prompt = "Choose ONE good player and mark them FAUX PAW. They register as evil to " +
+                "every ability that asks, but they still win with good and are never told.",
+            problem = "Mark a good player Faux Paw before the first night",
+            satisfied = { state, _ ->
+                val key = Tokens.key("lycanthrope", "Faux Paw")
+                state.seats.none { it.characterId?.let(Character::normalizeId) == "lycanthrope" } ||
+                    state.seats.any { seat -> seat.reminders.any { Tokens.key(it) == key } }
+            },
+        ),
+    ),
 )
 
 // ---------------------------------------------------------------------------
@@ -1408,10 +1430,28 @@ private fun princess() = CharacterRule(
                 listOf(
                     ExecutionConsequence(
                         sourceId = "princess",
-                        headline = "Princess: the Demon does not kill tonight. Place " +
-                            "\"Doesn't Kill\" on the Demon.",
+                        headline = "Princess: the Demon does not kill tonight.",
                         detail = "Impairment is judged AT NIGHT, when the Demon's step is " +
-                            "reached — not now.",
+                            "reached — not now. Confirming places \"Doesn't Kill\" on every " +
+                            "Demon seat for you.",
+                        // W7G: `ExecutionConsequence.apply` — the row DOES the
+                        // bookkeeping now instead of telling the storyteller to.
+                        apply = { state, _ ->
+                            state.seats
+                                .filter { it.characterId?.let(ctx.lookup)?.team == Team.DEMON }
+                                .fold(state) { acc, demon ->
+                                    Effects.place(
+                                        state = acc,
+                                        target = demon.id,
+                                        kind = EffectKind.DEMON_CANNOT_KILL,
+                                        sourceCharacterId = "princess",
+                                        sourcePlayerId = null,
+                                        until = Until.DAWN,
+                                        label = "Doesn't Kill",
+                                        note = "Princess: the Demon does not kill tonight.",
+                                    ).state
+                                }
+                        },
                     ),
                 )
             }

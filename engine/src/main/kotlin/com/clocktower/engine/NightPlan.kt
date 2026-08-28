@@ -452,6 +452,14 @@ data class NightPlan(
             /** In play, but the bag seated nobody — a Lil' Monsta game (lead D18). */
             val seatless: Set<String> by lazy { Setup.seatlessInPlayIds(state).toSet() }
 
+            /**
+             * Every character on THIS GAME'S SCRIPT. A jinx applies because it is
+             * on the script, not because it was dealt (lead D19, the Djinn rule).
+             */
+            val scriptIds: Set<String> by lazy {
+                state.script.characterIds.map(Character::normalizeId).toSet()
+            }
+
             /** The seats an in-play Fabled points at, if it points at any. */
             fun fabledHolders(slot: String): List<Long> = state.fabled
                 .firstOrNull { Character.normalizeId(it.id) == slot }
@@ -518,7 +526,16 @@ data class NightPlan(
             val style = if (firstNightRules) WakeStyle.FIRST_NIGHT else WakeStyle.OTHER_NIGHT
             val character = ctx.lookup(role.abilityId)
             val rule = CharacterRules.of(role.abilityId, character)
-            val nightRule = rule.nightRule(firstNightRules)
+            // OTHER nights only: every D19 jinx action is an "each night*"
+            // ability, and `jinxRules` has one entry per jinxed character with no
+            // place to say "first night". A first-night jinx would have to be a
+            // separate map, and none of the official 131 needs one.
+            val jinxed = if (firstNightRules) {
+                emptyList()
+            } else {
+                rule.jinxRules.keys.filter { Character.normalizeId(it) in ctx.scriptIds }.sorted()
+            }
+            val nightRule = jinxOver(rule.nightRule(firstNightRules), rule, jinxed)
             val holder = ctx.holder(role)
             val nightCtx = ctx.nightContext(role, holder, firstNightRules)
             val gate = when {
@@ -535,6 +552,15 @@ data class NightPlan(
                 if (variant == StepVariant.FIRST) add("first night, again")
                 if (ctx.changedTonight.any { it.playerId == holder?.id }) add("new character")
                 if (role.alwaysFalse) add("nothing they do has any effect")
+                for (other in jinxed) {
+                    add("jinx: ${ctx.lookup(other)?.name ?: other} is on the script")
+                }
+                // W7G: `CharacterRule.demonKillUncertain` had no consumer, so the
+                // panel never actually asked. It is the wiki declining to rule
+                // whether a Sage / Grandmother / Choirboy fires on this kill.
+                if (rule.demonKillUncertain && gate !is StepGate.Skip) {
+                    add("the wiki does not rule whether this counts as a Demon kill — you decide")
+                }
             }
             return NightStep(
                 key = StepKey(role.abilityId, holder?.id, variant),
@@ -565,6 +591,51 @@ data class NightPlan(
                 cards = nightRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule),
                 promptId = promptId,
                 wakeCounts = nightRule?.wakeCounts ?: WakeCount.ACT,
+            )
+        }
+
+        /**
+         * Applies every `CharacterRule.jinxRules` entry whose character is on the
+         * script (lead D19) over tonight's rule.
+         *
+         * A jinx row OVERRIDES only what it declares: the King's Leviathan jinx
+         * sets nothing but a gate, and must keep the King's own prompt. Two rows
+         * can apply at once (a Leviathan script with both a Farmer and a Sage),
+         * so the prompts are joined rather than one silently winning.
+         */
+        private fun jinxOver(
+            base: NightRule?,
+            rule: CharacterRule,
+            jinxed: List<String>,
+        ): NightRule? {
+            if (jinxed.isEmpty()) return base
+            val rules = jinxed.mapNotNull { rule.jinxRules[it] }
+            if (rules.isEmpty()) return base
+            return NightRule(
+                // Every jinx row declares its own gate; the strictest wins.
+                gate = Gates.all(*rules.map { it.gate }.toTypedArray()),
+                action = { ctx ->
+                    rules.firstNotNullOfOrNull { it.action(ctx) } ?: base?.action?.invoke(ctx)
+                },
+                pending = { ctx ->
+                    base?.pending?.invoke(ctx).orEmpty() + rules.flatMap { it.pending(ctx) }
+                },
+                prompt = rules.map { it.prompt }.filter { it.isNotEmpty() }
+                    .joinToString(" ")
+                    .ifEmpty { base?.prompt.orEmpty() },
+                banner = { ctx ->
+                    rules.map { it.banner(ctx) }.firstOrNull { it.isNotEmpty() }
+                        ?: base?.banner?.invoke(ctx).orEmpty()
+                },
+                detail = { ctx ->
+                    rules.map { it.detail(ctx) }.filter { it.isNotEmpty() }.joinToString(" ")
+                        .ifEmpty { base?.detail?.invoke(ctx).orEmpty() }
+                },
+                cards = { ctx ->
+                    rules.flatMap { it.cards(ctx) }.ifEmpty { base?.cards?.invoke(ctx).orEmpty() }
+                },
+                infoId = rules.firstNotNullOfOrNull { it.infoId } ?: base?.infoId,
+                wakeCounts = rules.first().wakeCounts,
             )
         }
 
@@ -605,9 +676,13 @@ data class NightPlan(
             return ""
         }
 
-        /** A supported information step still gets its picker when no rule declares one. */
+        /**
+         * A supported information step still gets its picker when no rule
+         * declares one. `infoId = ""` suppresses it outright (W7H); `null` — the
+         * default — falls back to the ability's own id.
+         */
         private fun infoAction(abilityId: String, nightRule: NightRule?): NightAction? {
-            val infoId = nightRule?.infoId.orEmpty().ifEmpty { abilityId }
+            val infoId = nightRule?.infoId ?: abilityId
             if (!InfoCalc.supports(infoId)) return null
             val needed = InfoCalc.targetsNeeded(infoId)
             return ShowInfo(
@@ -628,38 +703,69 @@ data class NightPlan(
             role: ActingRole,
             nightRule: NightRule?,
         ): List<CardOffer> {
-            val infoId = nightRule?.infoId.orEmpty().ifEmpty { role.abilityId }
+            val infoId = nightRule?.infoId ?: role.abilityId
             if (!InfoCalc.supports(infoId) || InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
             val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, role.playerId) ?: return emptyList()
-            return cardsFor(result)
+            return cardsFor(ctx.state, result)
         }
 
         /** Turns a typed answer into show-card offers; lies are labelled as lies. */
-        fun cardsFor(result: InfoResult): List<CardOffer> = buildList {
-            cardFor(result.answer)?.let { add(CardOffer("SHOW: ${labelFor(result.answer)}", it, true)) }
+        /**
+         * Turns a typed answer into show-card offers; lies are labelled as lies.
+         *
+         * W7G: `Answer.Players` and a multi-character answer produce real cards
+         * now — `ShowCardSpec.PointCard` and `MultiTokenCard`. [state] is what
+         * resolves the names and the seat numbers the card prints, so the engine
+         * decides WHAT to show and the renderer only decides how it looks.
+         */
+        fun cardsFor(state: GameState, result: InfoResult): List<CardOffer> = buildList {
+            cardFor(state, result.answer)
+                ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer)}", it, true)) }
             for (alternative in result.alternatives) {
-                val card = cardFor(alternative) ?: continue
-                add(CardOffer("LIE · SHOW ${labelFor(alternative)}", card, false))
+                val card = cardFor(state, alternative) ?: continue
+                add(CardOffer("LIE · SHOW ${labelFor(state, alternative)}", card, false))
             }
         }
 
-        private fun labelFor(answer: Answer): String = when (answer) {
+        private fun labelFor(state: GameState, answer: Answer): String = when (answer) {
             is Answer.Count -> answer.n.toString()
             is Answer.YesNoAnswer -> if (answer.yes) "YES" else "NO"
             is Answer.Characters -> answer.ids.joinToString().uppercase()
-            is Answer.Players -> "THEM"
+            is Answer.Players -> answer.ids
+                .mapNotNull { state.player(it)?.name }
+                .joinToString()
+                .ifEmpty { "THEM" }
             is Answer.Message -> answer.text.take(24).uppercase()
         }
 
-        private fun cardFor(answer: Answer): ShowCardSpec? = when (answer) {
+        private fun cardFor(state: GameState, answer: Answer): ShowCardSpec? = when (answer) {
             is Answer.Count -> ShowCardSpec.NumberCard(answer.n)
             is Answer.YesNoAnswer -> ShowCardSpec.Message(if (answer.yes) "YES" else "NO")
-            is Answer.Characters -> answer.ids.firstOrNull()
-                ?.let { ShowCardSpec.CharacterCard("THIS CHARACTER", it) }
-            // A "point at these players" card is WP8's PointCard; nothing to
-            // pre-fill until it exists.
-            is Answer.Players -> null
+            is Answer.Characters -> when {
+                answer.ids.isEmpty() -> null
+                answer.ids.size == 1 ->
+                    ShowCardSpec.CharacterCard("THIS CHARACTER", answer.ids.first())
+                else -> ShowCardSpec.MultiTokenCard("THESE CHARACTERS", answer.ids)
+            }
+
+            is Answer.Players -> pointCard(state, answer)
             is Answer.Message -> ShowCardSpec.Message(answer.text)
+        }
+
+        /** "Point at these players", with the seat numbers the player checks. */
+        private fun pointCard(state: GameState, answer: Answer.Players): ShowCardSpec? {
+            if (answer.ids.isEmpty()) return null
+            val seats = answer.ids.mapNotNull { id ->
+                val index = state.seats.indexOfFirst { it.id == id }
+                if (index < 0) null else (index + 1) to state.player(id)
+            }
+            if (seats.isEmpty()) return null
+            return ShowCardSpec.PointCard(
+                prefix = ShowCardSpec.pointPrefix(answer.characterId != null, seats.size),
+                playerNames = seats.mapNotNull { it.second?.name },
+                seatNumbers = seats.map { it.first },
+                characterId = answer.characterId,
+            )
         }
 
         /**
@@ -720,7 +826,7 @@ data class NightPlan(
             if (infoId.isEmpty() || !InfoCalc.supports(infoId)) return emptyList()
             if (InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
             val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, null) ?: return emptyList()
-            return cardsFor(result)
+            return cardsFor(ctx.state, result)
         }
 
         /** A bluff set the holder of this row receives themselves (Lunatic, Summoner). */
@@ -1248,13 +1354,18 @@ data class NightPlan(
                         suppressions.any { it.suppression == KillSuppression.NO_KILL_TONIGHT }
                     val silencedNow =
                         effect.deferred && suppressions.isNotEmpty() && !stopsDeferred
+                    // W7G: `CharacterRule.killCause` is the safety net. Every row
+                    // that means something other than a Demon kill should say so
+                    // on the effect, but `Attack.cause` defaults to DEMON_KILL, so
+                    // a row that forgot would have miscounted every protection.
+                    val cause = declaredKillCause(scope.sourceCharacterId, effect.cause)
                     for (target in seats(next, lookup, effect.on, scope)) {
                         next = Deaths.attempt(
                             state = next,
                             lookup = lookup,
                             targetId = target,
                             cause = KillCause(
-                                cause = effect.cause,
+                                cause = cause,
                                 sourceCharacterId = scope.sourceCharacterId,
                                 sourcePlayerId = if (silencedNow) null else scope.sourceId,
                                 ignoresProtection = !effect.respectProtection,
@@ -1457,6 +1568,26 @@ data class NightPlan(
                 is NightEffect.MarkConsumed -> next = Ledger.resolve(next, effect.ledgerId)
             }
             return next
+        }
+
+        /**
+         * The cause an attack from [sourceCharacterId] carries.
+         *
+         * `NightEffect.Attack.cause` defaults to `DEMON_KILL` and every row that
+         * means otherwise passes its own; this fills in for one that did not,
+         * from the registry's `killCause`. It never overrides an explicit
+         * non-default cause, and it never invents one for a Demon.
+         */
+        private fun declaredKillCause(
+            sourceCharacterId: String?,
+            declaredOnEffect: DeathCause,
+        ): DeathCause {
+            if (declaredOnEffect != DeathCause.DEMON_KILL) return declaredOnEffect
+            val fromRegistry = sourceCharacterId
+                ?.let { CharacterRules.all[Character.normalizeId(it)]?.killCause }
+                ?: return declaredOnEffect
+            // STORYTELLER is the schema's default, not a declaration.
+            return if (fromRegistry == DeathCause.STORYTELLER) declaredOnEffect else fromRegistry
         }
 
         /** Answers one [SeatPredicate] about one seat, right now. */
@@ -1666,12 +1797,39 @@ object Gates {
     /** Alive, or dead with an ability that still works. Otherwise skipped. */
     val aliveHolder: WakePredicate = WakePredicate { ctx ->
         val holder = ctx.holder ?: return@WakePredicate StepGate.Fire
+        val taken = abilityTakenAway(ctx, holder)
         when {
+            // An ability that has been TAKEN AWAY is not an impairment: a
+            // preached Minion has nothing left to wake for. Drunkenness and
+            // poison are different — those seats still wake and are lied to.
+            taken != null -> StepGate.Skip("their ability was taken away by the $taken")
             holder.alive -> StepGate.Fire
             ctx.role != null && Status.roleWorks(ctx.state, ctx.lookup, ctx.role) ->
                 StepGate.Fire
             else -> StepGate.Skip("dead — no ability")
         }
+    }
+
+    /**
+     * The name of the character that removed this seat's ability outright, or
+     * null (W7G).
+     *
+     * Only a FOREIGN `NO_ABILITY` counts. The Drunk, the Marionette and the
+     * Lunatic carry one sourced by their own character, and they must still
+     * wake for the ability they believe they have — that is the whole point of
+     * `ActingRole.alwaysFalse`.
+     */
+    private fun abilityTakenAway(ctx: WakeContext, holder: Player): String? {
+        if (ctx.role?.alwaysFalse == true) return null
+        val own = holder.characterId?.let(Character::normalizeId)
+        val acting = ctx.role?.abilityId?.let(Character::normalizeId)
+        val taken = Status.live(ctx.state, ctx.lookup, holder.id, EffectKind.NO_ABILITY)
+            .firstOrNull {
+                val source = Character.normalizeId(it.sourceCharacterId)
+                source.isNotEmpty() && source != own && source != acting
+            }
+            ?: return null
+        return ctx.lookup(taken.sourceCharacterId)?.name ?: taken.sourceCharacterId
     }
 
     /** Death is not a reason to skip this one (Ravenkeeper, Sage, Farmer, Barber…). */

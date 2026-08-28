@@ -134,7 +134,7 @@ class RulesExpTownsfolkTest {
     fun `the info ids these rows name are either supported or filed to WP2`() {
         val declared = EXP_TOWNSFOLK_RULES
             .flatMap { listOfNotNull(it.firstNight, it.otherNight) }
-            .map { it.infoId }
+            .mapNotNull { it.infoId }
             .filter { it.isNotEmpty() }
             .distinct()
 
@@ -477,6 +477,75 @@ class RulesExpTownsfolkTest {
         assertEquals(StepGate.Fire, gate(state, "choirboy"))
         // And never on the first night.
         assertNull(step(game("choirboy", "king", "imp", "assassin", "chef", "mayor"), "choirboy"))
+    }
+
+    // ==================================================================
+    // W7G — the registry slots that had no consumer
+    // ==================================================================
+
+    @Test
+    fun `the King's Leviathan jinx applies because the Leviathan is on the SCRIPT`() {
+        // A script that LISTS the Leviathan, with a Baron dealt in its place: a
+        // jinx applies from the script, never from the bag (lead D19, the Djinn).
+        val jinxed = atNight(game("king", "leviathan", "imp", "chef", "mayor", "monk"), 2)
+            .let { s ->
+                s.copy(players = s.players.map { if (it.id == 1L) it.copy(characterId = "baron") else it })
+            }
+        val row = assertNotNull(step(jinxed, "king"))
+        assertTrue(row.badges.any { "jinx" in it }, "the row says why: ${row.badges}")
+        // The King's own prompt survives: a jinx overrides only what it declares.
+        assertTrue(row.prompt.startsWith("Show the King"), row.prompt)
+
+        // The jinx drops the threshold from "dead >= alive" to "at least 1 dead".
+        val oneDead = kill(jinxed, 5L, DeathCause.DEMON_KILL, "imp", 2L)
+        assertIs<StepGate.Fire>(assertNotNull(step(oneDead, "king")).gate)
+
+        // Without the Leviathan on the script, one death is not enough.
+        val plain = atNight(game("king", "imp", "chef", "mayor", "monk"), 2)
+        val plainOneDead = kill(plain, 4L, DeathCause.DEMON_KILL, "imp", 1L)
+        assertTrue(assertNotNull(step(plainOneDead, "king")).gate is StepGate.Skip)
+    }
+
+    @Test
+    fun `a preached Minion's step is skipped, while a poisoned one still wakes`() {
+        var state = atNight(game("preacher", "imp", "poisoner", "chef", "mayor"), 2)
+        assertIs<StepGate.Fire>(assertNotNull(step(state, "poisoner")).gate)
+
+        // W7G: an ability TAKEN AWAY is not an impairment — there is nothing left
+        // to wake for, so the row is auto-ticked with the reason.
+        val preached = run(state, "preacher", NightInput(playerIds = listOf(2L)))
+        val gate = assertIs<StepGate.Skip>(assertNotNull(step(preached, "poisoner")).gate)
+        assertTrue("taken away" in gate.reason, gate.reason)
+
+        // Poison is different: the seat still wakes and is lied to.
+        state = Effects.place(
+            state, 2L, EffectKind.POISONED, "storyteller", null, Until.DAWN, "Poisoned",
+        ).state
+        assertIs<StepGate.Fire>(assertNotNull(step(state, "poisoner")).gate)
+    }
+
+    @Test
+    fun `a day ability is offered through DayAbilities, greyed rather than dropped`() {
+        val state = day(game("fisherman", "alsaahir", "imp", "poisoner", "chef", "mayor"), 2)
+        val offered = DayAbilities.forState(state, lookup)
+        assertEquals(
+            setOf("fisherman", "alsaahir"),
+            offered.map { it.sourceId }.toSet(),
+            "the strip had no consumer at all before wave 7",
+        )
+        val fisherman = assertNotNull(offered.firstOrNull { it.sourceId == "fisherman" })
+        assertEquals(0L, fisherman.holderId)
+        assertTrue(fisherman.available)
+        assertTrue(fisherman.ability.label.isNotBlank())
+
+        // A dead holder is still LISTED, greyed with a reason (lead D37).
+        val dead = kill(state, 0L, DeathCause.EXECUTION, "")
+        val after = assertNotNull(
+            DayAbilities.forState(dead, lookup).firstOrNull { it.sourceId == "fisherman" },
+        )
+        assertFalse(after.available)
+        assertTrue(after.reason.isNotBlank(), "greyed with no reason")
+        assertTrue(DayAbilities.availableIn(dead, lookup).none { it.sourceId == "fisherman" })
     }
 
     // ==================================================================
@@ -911,6 +980,21 @@ class RulesExpTownsfolkTest {
         // And a nomination by someone else raises nothing.
         val other = DayRules.checkNomination(state, lookup, nominatorId = 4L, nomineeId = 3L)
         assertTrue(other.triggers.none { it.sourceId == "princess" })
+
+        // W7G: confirming the consequence PLACES the suppression, with the wider
+        // NO_KILL_TONIGHT scope (lead D68) — the row no longer just says so.
+        val record = ExecutionRecord(1, ExecutionOutcome.SURVIVED, playerId = 3L, nominatorId = 0L)
+        assertTrue(Status.live(state, lookup, 1L, EffectKind.DEMON_CANNOT_KILL).isEmpty())
+        val applied = Execution.applyConsequence(state, lookup, record, "princess")
+        assertEquals(
+            KillSuppression.NO_KILL_TONIGHT,
+            Status.live(applied, lookup, 1L, EffectKind.DEMON_CANNOT_KILL).single().suppression,
+        )
+        assertTrue(
+            Deaths.killOutcome(
+                applied, lookup, 3L, KillCause(DeathCause.DEMON_KILL, "imp", 1L),
+            ) is KillOutcome.Prevented,
+        )
     }
 
     @Test

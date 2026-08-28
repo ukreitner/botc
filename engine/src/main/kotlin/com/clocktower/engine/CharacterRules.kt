@@ -35,13 +35,33 @@ data class CharacterRule(
      * opposite: one row per acting role.
      */
     val groupStep: Boolean = false,
-    /** This ability fires even though the holder is dead (Ravenkeeper, Sage, Farmer, Barber…). */
+    /**
+     * This ability fires even though the holder is dead (Ravenkeeper, Sage,
+     * Farmer, Barber…).
+     *
+     * DECLARATIVE. What actually enforces it is the row's own `gate` —
+     * `Gates.actsWhileDead`, or a narrower one like `Gates.diedTonight()`. The
+     * flag says so in one place a reader can grep, and it is not inferred from
+     * the gate because the two are not the same statement: a Ravenkeeper acts
+     * ONLY on the night it dies.
+     */
     val actsWhileDead: Boolean = false,
     /** The ability itself survives death (Recluse, Spy, Heretic, Zealot, Politician…). */
     val keepsAbilityWhenDead: Boolean = false,
-    /** The DeathCause this character's kills carry. */
+    /**
+     * The DeathCause this character's kills carry.
+     *
+     * `NightEffect.Attack.cause` wins when it says something other than the
+     * default `DEMON_KILL`; this fills in for a row that did not, so a Gossip's
+     * or a Gunslinger's kill can never be counted as a Demon's by accident
+     * (`NightPlan.declaredKillCause`, W7G).
+     */
     val killCause: DeathCause = DeathCause.STORYTELLER,
-    /** The wiki does not rule whether these count as Demon kills — the panel asks. */
+    /**
+     * The wiki does not rule whether these count as Demon kills — the panel
+     * asks. Rendered as a badge on every non-skipped step of this character
+     * (W7G), so the storyteller sees the question before they tap.
+     */
     val demonKillUncertain: Boolean = false,
 
     // ---- night ----
@@ -62,8 +82,17 @@ data class CharacterRule(
     /** Bag override, computed against the base distribution for the player count. */
     val bagShape: ((base: Distribution, playerCount: Int) -> BagShape?)? = null,
     /**
-     * Jinx-gated extra behaviour. Key = the other character's id; the rule applies
-     * only when that character is on the script (lead D19).
+     * Jinx-gated extra behaviour. Key = the other character's id; the rule
+     * applies only when that character is on the SCRIPT — not because it was
+     * dealt (lead D19, the Djinn rule).
+     *
+     * A jinx row overrides only what it declares, so the King's Leviathan jinx
+     * can change nothing but its gate and keep the King's own prompt. Several
+     * can apply at once (a Leviathan script with a Farmer AND a Sage): the gates
+     * combine worst-of and the prompts are joined.
+     *
+     * OTHER nights only. Every jinx action the official set defines is an "each
+     * night*" ability, and there is no place here to say "first night".
      */
     val jinxRules: Map<String, NightRule> = emptyMap(),
 ) {
@@ -106,8 +135,17 @@ data class NightRule(
     val detail: (NightContext) -> String = { "" },
     /** Pre-filled cards this step offers — never a search box for an answer we know. */
     val cards: (NightContext) -> List<CardOffer> = { emptyList() },
-    /** InfoCalc key. "" = this step computes no information. */
-    val infoId: String = "",
+    /**
+     * InfoCalc key.
+     *
+     *  - `null` (the default) — use the ability's own id, so a character with a
+     *    calculator gets its picker and its pre-filled cards for free;
+     *  - `""` — this step computes NO information. The planner offers no
+     *    `ShowInfo` fallback and no cards. Use it for a genuinely free-text
+     *    answer the engine cannot compute (W7H);
+     *  - anything else — that calculator, at that step (`king.demon`).
+     */
+    val infoId: String? = null,
     /**
      * Does waking for this step count for the Chambermaid? (lead D13)
      * ACT = yes; INFORMED = woken but not for their own ability (Minion info,

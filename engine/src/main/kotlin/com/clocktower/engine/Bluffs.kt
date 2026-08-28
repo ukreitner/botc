@@ -152,7 +152,14 @@ object Bluffs {
                 reason = "The Lunatic's bluffs MAY include in-play characters.",
             )
         }
-        return requirements
+        // W7G: registry rows last, so a `CharacterRule.bluffs` row adds a set the
+        // table above does not know about without displacing one it does.
+        for (seat in seats) {
+            val id = seat.characterId?.let(Character::normalizeId) ?: continue
+            val rule = CharacterRules.all[id]?.bluffs ?: continue
+            requirements += rule.produce(state, lookup, seat)
+        }
+        return requirements.distinctBy { it.key }
     }
 
     private fun characterName(seat: Player, lookup: (String) -> Character?): String =

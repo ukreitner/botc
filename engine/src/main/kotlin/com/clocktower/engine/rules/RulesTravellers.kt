@@ -37,6 +37,8 @@ import com.clocktower.engine.Player
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.Registration
+import com.clocktower.engine.RequirementKind
+import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.StandingRule
 import com.clocktower.engine.StepGate
@@ -687,6 +689,27 @@ private fun deviant(): CharacterRule = CharacterRule(
             )
         },
     ),
+    // W7G: the criterion is a table agreement, so the row is advisory (it never
+    // blocks "Begin night") but it must be ON the checklist — the Deviant needs
+    // to know what counts before the game starts.
+    setup = listOf(
+        SetupRequirement(
+            id = "deviant.criterion",
+            characterId = "deviant",
+            kind = RequirementKind.ACK,
+            title = "Deviant: agree what counts as funny",
+            prompt = "Agree with the Deviant what you will accept as funny — a joke, a pun, a " +
+                "voice, anything you two settle on. Be forgiving, and judge fresh every day.",
+            blocking = false,
+            satisfied = { state, _ ->
+                state.seats.none { it.characterId?.let(Character::normalizeId) == "deviant" } ||
+                    state.seats.any { seat ->
+                        seat.characterId?.let(Character::normalizeId) == "deviant" &&
+                            seat.notes.any { it.text.isNotBlank() }
+                    }
+            },
+        ),
+    ),
 )
 
 /**
@@ -889,6 +912,23 @@ private fun gnome(): CharacterRule = CharacterRule(
         },
     ),
     tokens = listOf(TokenRule("gnome", "Amigo", null, Until.FOREVER)),
+    // W7G: `CharacterRule.setup` has a consumer now, so the row WP4 still owed
+    // lives here instead of being a note in a report.
+    setup = listOf(
+        SetupRequirement(
+            id = "gnome.amigo",
+            characterId = "gnome",
+            kind = RequirementKind.REMINDER,
+            title = "Gnome: mark their amigo",
+            prompt = "Choose a player and mark them AMIGO. Tell them privately that they are " +
+                "the Gnome's amigo. If anyone nominates them, the nominator dies.",
+            problem = "Mark the Gnome's amigo before the first night",
+            satisfied = { state, _ ->
+                state.seats.none { it.characterId?.let(Character::normalizeId) == "gnome" } ||
+                    state.seats.any { DayRules.hasToken(state, it.id, "gnome", "Amigo") }
+            },
+        ),
+    ),
 )
 
 private fun gnomeTrigger(ctx: NominationContext): NominationTrigger? {
