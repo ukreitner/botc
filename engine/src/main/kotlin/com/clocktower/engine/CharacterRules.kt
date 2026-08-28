@@ -105,10 +105,12 @@ data class CharacterRule(
      * can apply at once (a Leviathan script with a Farmer AND a Sage): the gates
      * combine worst-of and the prompts are joined.
      *
-     * OTHER nights only. Every jinx action the official set defines is an "each
-     * night*" ability, and there is no place here to say "first night".
+     * Other nights by default; [JinxRule.firstNight] opts one in to night 1 as
+     * well. Every jinx the official set defines today is an "each night*"
+     * ability, so nothing sets it — the slot exists so a homebrew or a future
+     * official first-night jinx does not need a second map.
      */
-    val jinxRules: Map<String, NightRule> = emptyMap(),
+    val jinxRules: Map<String, JinxRule> = emptyMap(),
 ) {
     /** The rule for tonight, or null when this character does not act on such a night. */
     fun nightRule(isFirstNight: Boolean): NightRule? = if (isFirstNight) firstNight else otherNight
@@ -169,6 +171,25 @@ data class NightRule(
 )
 
 enum class WakeCount { ACT, INFORMED, NONE }
+
+/**
+ * One entry of [CharacterRule.jinxRules]: the behaviour a jinx adds, and which
+ * nights it is on.
+ *
+ * Split out of the bare [NightRule] in W7b. The map used to say "other nights"
+ * by construction, which was true of all 131 official jinxes and untrue of the
+ * schema: a jinx that only bites on night 1 (a setup-time pairing, a homebrew)
+ * had nowhere to say so, and `NightPlan.build` skipped the whole map on the
+ * first night.
+ */
+data class JinxRule(
+    val rule: NightRule,
+    /**
+     * Apply on the FIRST night as well as the others. Default false, which is
+     * every official jinx: they are all "each night*" abilities.
+     */
+    val firstNight: Boolean = false,
+)
 
 /** Day-phase behaviour. */
 data class DayRule(

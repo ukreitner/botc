@@ -23,6 +23,7 @@ import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.JinxRule
 import com.clocktower.engine.KillSuppression
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Memory
@@ -1015,11 +1016,11 @@ private fun king() = CharacterRule(
             "the same character on different nights.",
     ),
     // Jinx-gated variant (lead D19): with a Leviathan or a Riot in play the
-    // threshold drops to "at least 1 player is dead". `jinxRules` is not read by
-    // the planner yet — filed to WP2 with the Riot/Leviathan batch.
+    // threshold drops to "at least 1 player is dead". Other nights only, which
+    // is `JinxRule`'s default — the King has no first-night pick to re-gate.
     jinxRules = mapOf(
-        "leviathan" to NightRule(gate = Gates.all(Gates.aliveHolder, deadAtLeast(1))),
-        "riot" to NightRule(gate = Gates.all(Gates.aliveHolder, deadAtLeast(1))),
+        "leviathan" to JinxRule(NightRule(gate = Gates.all(Gates.aliveHolder, deadAtLeast(1)))),
+        "riot" to JinxRule(NightRule(gate = Gates.all(Gates.aliveHolder, deadAtLeast(1)))),
     ),
 )
 

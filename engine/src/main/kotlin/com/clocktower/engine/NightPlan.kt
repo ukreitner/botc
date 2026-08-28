@@ -597,15 +597,7 @@ data class NightPlan(
             val style = if (firstNightRules) WakeStyle.FIRST_NIGHT else WakeStyle.OTHER_NIGHT
             val character = ctx.lookup(role.abilityId)
             val rule = CharacterRules.of(role.abilityId, character)
-            // OTHER nights only: every D19 jinx action is an "each night*"
-            // ability, and `jinxRules` has one entry per jinxed character with no
-            // place to say "first night". A first-night jinx would have to be a
-            // separate map, and none of the official 131 needs one.
-            val jinxed = if (firstNightRules) {
-                emptyList()
-            } else {
-                rule.jinxRules.keys.filter { Character.normalizeId(it) in ctx.scriptIds }.sorted()
-            }
+            val jinxed = jinxesOn(rule, ctx.scriptIds, firstNightRules)
             val nightRule = jinxOver(rule.nightRule(firstNightRules), rule, jinxed)
             val holder = ctx.holder(role)
             val nightCtx = ctx.nightContext(role, holder, firstNightRules)
@@ -666,6 +658,26 @@ data class NightPlan(
         }
 
         /**
+         * The jinxed character ids whose rule bites tonight, sorted.
+         *
+         * A jinx applies because the other character is on the SCRIPT, not
+         * because it was dealt (lead D19, the Djinn rule), and on the nights it
+         * declares: other nights by default, night 1 as well when
+         * `JinxRule.firstNight` says so (W7b). Every official jinx is an "each
+         * night*" ability, so the flag is off everywhere in the shipped
+         * registry — the slot exists for homebrew and for the next official set.
+         */
+        internal fun jinxesOn(
+            rule: CharacterRule,
+            scriptIds: Set<String>,
+            firstNightRules: Boolean,
+        ): List<String> = rule.jinxRules
+            .filterKeys { Character.normalizeId(it) in scriptIds }
+            .filterValues { !firstNightRules || it.firstNight }
+            .keys
+            .sorted()
+
+        /**
          * Applies every `CharacterRule.jinxRules` entry whose character is on the
          * script (lead D19) over tonight's rule.
          *
@@ -680,7 +692,7 @@ data class NightPlan(
             jinxed: List<String>,
         ): NightRule? {
             if (jinxed.isEmpty()) return base
-            val rules = jinxed.mapNotNull { rule.jinxRules[it] }
+            val rules = jinxed.mapNotNull { rule.jinxRules[it]?.rule }
             if (rules.isEmpty()) return base
             return NightRule(
                 // Every jinx row declares its own gate; the strictest wins.

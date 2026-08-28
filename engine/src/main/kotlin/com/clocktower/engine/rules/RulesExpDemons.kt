@@ -26,6 +26,7 @@ import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.ExecutionRecord
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.JinxRule
 import com.clocktower.engine.NightAction
 import com.clocktower.engine.NightContext
 import com.clocktower.engine.NightEffect
@@ -394,10 +395,14 @@ private fun leviathan() = CharacterRule(
     // Lead D19: only active when the jinxed character is on the script. Each
     // gives the Leviathan a nightly choice its own ability text never mentions.
     jinxRules = mapOf(
-        "banshee" to leviathanJinxChoice("The Banshee dies AND gains their ability."),
-        "farmer" to leviathanJinxChoice("The Farmer uses their ability and does NOT die."),
-        "ravenkeeper" to leviathanJinxChoice("The Ravenkeeper uses their ability and does NOT die."),
-        "sage" to leviathanJinxChoice("The Sage uses their ability and does NOT die."),
+        "banshee" to JinxRule(leviathanJinxChoice("The Banshee dies AND gains their ability.")),
+        "farmer" to JinxRule(
+            leviathanJinxChoice("The Farmer uses their ability and does NOT die."),
+        ),
+        "ravenkeeper" to JinxRule(
+            leviathanJinxChoice("The Ravenkeeper uses their ability and does NOT die."),
+        ),
+        "sage" to JinxRule(leviathanJinxChoice("The Sage uses their ability and does NOT die.")),
     ),
     // "If MORE THAN 1 good player is executed, evil wins" — the count has to be
     // able to reach two. The official data lists one copy, so the second mark

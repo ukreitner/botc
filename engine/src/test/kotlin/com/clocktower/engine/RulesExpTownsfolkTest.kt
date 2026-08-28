@@ -547,6 +547,36 @@ class RulesExpTownsfolkTest {
         val plain = atNight(game("king", "imp", "chef", "mayor", "monk"), 2)
         val plainOneDead = kill(plain, 4L, DeathCause.DEMON_KILL, "imp", 1L)
         assertTrue(assertNotNull(step(plainOneDead, "king")).gate is StepGate.Skip)
+
+        // And NOT on the first night: `JinxRule.firstNight` defaults to false,
+        // so the King's night-1 row is its own.
+        val night1 = game("king", "leviathan", "imp", "chef", "mayor", "monk")
+        assertTrue(assertNotNull(step(night1, "king")).badges.none { "jinx" in it })
+    }
+
+    @Test
+    fun `a jinx can opt into the first night, and no official one does`() {
+        val king = CharacterRules.all.getValue("king")
+        val script = setOf("king", "leviathan", "riot")
+
+        // Every jinx the shipped registry declares is an "each night*" ability.
+        assertTrue(
+            CharacterRules.all.values.flatMap { it.jinxRules.values }.none { it.firstNight },
+            "an official jinx started claiming the first night",
+        )
+        assertEquals(listOf("leviathan", "riot"), NightPlan.jinxesOn(king, script, false))
+        assertTrue(NightPlan.jinxesOn(king, script, true).isEmpty(), "other nights by default")
+
+        // A synthetic first-night jinx bites on night 1 as well as the others.
+        val homebrew = king.copy(
+            jinxRules = king.jinxRules +
+                ("leviathan" to JinxRule(NightRule(), firstNight = true)),
+        )
+        assertEquals(listOf("leviathan"), NightPlan.jinxesOn(homebrew, script, true))
+        assertEquals(listOf("leviathan", "riot"), NightPlan.jinxesOn(homebrew, script, false))
+
+        // …and still only while the other character is on the SCRIPT (lead D19).
+        assertTrue(NightPlan.jinxesOn(homebrew, setOf("king"), true).isEmpty())
     }
 
     @Test
