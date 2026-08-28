@@ -129,8 +129,19 @@ class SetupRequirementsTest {
         state = Seats.assignCharacter(state, travellerId, "beggar", isTraveller = true)
 
         assertTrue("traveller.alignment:$travellerId" in ids(state))
+
+        // Playtest A-7 retires "any alignment counts as an answer": the
+        // traveller-join dialog pre-selects Good and writes it, so a seat can
+        // carry an alignment nobody chose — and the hand-out was telling that
+        // player "YOU ARE GOOD" on the strength of it. Only an ANSWER counts.
         state = Seats.setAlignment(state, travellerId, Alignment.EVIL)
+        assertTrue("traveller.alignment:$travellerId" in ids(state))
+
+        val row = SetupRequirements.all(state, lookup)
+            .first { it.id == "traveller.alignment:$travellerId" }
+        state = row.apply(state, Selection(text = "evil"))
         assertTrue("traveller.alignment:$travellerId" !in ids(state))
+        assertEquals(Alignment.EVIL, state.player(travellerId)?.alignment)
     }
 
     @Test

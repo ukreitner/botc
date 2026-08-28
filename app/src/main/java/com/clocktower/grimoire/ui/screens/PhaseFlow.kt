@@ -288,6 +288,10 @@ internal fun PhaseGuardDialogs(
                 FilledTonalButton(onClick = {
                     guards.setupIssues = emptyList()
                     onTab(GameTab.GRIMOIRE)
+                    // A-4: this used to close the dialog and nothing else, so
+                    // "Fix setup" landed the storyteller on the grimoire with
+                    // no way back to the rows it had just listed.
+                    SetupChecklist.open()
                 }) { Text("Fix setup") }
             },
             dismissButton = {

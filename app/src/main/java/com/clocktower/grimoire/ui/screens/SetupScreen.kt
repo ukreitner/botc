@@ -53,6 +53,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,6 +114,14 @@ fun SetupScreen(
     var seatlessAck by rememberSaveable { mutableStateOf(false) }
     var outsiderBranch by rememberSaveable { mutableStateOf<Int?>(null) }
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    /** Filters the character list in card 3 (A-11). */
+    var bagQuery by rememberSaveable { mutableStateOf("") }
+    // A successful import used to close the dialog and say nothing at all
+    // (A-19). The store writes asynchronously, so the confirmation is raised
+    // when the new script actually appears rather than when Import was pressed.
+    var awaitingImport by rememberSaveable { mutableStateOf(false) }
+    var knownScriptIds by rememberSaveable { mutableStateOf(ArrayList<String>() as List<String>) }
+    var importNotice by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     // Seat indices marked as Travellers: they fill no distribution slot and are
     // dealt no token (setup-and-home #8). Saved as a List<Int>, because losing
@@ -126,9 +136,22 @@ fun SetupScreen(
     val imported by viewModel.importedScripts.collectAsState()
     val rosters by viewModel.recentRosters.collectAsState()
     val builtIn = remember { viewModel.gameData.builtInScripts() }
-    val allScripts = builtIn + imported
+    // A-19: what you just imported is what you came here for, so it goes at the
+    // TOP, newest first, rather than below the three built-ins.
+    val allScripts = imported.asReversed() + builtIn
     val script = allScripts.find { it.id == scriptId }
     val liveGame by viewModel.game.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(imported) {
+        val added = imported.lastOrNull { it.id !in knownScriptIds }
+        if (awaitingImport && added != null) {
+            importNotice = "Imported \"${added.name}\" — " +
+                "${plural(added.characterIds.size, "character")}, now selected."
+            scriptId = added.id
+            awaitingImport = false
+        }
+        knownScriptIds = ArrayList(imported.map { it.id })
+    }
 
     if (handingOut) {
         val state = liveGame
@@ -194,7 +217,41 @@ fun SetupScreen(
     } else {
         Setup.bagWarnings(selected, residentCount, seatlessIds, null)
     }
-    val seatFilling = selected.count { it.id !in seatlessIds }
+    // A-5: the header and the bars are computed from EXACTLY the inputs the
+    // validator above was given — Fabled ids, the seatless acknowledgement and
+    // all. They used to call `allowedDistributions(playerCount, selected)` with
+    // none of it, so a Sentinel game read "Need: … 4 outsiders" while the
+    // validator was happily accepting 2, 3, 4 or 5.
+    val targets = if (script == null || !validCount) {
+        emptyMap()
+    } else {
+        Setup.bagTargets(
+            bag = selected,
+            playerCount = residentCount,
+            fabledIds = fabledIds,
+            inPlayIds = seatlessIds,
+            state = null,
+            virtual = emptyList(),
+        )
+    }
+    val bagCounts = if (script == null || !validCount) {
+        emptyMap()
+    } else {
+        Setup.bagCounts(selected, residentCount, seatlessIds, null, emptyList())
+    }
+    // The validator's own partition, never a second opinion: a Lil' Monsta in
+    // the bag fills no seat whether or not the box beside it is ticked, and the
+    // tray used to read "IN THE BAG · 9 / 8" because this counted it (A-8).
+    val dealable = if (script == null || !validCount) {
+        selected
+    } else {
+        Setup.seatFillingBag(selected, residentCount, seatlessIds, null, emptyList())
+    }
+    val seatFilling = dealable.size
+    // A choice bracket is a QUESTION, not a silent default (D54).
+    val branches = remember(selected) {
+        selected.mapNotNull(Setup::modifierFor).filter { it.choice }
+    }
     val ready = script != null && validCount && seatFilling == residentCount && issues.isEmpty()
 
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -239,6 +296,14 @@ fun SetupScreen(
                     expanded = expanded == CARD_SCRIPT,
                     onToggle = { expanded = if (expanded == CARD_SCRIPT) -1 else CARD_SCRIPT },
                 ) {
+                    importNotice?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AgedGold,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
                     ScriptPicker(
                         scripts = allScripts,
                         viewModel = viewModel,
@@ -264,8 +329,10 @@ fun SetupScreen(
                     index = 2,
                     title = "TABLE",
                     summary = buildString {
-                        append("$residentCount seats")
-                        if (travellerSeats.isNotEmpty()) append(" + ${travellerSeats.size} travellers")
+                        append(plural(residentCount, "seat"))
+                        if (travellerSeats.isNotEmpty()) {
+                            append(" + ${plural(travellerSeats.size, "traveller")}")
+                        }
                         if (validCount) append(" · ${distributionLabel(residentCount)}")
                     },
                     done = validCount,
@@ -308,25 +375,47 @@ fun SetupScreen(
                         BagHeader(
                             playerCount = residentCount,
                             selected = selected,
-                            outsiderBranch = outsiderBranch,
-                            onBranch = { outsiderBranch = it },
-                            issues = issues,
-                            warnings = warnings,
+                            targets = targets,
+                            counts = bagCounts,
                             allowDuplicates = allowDuplicates,
                             onAllowDuplicates = { allowDuplicates = it },
                             seatlessNote = seatlessCandidates.firstOrNull()?.second?.note.orEmpty(),
                             seatlessAck = seatlessAck,
                             onSeatlessAck = { seatlessAck = it },
-                            message = bagMessage,
+                            query = bagQuery,
+                            onQuery = { bagQuery = it },
                             onRandomize = { keep ->
                                 val required = if (keep) bagIds else pinnedIds
-                                val bag = rollBag(characters, residentCount, required, bannedIds)
+                                val bag = rollBag(
+                                    characters = characters,
+                                    playerCount = residentCount,
+                                    required = required,
+                                    banned = bannedIds,
+                                    fabledIds = fabledIds,
+                                    seatlessIds = seatlessIds,
+                                )
                                 if (bag == null) {
                                     bagMessage = "Couldn't make a legal bag for $residentCount " +
                                         "players with those pins and bans. Loosen one and try again."
                                 } else {
                                     bagMessage = null
-                                    bagIds = ArrayList(bag.map { it.id })
+                                    val ids = ArrayList(bag.map { it.id })
+                                    // A-8: the one-tap builders must respect the
+                                    // acknowledgement they are shown beside. The
+                                    // acknowledged centre token fills no seat, so
+                                    // the roll never draws it — put it back, so
+                                    // the tray shows what is actually in play…
+                                    for ((character, _) in seatlessCandidates) {
+                                        if (seatlessAck && character.id !in ids) ids.add(character.id)
+                                    }
+                                    // …and the other way round: a roll that came
+                                    // back holding one IS a seatless game, so tick
+                                    // the box rather than leaving the storyteller
+                                    // with a bag its own validator rejects.
+                                    if (!seatlessAck && seatlessCandidates.any { it.first.id in ids }) {
+                                        seatlessAck = true
+                                    }
+                                    bagIds = ids
                                 }
                             },
                             onClear = { bagIds = ArrayList(); bagMessage = null },
@@ -336,7 +425,15 @@ fun SetupScreen(
             }
             if (expanded == CARD_BAG && script != null && validCount) {
                 bagCharacterRows(
-                    characters = characters,
+                    // A-11: the pre-rewrite bag builder had a name search and
+                    // the rewrite lost it, so a 25-character import meant
+                    // scrolling a 25-row list to find one character. Names AND
+                    // abilities, exactly like the reference screen.
+                    characters = characters.filter { c ->
+                        bagQuery.isBlank() ||
+                            c.name.contains(bagQuery, ignoreCase = true) ||
+                            c.ability.contains(bagQuery, ignoreCase = true)
+                    },
                     bagIds = bagIds,
                     pinnedIds = pinnedIds,
                     bannedIds = bannedIds,
@@ -347,11 +444,14 @@ fun SetupScreen(
                 )
             }
 
-            // ---- 4 FABLED & HOUSE RULES --------------------------------------
+            // ---- 4 FABLED -----------------------------------------------------
+            // A-14: it was called "FABLED & HOUSE RULES" and held no house
+            // rules — the only one ("allow duplicates") lives with the bag it
+            // changes, in card 3.
             item("card-fabled") {
                 SetupCard(
                     index = 4,
-                    title = "FABLED & HOUSE RULES",
+                    title = "FABLED",
                     summary = if (fabledIds.isEmpty()) {
                         "none"
                     } else {
@@ -376,12 +476,32 @@ fun SetupScreen(
             item("tail") { Spacer(Modifier.height(8.dp)) }
         }
 
+        // ---- the sticky bag status ------------------------------------------
+        // A-9: the issue list, the warnings and the branch chips used to sit
+        // ABOVE the scrolling character list, in the same scroll container, and
+        // their combined height changed by 40-160 px every time the bag's
+        // legality did — so ticking a character moved the row you were about to
+        // tap next. Pinned below the list, they can grow and shrink freely.
+        // Only while the bag card is open: the strip belongs to the list it
+        // stops moving, and on the TABLE card it would just eat seat rows.
+        BagStatus(
+            visible = expanded == CARD_BAG,
+            branches = branches,
+            branchOptions = targets[Team.OUTSIDER]?.counts.orEmpty(),
+            outsiderBranch = outsiderBranch,
+            onBranch = { outsiderBranch = it },
+            issues = issues,
+            warnings = warnings,
+            message = bagMessage,
+        )
+
         // ---- the sticky bag tray --------------------------------------------
         // The only place the storyteller needs to look to know the bag (§S1).
         BagTray(
             selected = selected,
             pinnedIds = pinnedIds,
-            seatlessIds = seatlessIds,
+            seatlessIds = selected.map { it.id } - dealable.map { it.id }.toSet(),
+            inBag = seatFilling,
             playerCount = residentCount,
             onRemove = { index ->
                 bagIds = ArrayList(bagIds.filterIndexed { i, _ -> i != index })
@@ -409,8 +529,7 @@ fun SetupScreen(
                     // Deal exactly the resolved, seat-filling tokens: `Seats.deal`
                     // REQUIRES one per non-Traveller seat and throws otherwise, so
                     // never hand it a raw id list that might not resolve.
-                    val dealt = selected.map { it.id }.filter { it !in seatlessIds }
-                    viewModel.deal(dealt, Time.epochMillis())
+                    viewModel.deal(dealable.map { it.id }, Time.epochMillis())
                     handingOut = true
                 } else {
                     onGameStarted()
@@ -456,7 +575,10 @@ fun SetupScreen(
             onDismiss = { showImport = false },
             onImport = { text ->
                 val error = viewModel.importScript(text)
-                if (error == null) showImport = false
+                if (error == null) {
+                    showImport = false
+                    awaitingImport = true
+                }
                 error
             },
         )
@@ -671,17 +793,31 @@ private fun TableCard(
                     ),
                     modifier = Modifier.weight(1f),
                 )
+                // A-12: this used to read "—" until you pressed it, so nothing
+                // on screen said what it did. It is always the word now, lit
+                // when the seat is one, and it says so out loud to a reader.
                 TextButton(
                     onClick = {
                         onTravellers(
                             if (isTraveller) travellerSeats - index else travellerSeats + index,
                         )
                     },
+                    modifier = Modifier.semantics {
+                        contentDescription = if (isTraveller) {
+                            "Seat ${index + 1} is a Traveller. Tap to make it an ordinary seat."
+                        } else {
+                            "Mark seat ${index + 1} as a Traveller"
+                        }
+                    },
                 ) {
                     Text(
-                        if (isTraveller) "TRAV" else "—",
+                        "TRAV",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isTraveller) AgedGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isTraveller) {
+                            AgedGold
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                        },
                     )
                 }
                 IconButton(
@@ -727,48 +863,45 @@ private fun TableCard(
 private fun BagHeader(
     playerCount: Int,
     selected: List<Character>,
-    outsiderBranch: Int?,
-    onBranch: (Int?) -> Unit,
-    issues: List<String>,
-    warnings: List<String>,
+    /** What the VALIDATOR will accept per team — never recomputed here (A-5). */
+    targets: Map<Team, com.clocktower.engine.TeamTarget>,
+    /** What the bag actually holds per team, seatless tokens excluded. */
+    counts: Map<Team, Int>,
     allowDuplicates: Boolean,
     onAllowDuplicates: (Boolean) -> Unit,
     /** The BagShape note for a character in play with no bag token; "" for none. */
     seatlessNote: String,
     seatlessAck: Boolean,
     onSeatlessAck: (Boolean) -> Unit,
-    message: String?,
+    /** Filters the character list below the card (A-11). */
+    query: String,
+    onQuery: (String) -> Unit,
     onRandomize: (keepCurrent: Boolean) -> Unit,
     onClear: () -> Unit,
 ) {
-    // EVERY legal branch, not just the last one the parser saw
-    // (setup-and-home #9): the header and the validator must agree.
-    val allowed = remember(playerCount, selected) {
-        runCatching { Setup.allowedDistributions(playerCount, selected) }.getOrDefault(emptySet())
-    }
-    val counts = selected.groupingBy { it.team }.eachCount()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            "Need: " + listOf(
-                Team.TOWNSFOLK to "townsfolk",
-                Team.OUTSIDER to "outsiders",
-                Team.MINION to "minions",
-                Team.DEMON to "demon",
-            ).joinToString(" · ") { (team, label) ->
-                val options = allowed.map { it.count(team) }.distinct().sorted()
-                "${options.joinToString(" or ")} $label"
+            "Need: " + Setup.BAG_TEAMS.joinToString(" · ") { team ->
+                val target = targets[team]
+                when {
+                    target == null -> ""
+                    target.free -> "any ${teamWord(team, 2)}"
+                    else -> target.counts.joinToString(" or ") + " " +
+                        teamWord(team, target.counts.lastOrNull() ?: 0)
+                }
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Held at two lines so ticking a setup-modifying character cannot
+            // shift the character list underneath it (A-9).
+            minLines = 2,
+            maxLines = 3,
         )
-        for ((team, label) in listOf(
-            Team.TOWNSFOLK to "TF",
-            Team.OUTSIDER to "OUT",
-            Team.MINION to "MIN",
-            Team.DEMON to "DEM",
-        )) {
+        for ((team, label) in Setup.BAG_TEAMS.zip(listOf("TF", "OUT", "MIN", "DEM"))) {
             val have = counts[team] ?: 0
-            val want = allowed.map { it.count(team) }.maxOrNull() ?: 0
+            val target = targets[team] ?: continue
+            val ok = target.accepts(have)
+            val want = target.target(have)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     label,
@@ -777,56 +910,43 @@ private fun BagHeader(
                     modifier = Modifier.width(34.dp),
                 )
                 LinearProgressIndicator(
-                    progress = { if (want == 0) 0f else (have.toFloat() / want).coerceIn(0f, 1f) },
+                    // A legal LOWER branch is complete, not "incomplete": the
+                    // bar reads what the validator thinks, nothing else (A-5).
+                    progress = {
+                        when {
+                            ok -> 1f
+                            want == null || want == 0 -> 0f
+                            else -> (have.toFloat() / want).coerceIn(0f, 1f)
+                        }
+                    },
                     color = team.color,
                     modifier = Modifier.weight(1f).height(6.dp),
                 )
                 Text(
-                    "  $have/$want",
+                    "  $have/" + when {
+                        target.free -> "any"
+                        else -> target.counts.joinToString(" or ")
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (ok) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
                 )
             }
         }
 
-        // A choice bracket is a QUESTION, not a silent default (D54).
-        val branches = remember(selected) {
-            selected.mapNotNull(Setup::modifierFor).filter { it.choice }
-        }
-        if (branches.isNotEmpty()) {
-            val options = allowed.map { it.outsiders }.distinct().sorted()
-            Text(
-                branches.joinToString(", ") { "${it.characterId} [${it.text}]" } +
-                    " — which are you running?",
-                style = MaterialTheme.typography.bodySmall,
-                color = AgedGold,
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (option in options) {
-                    FilterChip(
-                        selected = outsiderBranch == option,
-                        onClick = { onBranch(if (outsiderBranch == option) null else option) },
-                        label = { Text("$option outsiders") },
-                    )
-                }
-            }
-        }
-
         if (seatlessNote.isNotBlank()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The whole line, not the 20 dp box: this is the acknowledgement
+            // the one-tap bag builders read (A-8), so it should be easy to hit.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { onSeatlessAck(!seatlessAck) },
+            ) {
                 Checkbox(checked = seatlessAck, onCheckedChange = onSeatlessAck)
                 Text(seatlessNote, style = MaterialTheme.typography.bodySmall)
             }
-        }
-
-        for (issue in issues) {
-            Text(issue, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-        for (warning in warnings) {
-            Text(warning, color = AgedGold, style = MaterialTheme.typography.bodySmall)
-        }
-        message?.let {
-            Text(it, color = EmberRed, style = MaterialTheme.typography.bodySmall)
         }
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -834,6 +954,22 @@ private fun BagHeader(
             OutlinedButton(onClick = { onRandomize(true) }) { Text("Fill the rest") }
             TextButton(onClick = onClear) { Text("Clear") }
         }
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQuery,
+            placeholder = { Text("Search characters and abilities") },
+            singleLine = true,
+            trailingIcon = if (query.isBlank()) {
+                null
+            } else {
+                {
+                    IconButton(onClick = { onQuery("") }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Clear the search")
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = allowDuplicates, onCheckedChange = onAllowDuplicates)
             Text(
@@ -887,19 +1023,82 @@ private fun FabledPicker(
     }
 }
 
+/**
+ * Everything about the bag whose HEIGHT changes as the bag does: the branch
+ * question, the validator's issues, the advisory warnings and the last builder
+ * message. Pinned between the scrolling card list and the tray, so none of it
+ * can move the character rows (A-9).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BagStatus(
+    visible: Boolean,
+    branches: List<com.clocktower.engine.SetupModifier>,
+    branchOptions: List<Int>,
+    outsiderBranch: Int?,
+    onBranch: (Int?) -> Unit,
+    issues: List<String>,
+    warnings: List<String>,
+    message: String?,
+) {
+    if (!visible) return
+    if (branches.isEmpty() && issues.isEmpty() && warnings.isEmpty() && message == null) return
+    HorizontalDivider()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            // A long issue list scrolls inside the strip rather than eating the
+            // screen the character list needs.
+            .heightIn(max = 190.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (branches.isNotEmpty()) {
+            Text(
+                branches.joinToString(", ") { "${it.characterId} [${it.text}]" } +
+                    " — which are you running?",
+                style = MaterialTheme.typography.bodySmall,
+                color = AgedGold,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (option in branchOptions) {
+                    FilterChip(
+                        selected = outsiderBranch == option,
+                        onClick = { onBranch(if (outsiderBranch == option) null else option) },
+                        label = { Text("$option " + teamWord(Team.OUTSIDER, option)) },
+                    )
+                }
+            }
+        }
+        for (issue in issues) {
+            Text(issue, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        for (warning in warnings) {
+            Text(warning, color = AgedGold, style = MaterialTheme.typography.bodySmall)
+        }
+        message?.let {
+            Text(it, color = EmberRed, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
 /** The sticky tray: the whole bag, always on screen, tap a token to remove it. */
 @Composable
 private fun BagTray(
     selected: List<Character>,
     pinnedIds: List<String>,
+    /** Tokens the validator has set aside as filling no seat. */
     seatlessIds: List<String>,
+    /** How many tokens actually fill a seat — the validator's own count. */
+    inBag: Int,
     playerCount: Int,
     onRemove: (index: Int) -> Unit,
 ) {
     HorizontalDivider()
     Column(Modifier.fillMaxWidth().background(Twilight).padding(horizontal = 8.dp, vertical = 6.dp)) {
         Text(
-            "IN THE BAG · ${selected.count { it.id !in seatlessIds }} / $playerCount",
+            "IN THE BAG · $inBag / $playerCount",
             style = MaterialTheme.typography.labelSmall,
             color = AgedGold,
         )
@@ -1069,17 +1268,46 @@ private fun rollBag(
     playerCount: Int,
     required: List<String>,
     banned: List<String>,
+    /** The Fabled the storyteller has already chosen — the Sentinel bends the bag. */
+    fabledIds: List<String>,
+    /** Acknowledged centre tokens: in play, filling no seat (A-8). */
+    seatlessIds: List<String>,
 ): List<Character>? {
     val pool = characters.filterNot { it.id in banned && it.id !in required }
     val random = Random(Time.epochMillis())
+    val roll = {
+        Setup.randomBag(
+            available = pool,
+            playerCount = playerCount,
+            random = random,
+            fabledIds = fabledIds,
+            inPlayIds = seatlessIds,
+        )
+    }
     repeat(40) {
-        val bag = Setup.randomBag(pool, playerCount, random) ?: return@repeat
+        val bag = roll() ?: return@repeat
         val remaining = bag.map { it.id }.toMutableList()
         val honoured = required.all { remaining.remove(it) }
         if (honoured) return bag
     }
     // Last resort: no pins at all is still better than nothing.
-    return if (required.isEmpty()) null else Setup.randomBag(pool, playerCount, random)
+    return if (required.isEmpty()) null else roll()
+}
+
+/** "1 seat" / "8 seats" — setup speaks English (A-13). */
+private fun plural(count: Int, singular: String, plural: String = singular + "s"): String =
+    "$count " + if (count == 1) singular else plural
+
+/** "1 outsider" / "2 outsiders" — the bag header speaks English (A-13). */
+private fun teamWord(team: Team, count: Int): String {
+    val singular = when (team) {
+        Team.TOWNSFOLK -> "townsfolk"
+        Team.OUTSIDER -> "outsider"
+        Team.MINION -> "minion"
+        else -> "demon"
+    }
+    // "Townsfolk" is already both; the rest take an -s.
+    return if (count == 1 || team == Team.TOWNSFOLK) singular else singular + "s"
 }
 
 private fun distributionLabel(count: Int): String {

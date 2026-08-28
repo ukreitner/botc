@@ -243,6 +243,24 @@ Defaults are correct on the reference machine; override by exporting:
 `out/` is gitignored. Emulator boot logs land in `out/logs/<port>.log` — check
 there first if `boot` times out.
 
+### The update banner moves every screen
+
+An APK built with `-PbuildSha=<sha>` asks GitHub for the rolling `latest-apk`
+release on first launch and, when the shas differ, shows a "New build available
+(…)" banner **above the bottom action bar**. It steals ~126 px from every
+screen, so a scenario written against a build without it will miss buttons —
+`tap "Start empty"` simply stops finding anything.
+
+Two ways to keep a driven emulator honest, both fine:
+
+```sh
+./gradlew :app:assembleDebug                       # BUILD_SHA=dev: no check at all
+adb -s emulator-5554 shell svc wifi disable        # …or take that instance offline
+adb -s emulator-5554 shell svc data disable
+```
+
+The scenarios under `scenarios/` are all written against a banner-free screen.
+
 ---
 
 ## Findings protocol

@@ -86,6 +86,18 @@ data class SetupRequirement(
     val id: String,
     val characterId: String,
     val kind: RequirementKind,
+    /**
+     * The ONE seat this row decides for, when there is one — the seat whose
+     * `:<seat>` suffix the [id] already carries. Read it instead of parsing the
+     * id: the hand-out uses it to refuse a card the answer would change
+     * (playtest A-1 — the Drunk was handed the Drunk token because nothing
+     * connected the unanswered "believes" row to that seat).
+     *
+     * Null for whole-game rows and for rows whose answer names OTHER seats
+     * (the Fortune Teller's red herring is answered on a different seat than
+     * the one holding the card).
+     */
+    val seatId: Long? = null,
     /** Short checklist label. */
     val title: String,
     /** Storyteller-voice imperative for the prompt. */
@@ -97,6 +109,16 @@ data class SetupRequirement(
     val candidates: (GameState, (String) -> Character?) -> List<Candidate> = { _, _ -> emptyList() },
     val apply: (GameState, Selection) -> GameState = { s, _ -> s },
     val satisfied: (GameState, (String) -> Character?) -> Boolean,
+    /**
+     * What the storyteller ANSWERED, for a ticked row to show — "Chambermaid",
+     * "Ivy", "Good", "Chef, Monk, Slayer".
+     *
+     * Playtest A-15: a ✓ row still read "The Drunk believes — Sam is the Drunk.
+     * Which Townsfolk token do they see?", so the only way to find out what had
+     * been picked was to reopen the picker. Blank means "nothing to show"; the
+     * checklist then keeps the prompt.
+     */
+    val answer: (GameState, (String) -> Character?) -> String = { _, _ -> "" },
 )
 
 /**
@@ -107,6 +129,18 @@ data class SetupRequirement(
  * a mid-game Snitch owes every Minion bluffs.
  */
 object SetupRequirements {
+
+    /**
+     * Where a Traveller's answered alignment is recorded, per seat.
+     *
+     * `Player.alignment` alone is not an answer: `joinTraveller` writes one for
+     * every Traveller it seats (its dialog pre-selects Good), so the row read as
+     * satisfied the moment the seat existed and the hand-out went on to tell the
+     * player "YOU ARE GOOD — this is the side you play for" on a choice the
+     * storyteller had never made (playtest A-7). The decision is written only by
+     * an actual answer.
+     */
+    fun travellerAlignmentKey(seatId: Long): String = "traveller.alignment:$seatId"
 
     /** Storyteller ack that Lil' Monsta is in play as a centre token, on no seat. */
     const val LILMONSTA_NO_DEMON_SEAT = "lilmonsta.noDemonSeat"
@@ -170,13 +204,22 @@ object SetupRequirements {
             state = state,
             virtual = Setup.virtualSetupCharacters(state, lookup),
         )
+        // The ISSUE is the title (playtest A-16: five rows all read "The bag is
+        // not legal yet" and differed only in a subtitle nobody could scan).
+        val dealt = residents.any { it.characterId != null }
         return issues.mapIndexed { index, issue ->
             SetupRequirement(
                 id = "bag.$index",
                 characterId = "",
                 kind = RequirementKind.ACK,
-                title = "The bag is not legal yet",
-                prompt = issue,
+                title = issue,
+                prompt = if (dealt) {
+                    "Fix the bag before the first night."
+                } else {
+                    // "Start empty · assign by hand" is a deliberate choice, not
+                    // a mistake: say what is still owed, not that it is wrong.
+                    "Assign a character to every seat, or deal a bag from setup."
+                },
                 problem = issue,
                 blocking = true,
                 satisfied = { _, _ -> false },
@@ -325,6 +368,7 @@ object SetupRequirements {
                         val holders = seatsHolding(s, "eviltwin", "Twin")
                         holders.size == 1 && !holders.single().isEvil(l)
                     },
+                    answer = { s, _ -> seatsHolding(s, "eviltwin", "Twin").joinToString { it.name } },
                 )
 
                 "bountyhunter" -> {
@@ -347,6 +391,11 @@ object SetupRequirements {
                             s.seats.count {
                                 it.characterId?.let(l)?.team == Team.TOWNSFOLK && it.isEvil(l)
                             } == 1
+                        },
+                        answer = { s, l ->
+                            s.seats.filter {
+                                it.characterId?.let(l)?.team == Team.TOWNSFOLK && it.isEvil(l)
+                            }.joinToString { it.name }
                         },
                     )
                     rows += exclusiveTokenRow(
@@ -417,6 +466,9 @@ object SetupRequirements {
                         sel.number?.let { Decisions.set(s, Decisions.XAAN_X, it.toString()) } ?: s
                     },
                     satisfied = { s, _ -> Decisions.int(s, Decisions.XAAN_X) != null },
+                    answer = { s, _ ->
+                        Decisions.int(s, Decisions.XAAN_X)?.let { "X = " + it }.orEmpty()
+                    },
                 )
 
                 "damsel" -> rows += ackRow(
@@ -457,6 +509,9 @@ object SetupRequirements {
                 id = "traveller.alignment:${traveller.id}",
                 characterId = traveller.characterId.orEmpty(),
                 kind = RequirementKind.ALIGNMENT,
+                // The second hand-out card says GOOD or EVIL out loud, so the
+                // seat is not dealt until the storyteller has chosen (A-7).
+                seatId = traveller.id,
                 title = "${traveller.name}'s alignment",
                 prompt = "Is ${traveller.name} good or evil?",
                 problem = "${traveller.name}: set the Traveller's alignment",
@@ -464,13 +519,28 @@ object SetupRequirements {
                     listOf(Candidate("good", "Good"), Candidate("evil", "Evil"))
                 },
                 apply = { s, sel ->
-                    Seats.setAlignment(
-                        s,
-                        traveller.id,
-                        if (sel.text == "evil") Alignment.EVIL else Alignment.GOOD,
+                    val evil = sel.text == "evil"
+                    // The ANSWER is recorded, not only its effect: a seat can
+                    // carry an alignment nobody chose (the traveller-join dialog
+                    // pre-selects Good), and the hand-out must not read that as
+                    // a decision and tell the player "YOU ARE GOOD" (A-7).
+                    Decisions.set(
+                        Seats.setAlignment(s, traveller.id, if (evil) Alignment.EVIL else Alignment.GOOD),
+                        travellerAlignmentKey(traveller.id),
+                        if (evil) "evil" else "good",
                     )
                 },
-                satisfied = { s, _ -> s.player(traveller.id)?.alignment != null },
+                satisfied = { s, _ ->
+                    s.player(traveller.id)?.alignment != null &&
+                        !s.decisions[travellerAlignmentKey(traveller.id)].isNullOrBlank()
+                },
+                answer = { s, _ ->
+                    when (s.player(traveller.id)?.alignment) {
+                        Alignment.EVIL -> "Evil"
+                        Alignment.GOOD -> "Good"
+                        else -> ""
+                    }
+                },
             )
         }
         return rows
@@ -509,6 +579,9 @@ object SetupRequirements {
             },
             apply = { s, sel -> Bluffs.set(s, req.key, sel.characterIds.take(req.size)) },
             satisfied = { s, _ -> s.bluffSets[req.key].orEmpty().size >= req.size },
+            answer = { s, l ->
+                s.bluffSets[req.key].orEmpty().joinToString { id -> l(id)?.name ?: id }
+            },
         )
     }
 
@@ -543,7 +616,11 @@ object SetupRequirements {
             Character.normalizeId(it) == "lilmonsta"
         }
         val demonSeats = residents.count { it.characterId?.let(lookup)?.team == Team.DEMON }
-        if (scriptHasLilMonsta && demonSeats == 0 && residents.isNotEmpty()) {
+        // A-17: raised from the BAG, never from the script alone. With nothing
+        // assigned the row asserted "Lil' Monsta is in play" for a game that had
+        // no characters at all — the storyteller had chosen nothing yet.
+        val anyAssigned = residents.any { it.characterId != null }
+        if (scriptHasLilMonsta && demonSeats == 0 && anyAssigned) {
             rows += ackRow(
                 id = LILMONSTA_NO_DEMON_SEAT,
                 characterId = "lilmonsta",
@@ -576,6 +653,10 @@ object SetupRequirements {
                     } ?: s
                 },
                 satisfied = { s, _ -> Decisions.int(s, Decisions.OUTSIDER_BRANCH) != null },
+                answer = { s, _ ->
+                    Decisions.int(s, Decisions.OUTSIDER_BRANCH)?.let { it.toString() + " Outsiders" }
+                        .orEmpty()
+                },
             )
         }
         return rows
@@ -677,6 +758,9 @@ object SetupRequirements {
         id = id,
         characterId = characterId,
         kind = RequirementKind.SHOWN_TOKEN,
+        // The row decides what THIS seat's "YOU ARE" card says, so the hand-out
+        // must not deal the seat until it is answered (playtest A-1).
+        seatId = seat.id,
         title = title,
         prompt = prompt,
         problem = problem,
@@ -690,6 +774,7 @@ object SetupRequirements {
             val shown = s.player(seat.id)?.shownCharacterId?.let(l)
             shown != null && accepts(shown)
         },
+        answer = { s, l -> s.player(seat.id)?.shownCharacterId?.let(l)?.name.orEmpty() },
     )
 
     private fun exclusiveTokenRow(
@@ -721,6 +806,7 @@ object SetupRequirements {
             val holders = seatsHolding(s, characterId, label)
             holders.size == 1 && holderOk(s, l, holders.single())
         },
+        answer = { s, _ -> seatsHolding(s, characterId, label).joinToString { it.name } },
     )
 
     /**
@@ -748,6 +834,7 @@ object SetupRequirements {
             val real = s.seats.count { it.characterId?.let(l)?.team == Team.MINION }
             seatsHolding(s, "lunatic", "Fake Minion").size >= real
         },
+        answer = { s, _ -> seatsHolding(s, "lunatic", "Fake Minion").joinToString { it.name } },
     )
 
     private fun decisionRow(
@@ -772,6 +859,7 @@ object SetupRequirements {
             if (value.isBlank()) s else Decisions.set(s, key, value)
         },
         satisfied = { s, _ -> !s.decisions[key].isNullOrBlank() },
+        answer = { s, l -> s.decisions[key]?.let { l(it)?.name ?: it }.orEmpty() },
     )
 
     private fun ackRow(
@@ -794,6 +882,7 @@ object SetupRequirements {
         problem = problem,
         apply = { s, _ -> Decisions.set(s, decisionKey, "true") },
         satisfied = satisfied,
+        answer = { s, l -> if (satisfied(s, l)) "Confirmed" else "" },
     )
 
     // ---- helpers ------------------------------------------------------------

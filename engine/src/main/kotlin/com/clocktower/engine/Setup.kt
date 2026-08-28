@@ -311,6 +311,16 @@ object Setup {
         playerCount: Int,
         random: Random = Random,
         attempts: Int = 200,
+        /** The Fabled in play, so a Sentinel game may draw its extra Outsider. */
+        fabledIds: Collection<String> = emptyList(),
+        /**
+         * Characters in play WITHOUT a bag token — the acknowledged Lil' Monsta.
+         * Playtest A-8: without this the one-tap builders ignored the box they
+         * are shown beside and rolled 7/0/2/1 for a game the app's own validator
+         * had just told them wanted 7/0/3/0.
+         */
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
     ): List<Character>? {
         val byTeam = available.groupBy { it.team }
         val teamsInOrder = listOf(Team.DEMON, Team.MINION, Team.OUTSIDER, Team.TOWNSFOLK)
@@ -342,7 +352,7 @@ object Setup {
                         available.find { it.id == companionId }?.let { bag.add(it) }
                     }
                 }
-                val shapes = shapesFor(bag, playerCount)
+                val shapes = shapesFor(bag, playerCount, inPlayIds, state)
                 val forbidden = forbiddenIds(shapes)
                 val target = shapeTarget(
                     shapes.values,
@@ -381,8 +391,16 @@ object Setup {
                 }
             }
 
-            val seatFilling = bag.count { it.id !in forbiddenIds(shapesFor(bag, playerCount)) }
-            if (seatFilling == playerCount && validateBag(bag, playerCount).isEmpty()) {
+            val forbidden = forbiddenIds(shapesFor(bag, playerCount, inPlayIds, state))
+            val seatFilling = bag.count { Character.normalizeId(it.id) !in forbidden }
+            val legal = validateBag(
+                bag = bag,
+                playerCount = playerCount,
+                fabledIds = fabledIds,
+                inPlayIds = inPlayIds,
+                state = state,
+            ).isEmpty()
+            if (seatFilling == playerCount && legal) {
                 return bag
             }
         }
@@ -472,57 +490,37 @@ object Setup {
         virtual: List<Character> = emptyList(),
     ): List<String> {
         val issues = mutableListOf<String>()
-        val shapes = shapesFor(bag, playerCount, inPlayIds + virtual.map { it.id }, state)
-        val forbidden = forbiddenIds(shapes)
-        val (seatless, seatFilling) = bag.partition { Character.normalizeId(it.id) in forbidden }
+        val model = bagModel(bag, playerCount, fabledIds, inPlayIds, state, virtual)
+        val shapes = model.shapes
+        val seatless = model.seatless
+        val seatFilling = model.seatFilling
         if (seatFilling.size != playerCount) {
             if (seatless.isNotEmpty()) {
                 for (token in seatless.distinctBy { it.id }) {
                     issues += "${token.name} is a token, not a seat — it fills no seat in the bag"
                 }
             } else {
-                issues += "Bag has ${bag.size} characters for $playerCount players"
+                issues += "Bag has ${bag.size} " +
+                    (if (bag.size == 1) "character" else "characters") +
+                    " for $playerCount " +
+                    (if (playerCount == 1) "player" else "players")
             }
         }
-        val modifiers = (seatFilling + virtual).mapNotNull { modifierFor(it) }
-        val unboundedChoiceTeams = modifiers
-            .flatMap { it.choiceTeams - it.choiceDeltas.keys }
-            .toSet()
-        val relaxedTeams = buildSet {
-            addAll(unboundedChoiceTeams)
-            // A variable Outsider/Minion/Demon count is paid for by the
-            // Townsfolk count, so both sides of that trade must be flexible.
-            if (any { it == Team.OUTSIDER || it == Team.MINION || it == Team.DEMON }) {
-                add(Team.TOWNSFOLK)
-            }
-        }
-        var allowed = allowedDistributions(playerCount, seatFilling + virtual)
-        if ("sentinel" in fabledIds.map { Character.normalizeId(it) }) {
-            allowed = allowed
-                .flatMap { d ->
-                    listOf(
-                        d,
-                        d.copy(outsiders = d.outsiders + 1, townsfolk = d.townsfolk - 1),
-                        d.copy(outsiders = d.outsiders - 1, townsfolk = d.townsfolk + 1),
-                    )
-                }
-                .filter { it.outsiders >= 0 && it.townsfolk >= 0 }
-                .toSet()
-        }
+        val modifiers = model.modifiers
+        val relaxedTeams = model.relaxedTeams
+        val allowed = model.allowed
         val counts = seatFilling.groupingBy { it.team }.eachCount()
-        val allTeams = listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)
+        val allTeams = BAG_TEAMS
 
         // A BagShape REPLACES the distribution check for the teams it pins.
         val pinned = mutableSetOf<Team>()
         for (team in allTeams) {
-            val ranges = shapes.values.mapNotNull { it.range(team) }
-            if (ranges.isEmpty()) continue
+            val range = model.pinnedRange(team) ?: continue
             pinned += team
             val actual = counts[team] ?: 0
-            val low = ranges.maxOf { it.first }
-            val high = ranges.minOf { it.last }
-            if (actual < low || actual > high) {
-                val expectedText = if (low == high) "$low" else "$low to $high"
+            if (actual !in range) {
+                val expectedText =
+                    if (range.first == range.last) "${range.first}" else "${range.first} to ${range.last}"
                 issues += "${team.displayName}: $actual in bag, expected $expectedText"
             }
         }
@@ -582,6 +580,145 @@ object Setup {
         }
         return issues.distinct()
     }
+
+    /** The teams a bag is built out of, in the order every screen lists them. */
+    val BAG_TEAMS: List<Team> =
+        listOf(Team.TOWNSFOLK, Team.OUTSIDER, Team.MINION, Team.DEMON)
+
+    /**
+     * Everything [validateBag] derives from a proposed bag BEFORE it starts
+     * writing messages — the one place the shapes, the seat-filling split, the
+     * relaxed teams and the legal distributions are worked out.
+     *
+     * It exists so [bagTargets] cannot drift from the validator: playtest A-5
+     * had the setup screen call `allowedDistributions(playerCount, selected)`
+     * with neither the Fabled ids nor the acknowledgements, so the header
+     * demanded "4 outsiders · 1 demon" for a bag the validator was perfectly
+     * happy with — and, on a Lil' Monsta script, all four bars read "at target"
+     * while the issue list underneath said the bag was short a Townsfolk.
+     */
+    private class BagModel(
+        val shapes: Map<String, BagShape>,
+        val seatless: List<Character>,
+        val seatFilling: List<Character>,
+        val modifiers: List<SetupModifier>,
+        val relaxedTeams: Set<Team>,
+        val allowed: Set<Distribution>,
+    ) {
+        /** The range a [BagShape] pins this team to, or null when none does. */
+        fun pinnedRange(team: Team): IntRange? {
+            val ranges = shapes.values.mapNotNull { shape ->
+                when (team) {
+                    Team.TOWNSFOLK -> shape.townsfolk
+                    Team.OUTSIDER -> shape.outsiders
+                    Team.MINION -> shape.minions
+                    Team.DEMON -> shape.demons
+                    else -> null
+                }
+            }
+            if (ranges.isEmpty()) return null
+            return ranges.maxOf { it.first }..ranges.minOf { it.last }
+        }
+    }
+
+    private fun bagModel(
+        bag: List<Character>,
+        playerCount: Int,
+        fabledIds: Collection<String>,
+        inPlayIds: Collection<String>,
+        state: GameState?,
+        virtual: List<Character>,
+    ): BagModel {
+        val shapes = shapesFor(bag, playerCount, inPlayIds + virtual.map { it.id }, state)
+        val forbidden = forbiddenIds(shapes)
+        val (seatless, seatFilling) = bag.partition { Character.normalizeId(it.id) in forbidden }
+        val modifiers = (seatFilling + virtual).mapNotNull { modifierFor(it) }
+        val unboundedChoiceTeams = modifiers
+            .flatMap { it.choiceTeams - it.choiceDeltas.keys }
+            .toSet()
+        val relaxedTeams = buildSet {
+            addAll(unboundedChoiceTeams)
+            // A variable Outsider/Minion/Demon count is paid for by the
+            // Townsfolk count, so both sides of that trade must be flexible.
+            if (any { it == Team.OUTSIDER || it == Team.MINION || it == Team.DEMON }) {
+                add(Team.TOWNSFOLK)
+            }
+        }
+        var allowed = allowedDistributions(playerCount, seatFilling + virtual)
+        if ("sentinel" in fabledIds.map { Character.normalizeId(it) }) {
+            allowed = allowed
+                .flatMap { d ->
+                    listOf(
+                        d,
+                        d.copy(outsiders = d.outsiders + 1, townsfolk = d.townsfolk - 1),
+                        d.copy(outsiders = d.outsiders - 1, townsfolk = d.townsfolk + 1),
+                    )
+                }
+                .filter { it.outsiders >= 0 && it.townsfolk >= 0 }
+                .toSet()
+        }
+        return BagModel(shapes, seatless, seatFilling, modifiers, relaxedTeams, allowed)
+    }
+
+    /**
+     * The counts [validateBag] would accept for each team, given exactly the
+     * same inputs — what the bag builder's "Need:" line and progress bars must
+     * render, so a screen can never contradict its own issue list (A-5).
+     *
+     * A team is [TeamTarget.free] when the storyteller chooses its count
+     * outright (an open-ended bracket such as the Kazali's "-? to +? Outsiders"):
+     * the validator does not check it, so nothing should be shown as incomplete.
+     */
+    fun bagTargets(
+        bag: List<Character>,
+        playerCount: Int,
+        fabledIds: Collection<String> = emptyList(),
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
+        virtual: List<Character> = emptyList(),
+    ): Map<Team, TeamTarget> {
+        val model = bagModel(bag, playerCount, fabledIds, inPlayIds, state, virtual)
+        return BAG_TEAMS.associateWith { team ->
+            val pinned = model.pinnedRange(team)
+            when {
+                // A BagShape REPLACES the distribution check for this team.
+                pinned != null -> TeamTarget(pinned.toList())
+                team in model.relaxedTeams -> TeamTarget(emptyList(), free = true)
+                else -> TeamTarget(model.allowed.map { it.count(team) }.distinct().sorted())
+            }
+        }
+    }
+
+    /**
+     * The tokens in [bag] that actually fill a seat — everything a [BagShape]
+     * forbids from the bag (Lil' Monsta's centre token) removed, exactly as
+     * [validateBag] partitions it.
+     *
+     * The deal must use this and nothing else: `Seats.deal` requires one token
+     * per non-Traveller seat and throws otherwise, and "IN THE BAG · 9 / 8"
+     * (playtest A-8) was the screen counting a token the validator had already
+     * set aside.
+     */
+    fun seatFillingBag(
+        bag: List<Character>,
+        playerCount: Int,
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
+        virtual: List<Character> = emptyList(),
+    ): List<Character> =
+        bagModel(bag, playerCount, emptyList(), inPlayIds, state, virtual).seatFilling
+
+    /** How many of one team a bag actually holds, seatless tokens excluded. */
+    fun bagCounts(
+        bag: List<Character>,
+        playerCount: Int,
+        inPlayIds: Collection<String> = emptyList(),
+        state: GameState? = null,
+        virtual: List<Character> = emptyList(),
+    ): Map<Team, Int> =
+        seatFillingBag(bag, playerCount, inPlayIds, state, virtual)
+            .groupingBy { it.team }
+            .eachCount()
 
     /**
      * Bag notes that WARN but never block: the Legion ratio, and every
@@ -792,6 +929,18 @@ object Setup {
      */
     private fun forbiddenIds(shapes: Map<String, BagShape>): Set<String> =
         shapes.values.flatMap { it.forbidInBag }.map(Character::normalizeId).toSet()
+}
+
+/**
+ * The counts one team may legally hold in a bag, as `Setup.validateBag` judges
+ * it. [free] means the storyteller chooses outright and nothing is checked.
+ */
+data class TeamTarget(val counts: List<Int>, val free: Boolean = false) {
+    /** Whether a bag holding [have] of this team satisfies the validator. */
+    fun accepts(have: Int): Boolean = free || have in counts
+
+    /** The count to aim at from [have] — the nearest legal one, never a lie. */
+    fun target(have: Int): Int? = counts.minByOrNull { kotlin.math.abs(it - have) }
 }
 
 /** Bag override for one character, replacing `Setup.TEAM_WARPING_IDS` (lead D28). */
