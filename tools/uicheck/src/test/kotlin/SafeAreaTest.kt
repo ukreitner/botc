@@ -149,6 +149,43 @@ class SafeAreaTest {
         )
     }
 
+    /**
+     * The read-only grimoire is the one screen a PLAYER holds the phone for.
+     * Its action row sat entirely under the gesture inset — a 4 px sliver — and
+     * the dialog refused back-press, so whoever was handed the phone was stuck
+     * (playtest D, P1-7). Both stages pin their row with the helper, the column
+     * is bounded so the row cannot be clipped off the bottom, and back works.
+     */
+    @Test
+    fun `the read-only grimoire dialog can be left, and its buttons are reachable`() {
+        val text = uiSource("GameShell.kt").readText()
+        assertTrue(
+            "GameShell hosts the read-only grimoire dialog",
+            text.contains("usePlatformDefaultWidth = false"),
+        )
+        assertTrue(
+            "the dialog a player holds must accept back-press",
+            text.contains("dismissOnBackPress = true") &&
+                !text.contains("dismissOnBackPress = false"),
+        )
+        assertEquals(
+            "both stages of the read-only grimoire pin their action row with " +
+                "overlayBottomPadding()",
+            2,
+            Regex("""padding\(bottom = overlayBottomPadding\(\)\)""").findAll(text).count(),
+        )
+        assertTrue(
+            "the dialog's column must be bounded, or its last row is clipped away",
+            text.contains(".fillMaxSize()") && text.contains(".overlaySafeAreaPadding()"),
+        )
+        assertTrue(
+            "the dialog window's own offset must be measured in the shell's " +
+                "composition and padded for — inside the dialog every inset is zero",
+            text.contains("val dialogBottomFix = dialogWindowBottomFix()") &&
+                text.contains("padding(bottom = dialogBottomFix)"),
+        )
+    }
+
     // ---- source lookup ----------------------------------------------------
 
     private fun uiSource(name: String): File =

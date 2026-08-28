@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.ui.Alignment
@@ -19,6 +21,8 @@ import com.clocktower.grimoire.ui.components.PrivacyCover
 import com.clocktower.grimoire.ui.components.FullScreenShow
 import com.clocktower.grimoire.ui.components.ShowCard
 import com.clocktower.grimoire.ui.components.ShowToolSheet
+import com.clocktower.grimoire.ui.components.dialogWindowBottomFix
+import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.components.overlaySafeAreaPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -684,19 +688,34 @@ private fun ReadOnlyGrimoire(
 ) {
     var handedOver by rememberSaveable { mutableStateOf(false) }
     var redacted by remember { mutableStateOf(emptySet<Long>()) }
+    // Measured HERE, in the shell's composition: inside the dialog window every
+    // inset reads zero (playtest D, P1-7).
+    val dialogBottomFix = dialogWindowBottomFix()
     Dialog(
-        onDismissRequest = { },
+        // A player is holding the phone in stage 2, and its only button used to
+        // be under the home indicator: with back-press refused as well there was
+        // no way out at all (playtest D, P1-7). Back drops to the storyteller's
+        // view, which `onDone` immediately covers, so it is never a leak.
+        onDismissRequest = onDone,
         properties = DialogProperties(
-            dismissOnBackPress = false,
+            dismissOnBackPress = true,
             dismissOnClickOutside = false,
             usePlatformDefaultWidth = false,
         ),
     ) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-            // Its last child is a full-width button; a dialog sits above the
-            // shell's inset padding, so without this the home indicator eats it.
+            // A dialog window sits ABOVE the shell's own inset padding and does
+            // not always dispatch the system insets into its content, so the
+            // action row is lifted by `overlayBottomPadding()` on top of
+            // whatever `overlaySafeAreaPadding()` managed to apply. `fillMaxSize`
+            // is what stops the column growing past the bottom of the screen and
+            // clipping that row to a 4 px sliver.
             Column(
-                Modifier.overlaySafeAreaPadding().padding(16.dp),
+                Modifier
+                    .fillMaxSize()
+                    .overlaySafeAreaPadding()
+                    .padding(bottom = dialogBottomFix)
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (!handedOver) {
@@ -710,7 +729,7 @@ private fun ReadOnlyGrimoire(
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
                     ) {
                         for ((index, seat) in state.seats.withIndex()) {
                             FilterChip(
@@ -722,12 +741,18 @@ private fun ReadOnlyGrimoire(
                             )
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = overlayBottomPadding()),
+                    ) {
                         FilledTonalButton(
                             onClick = { handedOver = true },
                             modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                         ) { Text("HAND IT OVER") }
-                        TextButton(onClick = onDone) { Text("Cancel") }
+                        TextButton(
+                            onClick = onDone,
+                            modifier = Modifier.heightIn(min = 56.dp),
+                        ) { Text("Cancel") }
                     }
                 } else {
                     LazyColumn(
@@ -740,7 +765,10 @@ private fun ReadOnlyGrimoire(
                     }
                     FilledTonalButton(
                         onClick = onDone,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = overlayBottomPadding())
+                            .heightIn(min = 56.dp),
                     ) { Text("DONE — BACK TO THE SHEET") }
                 }
             }
