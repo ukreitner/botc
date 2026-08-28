@@ -86,6 +86,18 @@ data class SetupRequirement(
     val id: String,
     val characterId: String,
     val kind: RequirementKind,
+    /**
+     * The ONE seat this row decides for, when there is one — the seat whose
+     * `:<seat>` suffix the [id] already carries. Read it instead of parsing the
+     * id: the hand-out uses it to refuse a card the answer would change
+     * (playtest A-1 — the Drunk was handed the Drunk token because nothing
+     * connected the unanswered "believes" row to that seat).
+     *
+     * Null for whole-game rows and for rows whose answer names OTHER seats
+     * (the Fortune Teller's red herring is answered on a different seat than
+     * the one holding the card).
+     */
+    val seatId: Long? = null,
     /** Short checklist label. */
     val title: String,
     /** Storyteller-voice imperative for the prompt. */
@@ -457,6 +469,9 @@ object SetupRequirements {
                 id = "traveller.alignment:${traveller.id}",
                 characterId = traveller.characterId.orEmpty(),
                 kind = RequirementKind.ALIGNMENT,
+                // The second hand-out card says GOOD or EVIL out loud, so the
+                // seat is not dealt until the storyteller has chosen (A-7).
+                seatId = traveller.id,
                 title = "${traveller.name}'s alignment",
                 prompt = "Is ${traveller.name} good or evil?",
                 problem = "${traveller.name}: set the Traveller's alignment",
@@ -677,6 +692,9 @@ object SetupRequirements {
         id = id,
         characterId = characterId,
         kind = RequirementKind.SHOWN_TOKEN,
+        // The row decides what THIS seat's "YOU ARE" card says, so the hand-out
+        // must not deal the seat until it is answered (playtest A-1).
+        seatId = seat.id,
         title = title,
         prompt = prompt,
         problem = problem,

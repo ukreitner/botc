@@ -47,6 +47,7 @@ import com.clocktower.engine.GameState
 import com.clocktower.engine.Identity
 import com.clocktower.engine.Player
 import com.clocktower.engine.RequirementKind
+import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.SetupRequirements
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
@@ -74,6 +75,42 @@ private val NEVER_TOLD_ALIGNMENT = setOf("ogre")
 
 /** How long a finger must stay down before a token is shown. */
 private const val HOLD_MILLIS = 700L
+
+/**
+ * The requirement kinds that decide what a seat's own card SAYS.
+ *
+ * [RequirementKind.SHOWN_TOKEN] is the character printed on it — the Drunk's
+ * Chambermaid, the Lunatic's Demon, the Marionette's good token — and
+ * [RequirementKind.ALIGNMENT] is the second page's GOOD/EVIL. Every other kind
+ * describes something the storyteller does at the table (place a token, point
+ * at players, choose bluffs) and changes nothing the card prints, so it never
+ * holds a hand-over up.
+ */
+private val CARD_DECIDING_KINDS = setOf(
+    RequirementKind.SHOWN_TOKEN,
+    RequirementKind.ALIGNMENT,
+)
+
+/**
+ * Seats whose card would LIE if it were handed over now, and the rows that must
+ * be answered first.
+ *
+ * Playtest A-1: the Drunk was handed a card reading "YOU ARE / Drunk" because
+ * the hand-out queued every seat with a `characterId` and never asked whether
+ * the seat's *believed* character had been chosen yet. The very same screen was
+ * already printing "The Drunk believes — … Which Townsfolk token do they see?"
+ * as outstanding. This is the connection that was missing: one seat-scoped row
+ * ([SetupRequirement.seatId]), one gate.
+ *
+ * Pure, so `tools/uicheck` can assert exactly which seats are unrevealable.
+ */
+internal fun handOutBlockers(
+    state: GameState,
+    lookup: (String) -> Character?,
+): Map<Long, List<SetupRequirement>> =
+    SetupRequirements.unmet(state, lookup)
+        .filter { it.blocking && it.kind in CARD_DECIDING_KINDS && it.seatId != null }
+        .groupBy { it.seatId!! }
 
 /**
  * "Pass the phone" hand-out mode (setup-and-home §S6), replacing the old
@@ -126,6 +163,7 @@ fun HandOutMode(
     KeepScreenOn()
     var seatOrder by rememberSaveable { mutableStateOf(false) }
     var openSeatId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showChecklist by rememberSaveable { mutableStateOf(false) }
 
     val queue = remember(state.players, seats, seatOrder) {
         val pool = seats?.mapNotNull { state.player(it) }
@@ -138,29 +176,81 @@ fun HandOutMode(
             pool.shuffled(Random(state.handOutSeed))
         }
     }
+    // A-1: a seat whose believed character (or a Traveller's side) is still an
+    // open question is NOT dealt — not by "Next:", not by tapping its name.
+    val blockers = remember(state) { handOutBlockers(state, viewModel::characterById) }
+    val blocked = queue.filter { blockers.containsKey(it.id) }
     val done = queue.count { it.tokenShownAt != null }
-    val next = queue.firstOrNull { it.tokenShownAt == null }
+    val next = queue.firstOrNull { it.tokenShownAt == null && !blockers.containsKey(it.id) }
 
-    openSeatId?.let { id ->
-        val seat = state.player(id)
-        if (seat == null) {
-            openSeatId = null
-        } else {
-            HandOutCard(
+    val openSeat = openSeatId?.let { state.player(it) }
+    if (openSeatId != null && openSeat == null) openSeatId = null
+
+    Box(Modifier.fillMaxSize()) {
+        when {
+            openSeat != null && blockers.containsKey(openSeat.id) -> BlockedSeatCard(
+                player = openSeat,
+                rows = blockers.getValue(openSeat.id),
+                onAnswer = { showChecklist = true },
+                onBack = { openSeatId = null },
+            )
+
+            openSeat != null -> HandOutCard(
                 viewModel = viewModel,
-                player = seat,
-                position = queue.indexOfFirst { it.id == id } + 1,
+                player = openSeat,
+                position = queue.indexOfFirst { it.id == openSeat.id } + 1,
                 total = queue.size,
                 onFinished = {
-                    viewModel.markTokenHandedOut(seat.id)
+                    viewModel.markTokenHandedOut(openSeat.id)
                     openSeatId = null
                 },
                 onLater = { openSeatId = null },
             )
-            return
+
+            else -> HandOutRoster(
+                viewModel = viewModel,
+                state = state,
+                queue = queue,
+                blockers = blockers,
+                blocked = blocked,
+                done = done,
+                next = next,
+                seatOrder = seatOrder,
+                onSeatOrder = { seatOrder = it },
+                onOpenSeat = { openSeatId = it },
+                onChecklist = { showChecklist = true },
+                onDone = onDone,
+            )
+        }
+        if (showChecklist) {
+            // The one-tap jump A-1 asks for: the outstanding row is answered
+            // here and the seat is immediately dealable again.
+            SetupChecklistSheet(
+                viewModel = viewModel,
+                state = state,
+                onDismiss = { showChecklist = false },
+            )
         }
     }
+}
 
+/** The roster page of [HandOutMode]: who is done, who is next, what is blocking. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HandOutRoster(
+    viewModel: GameViewModel,
+    state: GameState,
+    queue: List<Player>,
+    blockers: Map<Long, List<SetupRequirement>>,
+    blocked: List<Player>,
+    done: Int,
+    next: Player?,
+    seatOrder: Boolean,
+    onSeatOrder: (Boolean) -> Unit,
+    onOpenSeat: (Long) -> Unit,
+    onChecklist: () -> Unit,
+    onDone: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -181,37 +271,52 @@ fun HandOutMode(
                     color = Parchment,
                 )
             }
-            TextButton(onClick = { seatOrder = !seatOrder }) {
+            TextButton(onClick = { onSeatOrder(!seatOrder) }) {
                 Text(if (seatOrder) "Shuffled" else "Seat order", color = AgedGold)
             }
         }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        // A-1: the block, stated before the roster and answerable in one tap.
+        if (blocked.isNotEmpty()) {
+            BlockedBanner(seats = blocked, blockers = blockers, onChecklist = onChecklist)
+        }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (seat in queue) {
                     val shown = seat.tokenShownAt != null
                     val isNext = seat.id == next?.id
+                    val isBlocked = blockers.containsKey(seat.id)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .background(if (isNext) Twilight else Color.Transparent)
-                            .clickable { openSeatId = seat.id }
+                            .clickable { onOpenSeat(seat.id) }
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                     ) {
                         Text(
                             when {
+                                isBlocked -> "!"
                                 shown -> "✓"
                                 isNext -> "▶"
                                 else -> "○"
                             },
-                            color = if (shown) AgedGold else Parchment,
+                            color = when {
+                                isBlocked -> EmberRed
+                                shown -> AgedGold
+                                else -> Parchment
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
                             seat.name,
-                            color = if (shown) AgedGold.copy(alpha = 0.7f) else Parchment,
+                            color = when {
+                                isBlocked -> EmberRed
+                                shown -> AgedGold.copy(alpha = 0.7f)
+                                else -> Parchment
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -251,10 +356,20 @@ fun HandOutMode(
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         if (next != null) {
             FilledTonalButton(
-                onClick = { openSeatId = next.id },
+                onClick = { onOpenSeat(next.id) },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Next: ${next.name}", modifier = Modifier.padding(vertical = 4.dp))
+            }
+        } else if (blocked.any { it.tokenShownAt == null }) {
+            // Nobody CAN be next: every seat still owed a card is waiting on a
+            // setup answer. The primary button becomes that answer (A-1).
+            FilledTonalButton(onClick = onChecklist, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Answer ${blockers.values.sumOf { it.size }} setup " +
+                        "question${if (blockers.values.sumOf { it.size } == 1) "" else "s"} first",
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             }
         } else {
             Text(
@@ -272,6 +387,94 @@ fun HandOutMode(
             TextButton(onClick = onDone) {
                 Text(if (next == null) "Done" else "Finish later", color = AgedGold)
             }
+        }
+    }
+}
+
+/**
+ * The A-1 block, at the top of the roster: which seats cannot be dealt, why,
+ * and the one tap that fixes it.
+ */
+@Composable
+private fun BlockedBanner(
+    seats: List<Player>,
+    blockers: Map<Long, List<SetupRequirement>>,
+    onChecklist: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Twilight)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Text(
+            "${seats.size} seat${if (seats.size == 1) "" else "s"} cannot be handed out yet",
+            style = MaterialTheme.typography.titleSmall,
+            color = EmberRed,
+        )
+        for (seat in seats) {
+            for (row in blockers[seat.id].orEmpty()) {
+                Text(
+                    "• ${seat.name} — ${row.prompt}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Parchment,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+        OutlinedButton(onClick = onChecklist, modifier = Modifier.padding(top = 6.dp)) {
+            Text("Answer these now")
+        }
+    }
+}
+
+/**
+ * What a blocked seat gets instead of its card. Never the token: an unanswered
+ * "believes" row means the app does not yet know what this player thinks they
+ * are, and printing the seat's real character is exactly the leak A-1 filed.
+ */
+@Composable
+private fun BlockedSeatCard(
+    player: Player,
+    rows: List<SetupRequirement>,
+    onAnswer: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Box(
+        Modifier.fillMaxSize().background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(24.dp),
+        ) {
+            Text("NOT READY", fontSize = 26.sp, color = EmberRed)
+            Text(
+                player.name,
+                fontSize = 42.sp,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                color = AgedGold,
+                textAlign = TextAlign.Center,
+            )
+            for (row in rows) {
+                Text(
+                    row.prompt,
+                    fontSize = 17.sp,
+                    color = Parchment,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Text(
+                "Answer this before the phone reaches them — otherwise the card " +
+                    "would show the wrong character.",
+                fontSize = 13.sp,
+                color = Color.Gray,
+                textAlign = TextAlign.Center,
+            )
+            FilledTonalButton(onClick = onAnswer) { Text("Answer now") }
+            OutlinedButton(onClick = onBack) { Text("Back to the roster") }
         }
     }
 }
