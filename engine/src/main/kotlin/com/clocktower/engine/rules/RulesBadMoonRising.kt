@@ -141,6 +141,11 @@ private fun grandmother() = CharacterRule(
                 "grandmother",
                 "WHICH PLAYER IS THE GRANDCHILD?",
                 targetsNeeded = 1,
+                // "You start knowing a GOOD PLAYER & their character" — a
+                // Grandmother is not her own grandchild, and D81 already bars
+                // the holder from the setup requirement. The picker offered her
+                // anyway, right next to the seat that was actually marked.
+                constraints = listOf(TargetConstraint.NOT_SELF),
                 preselect = grandchildSeats(ctx),
             )
         },
