@@ -223,6 +223,45 @@ fun GrimoireScreen(
 // Header: standing facts, the view switch, filter chips
 // ---------------------------------------------------------------------------
 
+/** The two strings the grimoire header prints above the circle. */
+data class GrimoireHeaderLine(
+    /** "Day 2 · 9 alive · 5 to execute · 2 ghost votes". */
+    val facts: String,
+    /**
+     * One line naming every rule that rewrote the vote — the Voudon, the
+     * Bureaucrat's ×3, secret voting. Blank when the vote is the ordinary one;
+     * the header is tight, so it renders on a single ellipsised line.
+     */
+    val voteNote: String = "",
+)
+
+/**
+ * The header's standing facts — pure Kotlin, so `tools/uicheck` can measure it.
+ *
+ * Never recompute the threshold or the ghost-vote count here. A sober Voudon
+ * (and anything else that rewrites the vote) moves the threshold to 1 and
+ * spends no ghost votes at all; [DayRules.voteRules] is the same snapshot the
+ * nomination panel and the day stat strip read, so all three agree.
+ */
+fun grimoireHeaderLine(state: GameState, lookup: (String) -> Character?): GrimoireHeaderLine {
+    val cycleLabel = when (state.phase) {
+        Phase.SETUP -> "Setup"
+        Phase.NIGHT -> "Night ${state.cycle}"
+        Phase.DAY -> "Day ${state.cycle}"
+    }
+    val rules = DayRules.voteRules(state, lookup, isExile = false)
+    val ghosts = if (rules.spendsGhostVotes) {
+        state.seats.count { !it.alive && !it.ghostVoteUsed }
+    } else {
+        0
+    }
+    val facts = buildString {
+        append("$cycleLabel · ${state.alivePlayers.size} alive · ${rules.threshold} to execute")
+        if (ghosts > 0) append(" · $ghosts ghost ${if (ghosts == 1) "vote" else "votes"}")
+    }
+    return GrimoireHeaderLine(facts = facts, voteNote = rules.reasons.joinToString(" · "))
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun GrimoireHeader(
@@ -239,13 +278,8 @@ private fun GrimoireHeader(
     onOpenBluffs: () -> Unit,
     onOpenFabled: () -> Unit,
 ) {
-    val ghostVotes = state.seats.count { !it.alive && !it.ghostVoteUsed }
+    val header = remember(state) { grimoireHeaderLine(state, viewModel::characterById) }
     val expiringAtDusk = tokens.values.sumOf { list -> list.count { it.expiryText.contains("dusk") } }
-    val cycleLabel = when (state.phase) {
-        Phase.SETUP -> "Setup"
-        Phase.NIGHT -> "Night ${state.cycle}"
-        Phase.DAY -> "Day ${state.cycle}"
-    }
     val counts = remember(tokens, state.players) { groupCounts(state, tokens) }
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -266,8 +300,7 @@ private fun GrimoireHeader(
                 }
             }
             Text(
-                text = "$cycleLabel · ${state.alivePlayers.size} alive · ${state.executionThreshold} to execute · " +
-                    "$ghostVotes ghost vote${if (ghostVotes == 1) "" else "s"}",
+                text = header.facts,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -287,6 +320,19 @@ private fun GrimoireHeader(
                     for (id in state.fabledIds) CharacterToken(character = viewModel.characterById(id), size = 26.dp)
                 }
             }
+        }
+        // Whatever rewrote the vote, said once, where the numbers are. One
+        // line only — this header already carries four rows.
+        if (header.voteNote.isNotBlank()) {
+            Text(
+                header.voteNote,
+                style = MaterialTheme.typography.labelMedium,
+                color = AgedGold,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         // Second line: the two facts a storyteller re-derives constantly, and
         // the Mastermind day as a LINE, not a banner drawn over everything.
