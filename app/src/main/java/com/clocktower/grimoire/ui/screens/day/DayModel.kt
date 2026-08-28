@@ -11,7 +11,6 @@ import com.clocktower.engine.GameState
 import com.clocktower.engine.Ledger
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.NominationResult
-import com.clocktower.engine.Voting
 
 /**
  * The day timeline's model — pure Kotlin, no Compose, so every line of it is
@@ -65,6 +64,12 @@ data class DayStats(
     val onBlockId: Long?,
     /** A sober living Organ Grinder hides every tally on this tab. */
     val secret: Boolean,
+    /**
+     * One line naming every rule that rewrote today's vote — "Voudon: only Ana
+     * and the dead may vote…", the Bureaucrat's ×3, secret voting. Blank when
+     * the vote is the ordinary one. Defaulted so older call sites still build.
+     */
+    val voteNote: String = "",
 )
 
 object DayModel {
@@ -95,8 +100,16 @@ object DayModel {
 
     fun stats(state: GameState, lookup: (String) -> Character?): DayStats {
         val alive = state.aliveCountWithTravellers
-        val threshold = Voting.executionThreshold(alive)
-        val ghosts = state.seats.count { !it.alive && !it.ghostVoteUsed }
+        // Never recompute the threshold here. A sober Voudon (and anything else
+        // that rewrites the vote) moves it to 1 and spends no ghost votes; the
+        // engine's snapshot is the one source of truth the vote panel uses too.
+        val rules = DayRules.voteRules(state, lookup, isExile = false)
+        val threshold = rules.threshold
+        val ghosts = if (rules.spendsGhostVotes) {
+            state.seats.count { !it.alive && !it.ghostVoteUsed }
+        } else {
+            0
+        }
         val secret = DayRules.secretVoting(state, lookup)
         val highest = DayRules.highestVotesToday(state)
         val onBlockId = DayRules.aboutToDie(state)
@@ -123,6 +136,7 @@ object DayModel {
             blockLine = blockLine,
             onBlockId = onBlockId,
             secret = secret,
+            voteNote = rules.reasons.joinToString(" · "),
         )
     }
 

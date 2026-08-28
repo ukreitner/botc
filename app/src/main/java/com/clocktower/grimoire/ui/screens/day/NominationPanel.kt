@@ -498,7 +498,13 @@ private fun VotePanel(
                     Text(
                         buildString {
                             append(seat.name)
-                            if (!seat.alive) append(if (seat.ghostVoteUsed) " ⊘" else " †")
+                            // A spent ghost vote only stops a hand when this
+                            // vote spends ghost votes at all (never under a
+                            // sober Voudon, never on an exile).
+                            if (!seat.alive) {
+                                val spent = seat.ghostVoteUsed && view.rules.spendsGhostVotes
+                                append(if (spent) " ⊘" else " †")
+                            }
                             if (weight != null) append(if (weight < 0) " −${-weight}" else " ×$weight")
                         },
                     )

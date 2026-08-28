@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Briefing
 import com.clocktower.engine.BriefingItem
@@ -310,6 +311,16 @@ private fun DayStatStrip(stats: DayStats) {
                 fontWeight = FontWeight.Bold,
                 color = if (stats.onBlockId != null) EmberRed else FadedInk,
             )
+            // Whatever rewrote today's vote, said once, where the numbers are.
+            if (stats.voteNote.isNotBlank()) {
+                Text(
+                    stats.voteNote,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AgedGold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
