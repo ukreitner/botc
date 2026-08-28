@@ -545,12 +545,19 @@ data class NightPlan(
                     holder?.let { append(" — ").append(it.name) }
                     sourceName?.let { append(" (via the ").append(it).append(")") }
                 },
-                detail = detailFor(character, firstNightRules),
+                detail = withEvidence(
+                    detailFor(character, firstNightRules),
+                    nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                ),
                 sourceId = role.sourceId,
                 holderIds = group,
                 style = style,
                 gate = gate,
-                banner = bannerFor(ctx, role, holder, gate),
+                // The planner's own banner (impaired, silenced, dead-but-acts)
+                // always wins: a row must never hide the reason its ability will
+                // not work tonight behind the registry's evidence quote.
+                banner = bannerFor(ctx, role, holder, gate)
+                    .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
                 prompt = nightRule?.prompt.orEmpty()
                     .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() },
                 action = action,
@@ -559,6 +566,13 @@ data class NightPlan(
                 promptId = promptId,
                 wakeCounts = nightRule?.wakeCounts ?: WakeCount.ACT,
             )
+        }
+
+        /** The character's own night reminder, plus whatever evidence the row quotes. */
+        private fun withEvidence(detail: String, evidence: String): String = when {
+            evidence.isEmpty() -> detail
+            detail.isEmpty() -> evidence
+            else -> "$detail $evidence"
         }
 
         private fun detailFor(character: Character?, firstNight: Boolean): String {
@@ -681,11 +695,15 @@ data class NightPlan(
                     slotId = slot,
                     order = at,
                     title = character.name,
-                    detail = detailFor(character, ctx.isFirstNight),
+                    detail = withEvidence(
+                        detailFor(character, ctx.isFirstNight),
+                        nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                    ),
                     holderIds = holderIds,
                     style = ctx.style,
                     gate = gate,
-                    banner = (gate as? StepGate.Reduced)?.reason.orEmpty(),
+                    banner = (gate as? StepGate.Reduced)?.reason.orEmpty()
+                        .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
                     prompt = nightRule?.prompt.orEmpty()
                         .ifEmpty { NightGuide.forStep(slot, ctx.style)?.instructions.orEmpty() },
                     action = action,

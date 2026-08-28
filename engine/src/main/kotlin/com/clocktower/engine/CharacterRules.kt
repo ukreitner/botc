@@ -89,6 +89,21 @@ data class NightRule(
     val pending: (NightContext) -> List<NightEffect> = { emptyList() },
     /** Imperative, storyteller voice, at most two lines. */
     val prompt: String = "",
+    /**
+     * The one derived fact worth ember, ABOVE the instructions: the Gossip's
+     * recorded statement, the Devil's Advocate's last pick, the Shabaloth's
+     * regurgitation candidates.
+     *
+     * Returning "" leaves the planner's own banner in place (impairment, a
+     * silenced Demon, "dead — this ability fires anyway"), which always wins:
+     * a row must never hide the reason its ability will not work behind a quote.
+     */
+    val banner: (NightContext) -> String = { "" },
+    /**
+     * Extra evidence appended to the step's detail line, under the character's
+     * own night reminder. Same contract as [banner]: "" changes nothing.
+     */
+    val detail: (NightContext) -> String = { "" },
     /** Pre-filled cards this step offers — never a search box for an answer we know. */
     val cards: (NightContext) -> List<CardOffer> = { emptyList() },
     /** InfoCalc key. "" = this step computes no information. */

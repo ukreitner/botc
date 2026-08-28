@@ -308,6 +308,12 @@ class RulesBadMoonRisingTest {
             TargetConstraint.DIFFERENT_FROM_LAST_NIGHT in choose.constraints,
             "a constraint, never a token: ${choose.constraints}",
         )
+        // W7C: and the row SAYS who was chosen, rather than only hiding them.
+        assertTrue(
+            "P2" in night2.banner && "last night" in night2.banner,
+            "banner: ${night2.banner}",
+        )
+        assertEquals("", require(game("devilsadvocate", "godfather", "sailor"), "devilsadvocate").banner)
 
         // The forbidden seat is dropped AT RESOLVE TIME, not just hidden.
         val repeated = NightPlan.resolve(state, lookup, night2.key, NightInput(playerIds = listOf(chosen)))
@@ -364,6 +370,11 @@ class RulesBadMoonRisingTest {
             "no Minion" in assertIs<ChoosePlayers>(night.action).prompt,
             "the step quotes the statement back: ${night.action}",
         )
+        // W7C: the step itself quotes the evidence, in the banner AND the detail,
+        // so the Gossip is never asked "what did you say?" again.
+        assertTrue("no Minion" in night.banner, "banner: ${night.banner}")
+        assertTrue("no Minion" in night.detail, "detail: ${night.detail}")
+        assertTrue("P1" in night.detail, "the detail names the speaker: ${night.detail}")
         state = NightPlan.resolve(state, lookup, night.key, NightInput(playerIds = listOf(victim)))
 
         // Then the chosen player dies by a GOOD ability — never a Demon kill

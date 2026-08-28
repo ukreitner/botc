@@ -423,6 +423,24 @@ private fun gossip() = CharacterRule(
         wakeCounts = WakeCount.NONE,
         prompt = "The Gossip's statement was true. Choose a player who is not protected " +
             "from dying tonight; if everyone is protected, nobody dies.",
+        // W7C: the step QUOTES the statement, so the Gossip is never asked
+        // "what did you say?" again (friction F52, invariant I3).
+        banner = { ctx ->
+            gossipStatement(ctx.state)?.text?.takeIf { it.isNotBlank() }
+                ?.let { "Yesterday's statement: \u201C" + it + "\u201D" }
+                .orEmpty()
+        },
+        detail = { ctx ->
+            val entry = gossipStatement(ctx.state)
+            if (entry == null || entry.text.isBlank()) {
+                ""
+            } else {
+                val speaker = entry.actorId?.let { ctx.state.player(it)?.name }
+                "Said on day " + entry.cycle +
+                    (speaker?.let { " by " + it } ?: "") +
+                    ": \u201C" + entry.text + "\u201D"
+            }
+        },
         action = { ctx ->
             ChoosePlayers(
                 sourceId = "gossip",
@@ -816,11 +834,13 @@ private fun devilsAdvocate(): CharacterRule {
         gate = Gates.aliveHolder,
         prompt = "The Devil's Advocate points at a living player, DIFFERENT from last " +
             "night. If that player is executed tomorrow, they do not die.",
+        // W7C: the picker excludes last night's choice; the banner says who.
+        banner = { ctx ->
+            val last = devilsAdvocateLastPick(ctx)
+            if (last.isEmpty()) "" else "Chosen last night: " + last.joinToString() + " — not again tonight."
+        },
         action = { ctx ->
-            val last = Memory.lastChoice(ctx.state, "devilsadvocate", ctx.holder?.id)
-                ?.targetIds
-                ?.mapNotNull { ctx.state.player(it)?.name }
-                .orEmpty()
+            val last = devilsAdvocateLastPick(ctx)
             ChoosePlayers(
                 sourceId = "devilsadvocate",
                 prompt = if (last.isEmpty()) {
@@ -1039,6 +1059,16 @@ private fun shabaloth() = CharacterRule(
         prompt = "First settle the regurgitation, then the Shabaloth points at two players, " +
             "one at a time. Dead players are legal targets — that is how tomorrow's " +
             "regurgitation is set up.",
+        // W7C: the candidates are on the row, not only inside the pending prompt.
+        banner = { ctx ->
+            val candidates = regurgitationCandidates(ctx)
+            if (candidates.isEmpty()) {
+                ""
+            } else {
+                "May regurgitate: " + candidates.joinToString { it.name } +
+                    " — decide BEFORE tonight's two picks."
+            }
+        },
         action = { ctx ->
             if (isPlacebo(ctx)) {
                 placeboAction(ctx, "shabaloth", max = 2)
@@ -1273,6 +1303,13 @@ private fun regurgitationCandidates(ctx: NightContext): List<Player> =
  * Recorded by the Day tab whether or not a Gossip is in play (invariant I3), so
  * the speaker is not required to be the Gossip's own seat.
  */
+/** The names the Devil's Advocate chose on their previous wake, from the ledger. */
+private fun devilsAdvocateLastPick(ctx: NightContext): List<String> =
+    Memory.lastChoice(ctx.state, "devilsadvocate", ctx.holder?.id)
+        ?.targetIds
+        ?.mapNotNull { ctx.state.player(it)?.name }
+        .orEmpty()
+
 private fun gossipStatement(state: GameState): LedgerEntry? =
     Memory.statementsOn(state, day = state.cycle - 1, sourceId = "gossip")
         .lastOrNull { it.resolvedCycle == null }
