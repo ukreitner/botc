@@ -1777,6 +1777,8 @@ data class NightPlan(
                     Team.MINION in Registration.registersAs(state, lookup, seat)
                 SeatPredicate.REGISTERS_DEMON ->
                     Team.DEMON in Registration.registersAs(state, lookup, seat)
+                SeatPredicate.REGISTERS_TOWNSFOLK ->
+                    Team.TOWNSFOLK in Registration.registersAs(state, lookup, seat)
                 SeatPredicate.REGISTERS_EVIL -> Registration.registersEvil(state, lookup, seat)
                 SeatPredicate.HAS_ABILITY -> Status.hasAbility(state, lookup, seatId)
                 SeatPredicate.IS_IMPAIRED -> Status.isImpaired(state, lookup, seatId)

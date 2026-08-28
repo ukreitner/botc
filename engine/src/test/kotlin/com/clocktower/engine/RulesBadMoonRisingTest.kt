@@ -549,16 +549,63 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
-    fun `the Professor cannot be pointed at a dead Outsider`() {
+    fun `a Professor pointed at a dead Outsider spends the ability and raises nobody`() {
         var state = game("professor", "lunatic", "pukka", "sailor", "fool", "gossip")
+        val professor = seat(state, "professor")
         val lunatic = seat(state, "lunatic")
         state = Deaths.attempt(state, lookup, lunatic, KillCause(DeathCause.EXECUTION)).state
         state = nextNight(state)
 
+        // W7b: the pick is LEGAL — "choose a dead player: IF they are a
+        // Townsfolk" — so the picker no longer hides an Outsider.
         val choose = assertIs<ChoosePlayers>(require(state, "professor").action)
-        assertTrue(TargetConstraint.TOWNSFOLK in choose.constraints, "team is the TRUE character's")
+        assertTrue(TargetConstraint.DEAD in choose.constraints)
+        assertFalse(TargetConstraint.TOWNSFOLK in choose.constraints, "a wasted use is still a use")
+
         val after = resolve(state, "professor", NightInput(playerIds = listOf(lunatic)))
         assertFalse(assertNotNull(after.player(lunatic)).alive, "a dead Outsider stays dead")
+        assertFalse(holds(after, lunatic, "professor", "Alive"))
+        assertTrue(Memory.isSpent(after, "professor", professor), "the ability is spent anyway")
+        assertTrue(assertIs<StepGate.Skip>(require(nextNight(after), "professor").gate).reason.isNotEmpty())
+    }
+
+    @Test
+    fun `a Professor who shakes their head spends nothing`() {
+        var state = game("professor", "grandmother", "pukka", "sailor", "fool", "gossip")
+        val professor = seat(state, "professor")
+        val dead = seat(state, "grandmother")
+        state = Deaths.attempt(state, lookup, dead, KillCause(DeathCause.EXECUTION)).state
+        state = nextNight(state)
+
+        state = resolve(state, "professor", NightInput(none = true))
+        assertFalse(Memory.isSpent(state, "professor", professor))
+        assertEquals(StepGate.Fire, require(nextNight(state), "professor").gate)
+    }
+
+    @Test
+    fun `a dead Spy ruled to register as a Townsfolk comes back`() {
+        var state = game("professor", "spy", "pukka", "sailor", "fool", "gossip")
+        val spy = seat(state, "spy")
+        state = Deaths.attempt(state, lookup, spy, KillCause(DeathCause.EXECUTION)).state
+        state = nextNight(state)
+
+        // Untouched, the Spy registers Minion and the pick is wasted.
+        val wasted = resolve(state, "professor", NightInput(playerIds = listOf(spy)))
+        assertFalse(assertNotNull(wasted.player(spy)).alive)
+
+        // Ruled to register as a Townsfolk (lead D10/D32), they come back.
+        val ruled = Effects.place(
+            state = state,
+            target = spy,
+            kind = EffectKind.REGISTERS_AS,
+            sourceCharacterId = "spy",
+            sourcePlayerId = spy,
+            until = Until.FOREVER,
+            characterId = "townsfolk",
+        ).state
+        val back = resolve(ruled, "professor", NightInput(playerIds = listOf(spy)))
+        assertTrue(assertNotNull(back.player(spy)).alive, "registration, not the true team")
+        assertTrue(holds(back, spy, "professor", "Alive"))
     }
 
     @Test

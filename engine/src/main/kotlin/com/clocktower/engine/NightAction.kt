@@ -178,7 +178,7 @@ enum class SeatPredicate {
     IS_ALIVE, IS_DEAD,
 
     /** Registration, not the true team: a Recluse ruled evil answers yes (lead D32). */
-    REGISTERS_MINION, REGISTERS_DEMON, REGISTERS_EVIL,
+    REGISTERS_MINION, REGISTERS_DEMON, REGISTERS_EVIL, REGISTERS_TOWNSFOLK,
 
     /** The seat's own ability works right now. */
     HAS_ABILITY,
