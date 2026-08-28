@@ -22,9 +22,10 @@ import kotlin.test.assertTrue
  *
  * The generator's only licensed deviations are documented in `tools/DATA.md`
  * and reproduced below: the `traveller`/`traveler` team spelling, the app's
- * edition ids, the app's verbose night prose, and the added `spentLabel`.
- * Everything this test compares — id, name, team, ability, `setup`, and the
- * reminder lists including multiplicity — must be verbatim.
+ * edition ids, the app's verbose night prose, the added `spentLabel`, and the
+ * [APP_REMINDERS] additions of Wave 6C. Everything else — id, name, team,
+ * ability, `setup`, and the reminder lists including multiplicity — must be
+ * verbatim.
  */
 class DataParityTest {
 
@@ -118,10 +119,74 @@ class DataParityTest {
         )
     }
 
+    /**
+     * The ONLY characters whose bundled reminder lists may differ from
+     * `roles.json`, with the exact list the app is allowed to ship.
+     *
+     * Every entry is an ADDITION, never a removal or a rename: the test below
+     * still asserts that every official label survives, with at least its
+     * official multiplicity, somewhere in `reminders + remindersGlobal`. Each
+     * one is a state a character's own wiki run-book names but the official
+     * token set gives no label for, or a copy count the rules require the app
+     * to be able to reach. `tools/app-overlay.json` `reminders` is the source,
+     * with a `why` per entry; `tools/DATA.md` §"Wave 6C" is the prose.
+     *
+     * Adding a row here is a deliberate act. Anything not listed is a bug in
+     * the generator.
+     */
+    private val appReminders: Map<String, Pair<List<String>, List<String>>> = mapOf(
+        // Penalty tokens the Fabled's own page names ("poisoned, or mad, or
+        // can't vote today") but the official token set does not carry.
+        "angel" to (listOf("Protected", "Protected", "Something Bad", "No Ability", "Can't Vote") to emptyList()),
+        "hellslibrarian" to (listOf("Something Bad", "No Ability", "No Vote") to emptyList()),
+        // States with no official token at all.
+        "beggar" to (listOf("Token") to emptyList()),
+        "boomdandy" to (listOf("Exploded") to emptyList()),
+        "buddhist" to (listOf("Silent", "Silent", "Silent") to emptyList()),
+        "doomsayer" to (listOf("Used") to emptyList()),
+        "gunslinger" to (listOf("No Ability") to emptyList()),
+        "psychopath" to (listOf("Used Today") to emptyList()),
+        "vizier" to (listOf("No Ability") to emptyList()),
+        "lleech" to (listOf("Dead", "Poisoned", "Host") to emptyList()),
+        // Spend marks the ability needs and the official set has no label for.
+        "sage" to (listOf("Woke") to emptyList()),
+        "summoner" to (listOf("Night 1", "Night 2", "Night 3", "No Ability") to emptyList()),
+        "wizard" to (listOf("?", "?", "Wish Granted") to emptyList()),
+        // Copy counts the rules must be able to reach.
+        "leviathan" to (
+            listOf("Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Good Player Executed", "Good Player Executed")
+                to emptyList()
+            ),
+        "snakecharmer" to (listOf("Poisoned", "Poisoned") to emptyList()),
+        "sweetheart" to (listOf("Drunk", "Drunk") to emptyList()),
+        "widow" to (listOf("Poisoned", "Poisoned", "Know") to emptyList()),
+        // The Boffin's grant is a second character token in the official
+        // procedure; the app has one token per seat, so it is a global reminder.
+        "boffin" to (emptyList<String>() to listOf("Demon Has This Ability")),
+        // A fact about the whole table, not about the seat it is drawn on.
+        "minstrel" to (emptyList<String>() to listOf("Everyone Is Drunk")),
+    )
+
     @Test
     fun `reminder labels match the official data including copy counts`() {
         for (role in official) {
             val bundled = assertNotNull(data.character(role.id), role.id)
+            val allowed = appReminders[role.id]
+            if (allowed != null) {
+                assertEquals(allowed.first, bundled.reminders, "${role.id}: app reminders")
+                assertEquals(allowed.second, bundled.remindersGlobal, "${role.id}: app remindersGlobal")
+                // The app may only ADD. Every official label must still be
+                // there, at least as many times as the official data lists it.
+                val have = bundled.allReminders.groupingBy { it }.eachCount()
+                for ((label, want) in (role.reminders + role.remindersGlobal).groupingBy { it }.eachCount()) {
+                    assertTrue(
+                        (have[label] ?: 0) >= want,
+                        "${role.id}: the app dropped official reminder '$label' " +
+                            "(${have[label] ?: 0} of $want)",
+                    )
+                }
+                continue
+            }
             assertEquals(
                 role.reminders,
                 bundled.reminders,
@@ -133,6 +198,9 @@ class DataParityTest {
                 "${role.id}: remindersGlobal",
             )
         }
+        // Every allow-list row must name a real character, so a rename upstream
+        // cannot leave a stale licence behind.
+        for (id in appReminders.keys) assertNotNull(data.character(id), "unknown allow-list id: $id")
         // The multiplicity is the whole point of the copy-count check: a Pukka
         // holds two Poisoned tokens at once, which is what makes poison-then-kill
         // expressible at all (lead D4).

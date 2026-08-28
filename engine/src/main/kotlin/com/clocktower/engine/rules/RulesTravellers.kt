@@ -106,6 +106,14 @@ internal val TRAVELLER_RULES: List<CharacterRule> = listOf(
  */
 private fun beggar(): CharacterRule = CharacterRule(
     id = "beggar",
+    // "If a dead player gives you their vote token, you learn their alignment."
+    // The donation has to be visible in the grimoire for the rest of the game
+    // and the official set carries no label for it (WP6C data change). The
+    // donor goes in `PlacedReminder.targetPlayerId`, so one token is enough for
+    // each gift and the note names who gave it.
+    tokens = listOf(
+        TokenRule("beggar", "Token", effect = null, until = Until.FOREVER, endsWithSource = false),
+    ),
     standing = StandingRule("beggar") { state, holder, _ ->
         if (!holder.alive || !holder.seated) {
             emptyList()
@@ -176,6 +184,12 @@ private fun bureaucrat(): CharacterRule = markVoter(
 private fun gunslinger(): CharacterRule = CharacterRule(
     id = "gunslinger",
     killCause = DeathCause.DAY_ABILITY,
+    // Once per DAY, not per game, so no `spentLabel` (lead D49) — the ledger
+    // still owns availability and this token is what the storyteller sees.
+    // Swept at dawn with the rest of the day's markers.
+    tokens = listOf(
+        TokenRule("gunslinger", "No Ability", effect = null, until = Until.DAWN),
+    ),
     day = DayRule(
         ability = DayAbility(
             label = "Gunslinger shot",

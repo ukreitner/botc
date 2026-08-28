@@ -105,6 +105,16 @@ private fun boffin() = CharacterRule(
     // Night 1 happens before anyone can be dead, and the grant is a setup fact:
     // the row exists while a Boffin seat exists.
     actsWhileDead = true,
+    // The wiki runs the Boffin by laying a SECOND CHARACTER TOKEN next to the
+    // Demon's. The grimoire has one token per seat, so WP6C gave the grant a
+    // global reminder instead: it names a character that is not in play, which
+    // is exactly what `remindersGlobal` is for. The granted character's id goes
+    // in `PlacedReminder.characterId`; the label is the same either way.
+    tokens = listOf(
+        TokenRule(
+            "boffin", "Demon Has This Ability", effect = null, until = Until.FOREVER,
+        ),
+    ),
     firstNight = NightRule(
         gate = Gates.actsWhileDead,
         prompt = "Wake the Boffin and the Demon. Show 'This character selected you' and the " +
@@ -176,6 +186,16 @@ private fun grantOf(state: GameState): String? =
 private fun boomdandy() = CharacterRule(
     id = "boomdandy",
     killCause = DeathCause.EVIL_ABILITY,
+    // "Declare that the Boomdandy has exploded." The explosion runs across a
+    // ring of kills, a 10-to-1 countdown and a finger vote, so the state has to
+    // survive between storyteller taps; the official set had no label for it
+    // (WP6C data change). It ends the game, so it never expires.
+    tokens = listOf(
+        TokenRule(
+            "boomdandy", "Exploded", effect = null, until = Until.FOREVER,
+            endsWithSource = false, grimoireCentre = true,
+        ),
+    ),
     day = DayRule(
         onExecution = { ctx ->
             val record = ctx.record
@@ -703,12 +723,17 @@ private fun organGrinder(): CharacterRule {
  * executed, you only die if you lose roshambo."
  *
  * The roshambo half is WP3's execution consequence and is left alone; this row
- * adds the day tool WP3 has no home for. The "used today" mark is engine state
- * (a `STATEMENT` ledger row), not a token — `characters.json` declares none.
+ * adds the day tool WP3 has no home for. Once per DAY, not per game, so no
+ * `spentLabel` (lead D49): the `STATEMENT` ledger row stays the authority and
+ * the `Used Today` token WP6C added to `characters.json` is the grimoire's copy
+ * of it, closing the window from either side.
  */
 private fun psychopath() = CharacterRule(
     id = "psychopath",
     killCause = DeathCause.DAY_ABILITY,
+    tokens = listOf(
+        TokenRule("psychopath", "Used Today", effect = null, until = Until.DAWN),
+    ),
     day = DayRule(
         ability = DayAbility(
             label = "Public kill",
@@ -720,7 +745,8 @@ private fun psychopath() = CharacterRule(
                     Status.hasAbility(state, lookup, holder.id) &&
                     // "before nominations": the window closes with the first real one.
                     state.nominations.none { it.day == state.cycle && !it.isExile } &&
-                    Memory.statementsOn(state, state.cycle, sourceId = "psychopath").isEmpty()
+                    Memory.statementsOn(state, state.cycle, sourceId = "psychopath").isEmpty() &&
+                    seatsHolding(state, "psychopath", "Used Today").none { it.id == holder.id }
             },
         ),
     ),
@@ -799,6 +825,10 @@ private fun summoner() = CharacterRule(
             countdownNext = "Night 3", exclusiveGroup = "summoner.night",
         ),
         TokenRule("summoner", "Night 3", null, Until.DUSK, exclusiveGroup = "summoner.night"),
+        // `MarkSpent` removes the Night 3 token, so without this the grimoire
+        // had nothing left saying the Summoner is finished. `spentLabel` in
+        // `characters.json` names it, so `Gates.notSpent` reads it too.
+        TokenRule("summoner", "No Ability", EffectKind.SPENT, Until.FOREVER),
     ),
 )
 
@@ -859,6 +889,14 @@ private fun vizier() = CharacterRule(
         },
         wakeCounts = WakeCount.NONE,
     ),
+    // The Courtier/Preacher jinx: "if the Vizier loses their ability, they LEARN
+    // this, and cannot die during the day". The lost ability is a state the
+    // table can see, so it needs a token; the official set is empty (WP6C data
+    // change). It does not carry NO_ABILITY — whatever stripped the Vizier owns
+    // that effect, and the standing DAY_IMMUNE row above deliberately survives.
+    tokens = listOf(
+        TokenRule("vizier", "No Ability", effect = null, until = Until.FOREVER),
+    ),
 )
 
 // ---------------------------------------------------------------------------
@@ -916,12 +954,18 @@ private fun widow(): CharacterRule {
     return CharacterRule(
         id = "widow",
         firstNight = rule,
-        // A mid-game Widow needs the same step on a later night. `widow` is absent
-        // from `night_and_jinxes.json`'s otherNight list today (filed to WP5), so
-        // this only renders once the data lands.
+        // A mid-game Widow needs the same step on a later night: the wiki's own
+        // example is a Pit-Hag who becomes the Widow on night 3 and runs the
+        // whole step then. WP6C put `widow` into the otherNight order (straight
+        // after the Poisoner, as on the first night) so this row renders.
         otherNight = rule,
         tokens = listOf(
-            TokenRule("widow", "Poisoned", EffectKind.POISONED, Until.FOREVER, impairs = true),
+            // Two copies: the poison lasts until the Widow dies, so a second
+            // Widow's victim must not un-poison the first one.
+            TokenRule(
+                "widow", "Poisoned", EffectKind.POISONED, Until.FOREVER,
+                copies = 2, impairs = true,
+            ),
             TokenRule("widow", "Know", null, Until.FOREVER),
         ),
         onDeath = listOf(
@@ -1019,7 +1063,13 @@ private fun wizard(): CharacterRule {
         otherNight = rule,
         // Two physical "?" tokens, both free text: the Wizard is the driving case
         // for `PlacedReminder.note`, and both may sit on different seats at once.
-        tokens = listOf(TokenRule("wizard", "?", null, Until.FOREVER, copies = 2)),
+        // They track the wish's ongoing effects, never the spend — hence the
+        // separate `Wish Granted` mark WP6C added and `characters.json` names as
+        // `spentLabel`, so a DECLINED wish leaves the Wizard free to wish again.
+        tokens = listOf(
+            TokenRule("wizard", "?", null, Until.FOREVER, copies = 2),
+            TokenRule("wizard", "Wish Granted", EffectKind.SPENT, Until.FOREVER),
+        ),
     )
 }
 

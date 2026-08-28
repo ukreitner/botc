@@ -101,6 +101,7 @@ private const val NO_ABILITY = "No Ability"
 private const val ONCE = "Once"
 private const val POISONED = "Poisoned"
 private const val TWIN = "Twin"
+private const val WOKE = "Woke"
 
 /** The Demon's own attack, in both the current and the legacy spelling. */
 @Suppress("DEPRECATION")
@@ -472,8 +473,12 @@ private fun snakeCharmer(): CharacterRule {
         otherNight = rule(),
         tokens = listOf(
             // Per victim and permanent: it outlives nothing, and a second charm
-            // must never cure the first victim.
-            TokenRule(SNAKE_CHARMER, POISONED, EffectKind.POISONED, Until.FOREVER, impairs = true),
+            // must never cure the first victim — hence two copies (WP6C data
+            // change; the official list carries one).
+            TokenRule(
+                SNAKE_CHARMER, POISONED, EffectKind.POISONED, Until.FOREVER,
+                copies = 2, impairs = true,
+            ),
         ),
     )
 }
@@ -795,6 +800,11 @@ private fun sage() = CharacterRule(
         },
         infoId = SAGE,
     ),
+    // The Sage wakes exactly once. `MarkSpent` used to write a LABELLESS spent
+    // effect because the official reminder set is empty, so nothing showed in
+    // the grimoire; WP6C added `Woke` and named it as `spentLabel`, which is
+    // what `MarkSpent` and `Gates.notSpent` both read.
+    tokens = listOf(TokenRule(SAGE, WOKE, EffectKind.SPENT, Until.FOREVER)),
 )
 
 // ---------------------------------------------------------------------------
@@ -869,9 +879,11 @@ private fun sweetheart() = CharacterRule(
     ),
     tokens = listOf(
         // "from now on" — it outlives the Sweetheart deliberately (lead D3).
+        // Two copies (WP6C data change): a second Sweetheart, or a Sweetheart
+        // resurrected and killed again, must not un-drunk the first victim.
         TokenRule(
             SWEETHEART, DRUNK, EffectKind.DRUNK, Until.FOREVER,
-            endsWithSource = false, impairs = true,
+            copies = 2, endsWithSource = false, impairs = true,
         ),
     ),
     onDeath = listOf(

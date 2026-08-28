@@ -212,6 +212,17 @@ private fun angel() = CharacterRule(
             "angel", "Something Bad", effect = null, until = Until.FOREVER,
             endsWithSource = false,
         ),
+        // The wiki's "poisoned, or mad, or can't vote today" — the first two
+        // are generic storyteller tokens; these two are the Angel's own, added
+        // by WP6C so the penalty can be placed, read and swept at dusk.
+        TokenRule(
+            "angel", "No Ability", EffectKind.NO_ABILITY, Until.DUSK,
+            endsWithSource = false, impairs = true,
+        ),
+        TokenRule(
+            "angel", "Can't Vote", EffectKind.NO_VOTE, Until.DUSK,
+            endsWithSource = false,
+        ),
     ),
     firstNight = NightRule(
         gate = fabledAlwaysFires(),
@@ -277,11 +288,20 @@ private fun angel() = CharacterRule(
  * Buddhist — "For the first 2 minutes of each day, veteran players may not talk."
  *
  * A day-timer card with no rules effect: the silence is social, never enforced
- * by `checkNomination`. The official reminder set is EMPTY, so the digest's
- * `Silent` token cannot be declared (WP5 follow-up).
+ * by `checkNomination`. The official reminder set is EMPTY; WP6C added the
+ * digest's `Silent` token so the declared veterans are visible in the grimoire.
  */
 private fun buddhist() = CharacterRule(
     id = "buddhist",
+    // "Declare which players are Buddhists" — three copies because more than one
+    // veteran is normally named. NEVER an impairment: a silent player has their
+    // full ability, they simply may not talk (characters/buddhist.md test 4).
+    tokens = listOf(
+        TokenRule(
+            "buddhist", "Silent", effect = null, until = Until.FOREVER, copies = 3,
+            endsWithSource = false, impairs = false,
+        ),
+    ),
     firstNight = NightRule(
         gate = fabledAlwaysFires(),
         prompt = "Announce which players are affected by the Buddhist.",
@@ -392,12 +412,19 @@ private fun djinn() = CharacterRule(
  *
  * Once per PLAYER, not once per game: `FabledEntry.spentBy` holds the invokers,
  * so a resurrected invoker stays spent. The count is of *players*, so Travellers
- * count (`aliveCountWithTravellers`). The official reminder set is empty, so the
- * digest's `Used` token cannot be declared (WP5 follow-up).
+ * count (`aliveCountWithTravellers`). The official reminder set is empty; WP6C
+ * added the digest's `Used` token, which is the grimoire's copy of `spentBy` —
+ * `spentBy` stays the authority, so the token never gates anything.
  */
 private fun doomsayer() = CharacterRule(
     id = "doomsayer",
     killCause = DeathCause.STORYTELLER,
+    tokens = listOf(
+        TokenRule(
+            "doomsayer", "Used", effect = null, until = Until.FOREVER,
+            endsWithSource = false,
+        ),
+    ),
     day = referenceNote(
         "doomsayer",
         "Doomsayer — while 4 or more players live, any living player may publicly spend it once " +
@@ -576,10 +603,12 @@ private fun fiddler() = CharacterRule(
  * Hell's Librarian — "Something bad might happen to whoever talks when the
  * Storyteller has asked for silence."
  *
- * The official token is SOMETHING BAD only; the "no ability today" and "no vote
- * today" penalties have no data label (WP5 follow-up), so they are applied as
- * storyteller rulings — `NO_ABILITY` / `NO_VOTE` effects until DUSK — rather
- * than invented tokens.
+ * The wiki's own token is SOMETHING BAD, which stands in for a penalty the
+ * storyteller has not chosen yet. The two penalties the page names — "loses
+ * their ability today", "cannot vote today" — are day-scoped states the
+ * grimoire has to show and the sweep has to clear, so WP6C gave them labels in
+ * `characters.json`. Both end at dusk and neither ends with the Hell's
+ * Librarian: the punishment is not sustained by the Fabled.
  */
 private fun hellsLibrarian() = CharacterRule(
     id = "hellslibrarian",
@@ -587,6 +616,14 @@ private fun hellsLibrarian() = CharacterRule(
     tokens = listOf(
         TokenRule(
             "hellslibrarian", "Something Bad", effect = null, until = Until.FOREVER,
+            endsWithSource = false,
+        ),
+        TokenRule(
+            "hellslibrarian", "No Ability", EffectKind.NO_ABILITY, Until.DUSK,
+            endsWithSource = false, impairs = true,
+        ),
+        TokenRule(
+            "hellslibrarian", "No Vote", EffectKind.NO_VOTE, Until.DUSK,
             endsWithSource = false,
         ),
     ),
@@ -899,8 +936,9 @@ internal fun demonAttackCouldEndGame(
  * they are mad the nominee is good or they might die."
  *
  * A madness obligation attached to a nomination. The official reminder set is
- * empty (WP5 follow-up), so the madness is a storyteller ruling recorded as a
- * nomination trigger rather than an invented token.
+ * empty and the wiki's How to Run names no token either (re-checked in WP6C),
+ * so the madness stays a storyteller ruling recorded as a nomination trigger
+ * rather than an invented token. Nothing to add in `characters.json`.
  */
 private fun bigWig() = CharacterRule(
     id = "bigwig",
