@@ -194,7 +194,37 @@ fun SetupScreen(
     } else {
         Setup.bagWarnings(selected, residentCount, seatlessIds, null)
     }
-    val seatFilling = selected.count { it.id !in seatlessIds }
+    // A-5: the header and the bars are computed from EXACTLY the inputs the
+    // validator above was given — Fabled ids, the seatless acknowledgement and
+    // all. They used to call `allowedDistributions(playerCount, selected)` with
+    // none of it, so a Sentinel game read "Need: … 4 outsiders" while the
+    // validator was happily accepting 2, 3, 4 or 5.
+    val targets = if (script == null || !validCount) {
+        emptyMap()
+    } else {
+        Setup.bagTargets(
+            bag = selected,
+            playerCount = residentCount,
+            fabledIds = fabledIds,
+            inPlayIds = seatlessIds,
+            state = null,
+            virtual = emptyList(),
+        )
+    }
+    val bagCounts = if (script == null || !validCount) {
+        emptyMap()
+    } else {
+        Setup.bagCounts(selected, residentCount, seatlessIds, null, emptyList())
+    }
+    // The validator's own partition, never a second opinion: a Lil' Monsta in
+    // the bag fills no seat whether or not the box beside it is ticked, and the
+    // tray used to read "IN THE BAG · 9 / 8" because this counted it (A-8).
+    val dealable = if (script == null || !validCount) {
+        selected
+    } else {
+        Setup.seatFillingBag(selected, residentCount, seatlessIds, null, emptyList())
+    }
+    val seatFilling = dealable.size
     val ready = script != null && validCount && seatFilling == residentCount && issues.isEmpty()
 
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -308,6 +338,8 @@ fun SetupScreen(
                         BagHeader(
                             playerCount = residentCount,
                             selected = selected,
+                            targets = targets,
+                            counts = bagCounts,
                             outsiderBranch = outsiderBranch,
                             onBranch = { outsiderBranch = it },
                             issues = issues,
@@ -381,7 +413,8 @@ fun SetupScreen(
         BagTray(
             selected = selected,
             pinnedIds = pinnedIds,
-            seatlessIds = seatlessIds,
+            seatlessIds = selected.map { it.id } - dealable.map { it.id }.toSet(),
+            inBag = seatFilling,
             playerCount = residentCount,
             onRemove = { index ->
                 bagIds = ArrayList(bagIds.filterIndexed { i, _ -> i != index })
@@ -409,8 +442,7 @@ fun SetupScreen(
                     // Deal exactly the resolved, seat-filling tokens: `Seats.deal`
                     // REQUIRES one per non-Traveller seat and throws otherwise, so
                     // never hand it a raw id list that might not resolve.
-                    val dealt = selected.map { it.id }.filter { it !in seatlessIds }
-                    viewModel.deal(dealt, Time.epochMillis())
+                    viewModel.deal(dealable.map { it.id }, Time.epochMillis())
                     handingOut = true
                 } else {
                     onGameStarted()
@@ -727,6 +759,10 @@ private fun TableCard(
 private fun BagHeader(
     playerCount: Int,
     selected: List<Character>,
+    /** What the VALIDATOR will accept per team — never recomputed here (A-5). */
+    targets: Map<Team, com.clocktower.engine.TeamTarget>,
+    /** What the bag actually holds per team, seatless tokens excluded. */
+    counts: Map<Team, Int>,
     outsiderBranch: Int?,
     onBranch: (Int?) -> Unit,
     issues: List<String>,
@@ -741,34 +777,29 @@ private fun BagHeader(
     onRandomize: (keepCurrent: Boolean) -> Unit,
     onClear: () -> Unit,
 ) {
-    // EVERY legal branch, not just the last one the parser saw
-    // (setup-and-home #9): the header and the validator must agree.
-    val allowed = remember(playerCount, selected) {
-        runCatching { Setup.allowedDistributions(playerCount, selected) }.getOrDefault(emptySet())
-    }
-    val counts = selected.groupingBy { it.team }.eachCount()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            "Need: " + listOf(
-                Team.TOWNSFOLK to "townsfolk",
-                Team.OUTSIDER to "outsiders",
-                Team.MINION to "minions",
-                Team.DEMON to "demon",
-            ).joinToString(" · ") { (team, label) ->
-                val options = allowed.map { it.count(team) }.distinct().sorted()
-                "${options.joinToString(" or ")} $label"
+            "Need: " + Setup.BAG_TEAMS.joinToString(" · ") { team ->
+                val target = targets[team]
+                when {
+                    target == null -> ""
+                    target.free -> "any ${teamWord(team, 2)}"
+                    else -> target.counts.joinToString(" or ") + " " +
+                        teamWord(team, target.counts.lastOrNull() ?: 0)
+                }
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // Held at two lines so ticking a setup-modifying character cannot
+            // shift the character list underneath it (A-9).
+            minLines = 2,
+            maxLines = 3,
         )
-        for ((team, label) in listOf(
-            Team.TOWNSFOLK to "TF",
-            Team.OUTSIDER to "OUT",
-            Team.MINION to "MIN",
-            Team.DEMON to "DEM",
-        )) {
+        for ((team, label) in Setup.BAG_TEAMS.zip(listOf("TF", "OUT", "MIN", "DEM"))) {
             val have = counts[team] ?: 0
-            val want = allowed.map { it.count(team) }.maxOrNull() ?: 0
+            val target = targets[team] ?: continue
+            val ok = target.accepts(have)
+            val want = target.target(have)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     label,
@@ -777,14 +808,29 @@ private fun BagHeader(
                     modifier = Modifier.width(34.dp),
                 )
                 LinearProgressIndicator(
-                    progress = { if (want == 0) 0f else (have.toFloat() / want).coerceIn(0f, 1f) },
+                    // A legal LOWER branch is complete, not "incomplete": the
+                    // bar reads what the validator thinks, nothing else (A-5).
+                    progress = {
+                        when {
+                            ok -> 1f
+                            want == null || want == 0 -> 0f
+                            else -> (have.toFloat() / want).coerceIn(0f, 1f)
+                        }
+                    },
                     color = team.color,
                     modifier = Modifier.weight(1f).height(6.dp),
                 )
                 Text(
-                    "  $have/$want",
+                    "  $have/" + when {
+                        target.free -> "any"
+                        else -> target.counts.joinToString(" or ")
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (ok) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
                 )
             }
         }
@@ -794,7 +840,7 @@ private fun BagHeader(
             selected.mapNotNull(Setup::modifierFor).filter { it.choice }
         }
         if (branches.isNotEmpty()) {
-            val options = allowed.map { it.outsiders }.distinct().sorted()
+            val options = targets[Team.OUTSIDER]?.counts.orEmpty()
             Text(
                 branches.joinToString(", ") { "${it.characterId} [${it.text}]" } +
                     " — which are you running?",
@@ -892,14 +938,17 @@ private fun FabledPicker(
 private fun BagTray(
     selected: List<Character>,
     pinnedIds: List<String>,
+    /** Tokens the validator has set aside as filling no seat. */
     seatlessIds: List<String>,
+    /** How many tokens actually fill a seat — the validator's own count. */
+    inBag: Int,
     playerCount: Int,
     onRemove: (index: Int) -> Unit,
 ) {
     HorizontalDivider()
     Column(Modifier.fillMaxWidth().background(Twilight).padding(horizontal = 8.dp, vertical = 6.dp)) {
         Text(
-            "IN THE BAG · ${selected.count { it.id !in seatlessIds }} / $playerCount",
+            "IN THE BAG · $inBag / $playerCount",
             style = MaterialTheme.typography.labelSmall,
             color = AgedGold,
         )
@@ -1080,6 +1129,18 @@ private fun rollBag(
     }
     // Last resort: no pins at all is still better than nothing.
     return if (required.isEmpty()) null else Setup.randomBag(pool, playerCount, random)
+}
+
+/** "1 outsider" / "2 outsiders" — the bag header speaks English (A-13). */
+private fun teamWord(team: Team, count: Int): String {
+    val singular = when (team) {
+        Team.TOWNSFOLK -> "townsfolk"
+        Team.OUTSIDER -> "outsider"
+        Team.MINION -> "minion"
+        else -> "demon"
+    }
+    // "Townsfolk" is already both; the rest take an -s.
+    return if (count == 1 || team == Team.TOWNSFOLK) singular else singular + "s"
 }
 
 private fun distributionLabel(count: Int): String {
