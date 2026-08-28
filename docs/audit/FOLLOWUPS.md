@@ -82,3 +82,8 @@
 - (from Fix-G) `GameShell.kt:452` — pass `viewModel.lookup` to `GameLogDialog(state, lookup, onDismiss)` so ledger rows name the Empath, not `empath` (defaulted fallback = the script's homebrew lookup). → wave-2 polish.
 - (from Fix-G) `GameActionsApi.kt` — `setHouseRules` is an extension in GameExtras.kt; move it into the interface's per-WP block for D26 to be literal. → wave-2 polish.
 - (from Fix-G) `tools/emu/ui.py` — `tap`/`audit` should skip or refuse a node whose centre falls outside its nearest scrollable ancestor's bounds (the phantom hit band under a sticky footer is what A-20 tapped; G-3's residual).
+- (from Fix-E) `GameActionsApi.kt:422` — `markNightStepDone` → `NightPlan.markDone(it, key.token)` (identical behaviour, stops re-implementing the rule). → wave-2 polish.
+- (from Fix-E) `docs/audit/ARCHITECTURE.md:2672` — drop "undo this step" from the night card's drawer list (now `[Undo]` on the collapsed row). → wave-2 polish.
+- (from Fix-E) `tools/emu/README.md` — note: the uiautomator tree can go empty right after an install; `./emu.sh launch <serial>` (no `--fresh`) restores it without losing the game. → wave-2 polish.
+- (from Fix-E) Grandmother's NIGHT picker still lists the Grandmother herself (`ShowInfo` has no NOT_SELF constraint); harmless now that the Grandchild is preselected. Later wave.
+- NavigationBar gesture inset (GameShell) flagged by ALL THREE wave-2 agents as the only remaining audit violation on every in-game screen. → wave-2 polish (single deliberate shell change + full scenario re-run).
