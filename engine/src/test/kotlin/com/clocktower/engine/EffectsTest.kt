@@ -697,4 +697,35 @@ class EffectsTest {
                 .none { it.label == "Poisoned" },
         )
     }
+
+    // ---- playtest D P2-12: a token whose source stopped working ------------
+
+    @Test
+    fun `a rendered token says when its rule is no longer in force`() {
+        // The Sailor makes the Chef drunk; the Poisoner then poisons the Sailor.
+        var state = game("sailor", "chef", "poisoner", "imp", "mayor")
+        val sailor = state.seat("sailor")
+        val chef = state.seat("chef")
+        state = Effects.place(
+            state = state,
+            target = chef,
+            kind = EffectKind.DRUNK,
+            sourceCharacterId = "sailor",
+            sourcePlayerId = sailor,
+            until = Until.DUSK,
+            label = "Drunk",
+        ).state
+        assertTrue(Status.isImpaired(state, lookup, chef), "the Sailor's drunk applies")
+        assertFalse(Effects.rendered(state, lookup, chef).single().inert)
+
+        state = state.poison("poisoner", sailor)
+
+        assertFalse(
+            Status.isImpaired(state, lookup, chef),
+            "a poisoned Sailor sustains nothing — the engine already knew this",
+        )
+        val token = Effects.rendered(state, lookup, chef).single { it.label == "Drunk" }
+        assertTrue(token.inert, "and the grimoire must say so rather than draw it at full strength")
+        assertFalse(token.suspended, "which is not the same as the storyteller turning it over")
+    }
 }

@@ -230,6 +230,17 @@ data class RenderedToken(
     /** No Dashii-style: no physical token, dotted ring. */
     val derived: Boolean = false,
     val suspended: Boolean = false,
+    /**
+     * On the board, but its rule is NOT in force: the ability sustaining it has
+     * stopped working (`StatusQuery.active` is false).
+     *
+     * A Sailor's `Drunk` on a seat, with the Sailor poisoned, is the case the
+     * playtest caught: the engine was right that the seat was not impaired, and
+     * the grimoire still drew a solid IMPAIRED pip, so a storyteller reading the
+     * circle would have fed the Chambermaid false information (playtest D,
+     * P2-12). Distinct from [suspended], which the storyteller chose.
+     */
+    val inert: Boolean = false,
     val note: String = "",
 )
 
@@ -1157,6 +1168,7 @@ object Effects {
                     expiryText = expiryText(state, it),
                     derived = it.derived,
                     suspended = it.suspended,
+                    inert = !it.suspended && !q.active(it),
                     note = it.note,
                 )
             }

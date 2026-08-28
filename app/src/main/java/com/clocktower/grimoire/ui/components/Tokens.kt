@@ -232,6 +232,12 @@ data class TokenCopies(val label: String, val copies: Int)
  * fill, dimmed glyph — which the wiki recommends over removing a token whose
  * owner has gone drunk or poisoned. [derived] (No Dashii's neighbours) has no
  * physical token, so its ring is dotted rather than solid.
+ *
+ * [inert] is the same hollow look for a token the STORYTELLER did not turn
+ * over: it is on the board but its rule is not in force, because the ability
+ * sustaining it has stopped working. Drawing a poisoned Sailor's `Drunk` at
+ * full strength told the storyteller the opposite of what the engine believed
+ * (playtest D, P2-12).
  */
 @Composable
 fun StatusPip(
@@ -241,17 +247,19 @@ fun StatusPip(
     size: Dp = 18.dp,
     suspended: Boolean = false,
     derived: Boolean = false,
+    inert: Boolean = false,
 ) {
     val fill = group.color
+    val hollow = suspended || inert
     Box(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(if (suspended) Color.Transparent else fill)
+            .background(if (hollow) Color.Transparent else fill)
             .border(
                 width = if (derived) 1.dp else 2.dp,
                 color = when {
-                    suspended -> fill.copy(alpha = 0.7f)
+                    hollow -> fill.copy(alpha = 0.7f)
                     ringColor == Color.Transparent -> fill.copy(alpha = 0.65f)
                     derived -> ringColor.copy(alpha = 0.55f)
                     else -> ringColor
@@ -265,7 +273,7 @@ fun StatusPip(
             fontSize = pipGlyphSp(size.value).sp,
             lineHeight = pipGlyphSp(size.value).sp,
             fontWeight = FontWeight.Bold,
-            color = if (suspended) fill else Color.White,
+            color = if (hollow) fill else Color.White,
             textAlign = TextAlign.Center,
             maxLines = 1,
         )

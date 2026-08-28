@@ -530,11 +530,16 @@ private fun StatusRow(
             ringColor = source?.team?.color ?: Color.Transparent,
             suspended = token.suspended,
             derived = token.derived,
+            inert = token.inert,
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                token.label + if (token.suspended) " (turned over)" else "",
+                token.label + when {
+                    token.suspended -> " (turned over)"
+                    token.inert -> " (not in force)"
+                    else -> ""
+                },
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
@@ -542,6 +547,12 @@ private fun StatusRow(
                     append(source?.name ?: "Storyteller")
                     if (token.expiryText.isNotEmpty()) append(" · ${token.expiryText}")
                     if (token.derived) append(" · no physical token")
+                    // Playtest D P2-12: an effect whose source has stopped
+                    // working is not applying, and the pip must not claim it is.
+                    if (token.inert) {
+                        append(" · doing nothing — ${source?.name ?: "its source"}'s ")
+                        append("ability is not working")
+                    }
                     if (token.note.isNotEmpty()) append(" — ${token.note}")
                 },
                 style = MaterialTheme.typography.bodySmall,
