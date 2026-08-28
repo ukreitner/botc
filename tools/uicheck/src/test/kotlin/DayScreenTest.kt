@@ -340,6 +340,70 @@ class DayScreenTest {
     }
 
     @Test
+    fun `an ineligible hand is shown, is not counted, and cannot put anyone on the block`() {
+        // Playtest C-1 (P0): the chip was dimmed with a reason AND summed.
+        var state = day()
+        state = Seats.assignCharacter(state, seat(state, "Jo"), "voudon", isTraveller = true)
+        val ana = seat(state, "Ana")
+        val jo = seat(state, "Jo")
+        val fay = seat(state, "Fay")
+
+        val illegal = NominationModel.voteView(state, lookup, ana, fay, setOf(ana))
+        assertEquals("only the Voudon and the dead may vote", 1, illegal.threshold)
+        assertTrue("the chip carries its reason", illegal.ineligible.containsKey(ana))
+        assertEquals("and the hand adds nothing", 0, illegal.tally)
+        assertEquals(NominationResult.SAFE, illegal.result)
+        assertTrue(
+            "the lock-in label cannot claim a block: '${NominationModel.lockInLabel(illegal)}'",
+            NominationModel.lockInLabel(illegal).contains("SAFE"),
+        )
+
+        // The Voudon's own hand is the one that counts.
+        val legal = NominationModel.voteView(state, lookup, ana, fay, setOf(jo))
+        assertEquals(1, legal.tally)
+        assertEquals(NominationResult.ABOUT_TO_DIE, legal.result)
+    }
+
+    @Test
+    fun `an illegal Butler hand is listed as uncounted and left out of the tally`() {
+        var state = day()
+        val ivy = seat(state, "Ivy") // the Butler
+        val dee = seat(state, "Dee")
+        state = Effects.addReminder(state, dee, PlacedReminder("butler", "Master"))
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Ana"),
+            seat(state, "Fay"),
+            setOf(ivy, seat(state, "Bo")),
+        )
+        assertEquals("the Master's hand is down: one hand counts", 1, view.tally)
+        assertTrue("and the Butler's hand is called out", view.uncounted.containsKey(ivy))
+        assertTrue(
+            "in words that do not tell the storyteller to count it: '${view.uncounted[ivy]}'",
+            view.uncounted.getValue(ivy).contains("does not count"),
+        )
+    }
+
+    @Test
+    fun `the may-not-vote lines are capped so a Voudon day stays readable`() {
+        var state = day()
+        state = Seats.assignCharacter(state, seat(state, "Jo"), "voudon", isTraveller = true)
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Ana"),
+            seat(state, "Fay"),
+            emptySet(),
+        )
+        val lines = NominationModel.ineligibleLines(view)
+        assertTrue("eleven living seats may not vote", view.ineligible.size > 4)
+        assertEquals(NominationModel.MAX_INELIGIBLE_LINES + 1, lines.size)
+        assertTrue("the tail is summarised: '${lines.last()}'", lines.last().contains("more may not vote"))
+    }
+
+    @Test
     fun `secret voting hides the tally and the block on the whole tab`() {
         var state = day()
         // A living, sober Organ Grinder switches the day into secret voting.

@@ -491,8 +491,12 @@ private fun VotePanel(
             val weight = view.weights[id]
             FilterChip(
                 selected = id in voters,
-                // An ineligible seat stays tappable: the hand DID go up, and
-                // the storyteller may still need it on the record.
+                // A seat the rules say may not vote does not toggle (C-1). The
+                // chip stays on the row with its ⊘ and its reason, because the
+                // hand DID go up and the storyteller has to see that it was
+                // noticed — but it can never reach the tally that decides who
+                // is on the block.
+                enabled = blocked == null,
                 onClick = { onToggleVoter(id) },
                 label = {
                     Text(
@@ -518,10 +522,8 @@ private fun VotePanel(
         }
     }
 
-    for (id in orderedVoters) {
-        view.ineligible[id]?.let {
-            Text("⊘ $it", style = MaterialTheme.typography.bodySmall, color = FadedInk)
-        }
+    for (line in NominationModel.ineligibleLines(view)) {
+        Text("⊘ $line", style = MaterialTheme.typography.bodyMedium, color = FadedInk)
     }
     for ((_, reason) in view.uncounted) {
         Text("! $reason", style = MaterialTheme.typography.bodySmall, color = PaleGold)

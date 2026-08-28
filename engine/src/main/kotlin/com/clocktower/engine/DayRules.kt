@@ -688,10 +688,10 @@ object DayRules {
             .map { it.id }
         // The weighted tally is only recomputed when raw hands were supplied:
         // a caller that passed a headcount straight through keeps it. It goes
-        // through the same Butler filter as [tally] — under secret voting an
-        // Organ Grinder day must not record a hand the rules do not count.
+        // through the same [countedVoters] filter as [tally], so a hand the vote
+        // panel marked ineligible cannot reach the record either (C-1).
+        val counted = countedVoters(state, lookup, nomination.voterIds, nomination.isExile, rules)
         val votes = if (nomination.voterIds.isNotEmpty()) {
-            val counted = countedVoters(state, lookup, nomination.voterIds, nomination.isExile)
             rules.tally(counted) + nomination.extraVotes.values.sum()
         } else {
             nomination.votes
@@ -707,8 +707,10 @@ object DayRules {
             demonIdsAtRecord = nomination.demonIdsAtRecord.ifEmpty { demonIds },
         )
         var next = recordNomination(state, frozen)
+        // Only a hand that COUNTED spends anything: an ineligible hand costs the
+        // seat no ghost vote and no Beggar token (C-1).
         if (!frozen.isExile && rules.spendsGhostVotes) {
-            for (voter in frozen.voterIds) {
+            for (voter in counted) {
                 val p = next.player(voter) ?: continue
                 if (!p.alive && !p.ghostVoteUsed) {
                     next = next.updatePlayer(voter) { it.copy(ghostVoteUsed = true) }
@@ -718,7 +720,7 @@ object DayRules {
         // "You must use a vote token to vote." Only on an execution: the Beggar
         // supports exiles freely and spends nothing (lead D72).
         if (!frozen.isExile) {
-            for (voter in frozen.voterIds) {
+            for (voter in counted) {
                 val p = next.player(voter) ?: continue
                 if (isBeggar(p) && p.voteTokens > 0) {
                     next = next.updatePlayer(voter) { it.copy(voteTokens = it.voteTokens - 1) }
@@ -868,9 +870,8 @@ object DayRules {
     }
 
     /**
-     * The weighted tally for [voterIds]. Applies the Butler exception, which
-     * needs to know who actually voted: under secret voting a Butler whose
-     * Master's hand is down is excluded; otherwise the vote is counted with a hint.
+     * The weighted tally for [voterIds] — over [countedVoters], never over the
+     * raw hands.
      */
     fun tally(
         state: GameState,
@@ -879,25 +880,38 @@ object DayRules {
         isExile: Boolean,
     ): Int {
         val rules = voteRules(state, lookup, isExile)
-        return rules.tally(countedVoters(state, lookup, voterIds, isExile))
+        return rules.tally(countedVoters(state, lookup, voterIds, isExile, rules))
     }
 
     /**
-     * The hands that actually count. Under secret voting (a sober Organ
-     * Grinder) a Butler whose Master's hand is down is dropped; an exile and an
-     * ordinary day count every hand raised.
+     * The hands that actually COUNT, out of the raw hands that went up.
+     *
+     * **A hand the app itself labels "may not vote" can never move the tally**
+     * (playtest C-1). Every raw hand is filtered against the same
+     * [VoteRules.eligibleVoterIds] the vote panel renders its ⊘ from — a spent
+     * ghost vote, a living player under a sober Voudon, an `EffectKind.NO_VOTE`
+     * seat — so the tally, the outcome line, the Lock-in label and the recorded
+     * `Nomination.votes` can never disagree with the reason printed next to the
+     * chip.
+     *
+     * A Butler whose Master's hand is down is dropped on **every** day, not only
+     * under secret voting (playtest C-3; wiki: *"you may only vote if they are
+     * voting too"*). The Butler test runs against the already-eligible hands, so
+     * a Master whose own hand does not count cannot license the Butler's.
+     *
+     * An exile counts every hand once: no ability applies to it at all.
      */
-    private fun countedVoters(
+    fun countedVoters(
         state: GameState,
         lookup: (String) -> Character?,
         voterIds: List<Long>,
         isExile: Boolean,
-    ): List<Long> =
-        if (!isExile && secretVoting(state, lookup)) {
-            voterIds.filterNot { butlerVotingIllegally(state, lookup, it, voterIds) }
-        } else {
-            voterIds
-        }
+        rules: VoteRules = voteRules(state, lookup, isExile),
+    ): List<Long> {
+        if (isExile) return voterIds
+        val eligible = voterIds.filter { it in rules.eligibleVoterIds }
+        return eligible.filterNot { butlerVotingIllegally(state, lookup, it, eligible) }
+    }
 
     /** True when this seat is a Butler whose Master's hand is not up. */
     fun butlerVotingIllegally(

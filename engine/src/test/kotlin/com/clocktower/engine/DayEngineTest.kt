@@ -395,7 +395,11 @@ class DayEngineTest {
     }
 
     @Test
-    fun `a sober Organ Grinder switches on secret voting and drops an illegal Butler vote`() {
+    fun `an illegal Butler hand never counts, secret voting or not`() {
+        // Playtest C-3: this used to be tallied on an ordinary day, so three
+        // legal hands plus the Butler read "about to die" at 4 of 4 when the
+        // legal total was 3 — SAFE. The wiki is unconditional: "you may only
+        // vote if they are voting too".
         var state = day1()
         state = assign(state, 6L, "organgrinder")
         state = assign(state, 1L, "butler")
@@ -405,12 +409,64 @@ class DayEngineTest {
         assertTrue(DayRules.butlerVotingIllegally(state, lookup, 1L, listOf(1L, 2L)))
         assertEquals(1, DayRules.tally(state, lookup, listOf(1L, 2L), isExile = false))
 
-        // Without the Organ Grinder the Butler's vote is tallied anyway.
+        // The same day with no Organ Grinder: still one, not two.
         var open = day1()
         open = assign(open, 1L, "butler")
         open = token(open, 4L, "butler", "Master")
         assertFalse(DayRules.secretVoting(open, lookup))
-        assertEquals(2, DayRules.tally(open, lookup, listOf(1L, 2L), isExile = false))
+        assertEquals(
+            1,
+            DayRules.tally(open, lookup, listOf(1L, 2L), isExile = false),
+            "the Butler's Master is not voting — the hand does not count",
+        )
+        assertEquals(listOf(2L), DayRules.countedVoters(open, lookup, listOf(1L, 2L), isExile = false))
+
+        // With the Master's hand up it counts, and so does the Master's.
+        assertEquals(3, DayRules.tally(open, lookup, listOf(1L, 2L, 4L), isExile = false))
+    }
+
+    @Test
+    fun `an ineligible hand can never move the tally`() {
+        // Playtest C-1 (P0): the vote chips for ineligible voters were dimmed
+        // and given a reason, then summed anyway.
+        var spent = day1()
+        spent = Deaths.attempt(spent, lookup, 2L, KillCause(DeathCause.STORYTELLER)).state
+        spent = spent.updatePlayer(2L) { it.copy(ghostVoteUsed = true) }
+        assertFalse(2L in DayRules.voteRules(spent, lookup, false).eligibleVoterIds)
+        assertEquals(
+            1,
+            DayRules.tally(spent, lookup, listOf(1L, 2L), isExile = false),
+            "a spent ghost vote adds nothing",
+        )
+
+        // A sober Voudon: only the Voudon and the dead may vote, and the
+        // threshold is 1 — the worst case in the finding, where one illegal
+        // living hand put a player on the block.
+        var voudon = day1()
+        voudon = assign(voudon, 7L, "voudon", traveller = true)
+        val rules = DayRules.voteRules(voudon, lookup, isExile = false)
+        assertEquals(1, rules.threshold)
+        assertEquals(0, DayRules.tally(voudon, lookup, listOf(1L), isExile = false))
+        assertEquals(1, DayRules.tally(voudon, lookup, listOf(7L), isExile = false))
+
+        // An exile is untouched: every hand counts once, abilities do not apply.
+        assertEquals(2, DayRules.tally(voudon, lookup, listOf(1L, 3L), isExile = true))
+    }
+
+    @Test
+    fun `an ineligible hand reaches neither the record nor the vote tokens`() {
+        var state = day1()
+        state = Deaths.attempt(state, lookup, 2L, KillCause(DeathCause.STORYTELLER)).state
+        state = state.updatePlayer(2L) { it.copy(ghostVoteUsed = true) }
+
+        state = DayRules.record(state, lookup, nomination(state, 0L, 3L, voters = listOf(1L, 2L)))
+        val recorded = assertNotNull(state.nominations.lastOrNull())
+        assertEquals(1, recorded.votes, "the spent ghost vote is not in the tally")
+        assertEquals(
+            listOf(1L, 2L),
+            recorded.voterIds,
+            "the raw hands stay on the record — only the tally drops them",
+        )
     }
 
     @Test
@@ -430,12 +486,12 @@ class DayEngineTest {
         )
         assertEquals(1, recorded.votes)
 
-        // Without the Organ Grinder both hands count, so record and tally agree there too.
+        // Without the Organ Grinder record and tally still agree — at one.
         var open = day1()
         open = assign(open, 1L, "butler")
         open = token(open, 4L, "butler", "Master")
         open = DayRules.record(open, lookup, nomination(open, 0L, 3L, voters = voters), force = true)
-        assertEquals(2, assertNotNull(open.nominations.lastOrNull()).votes)
+        assertEquals(1, assertNotNull(open.nominations.lastOrNull()).votes)
     }
 
     @Test

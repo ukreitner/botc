@@ -153,15 +153,15 @@ object NominationModel {
         val ineligible = state.seats
             .filterNot { it.id in rules.eligibleVoterIds }
             .associate { it.id to ineligibleReason(it) }
+        // Which hands actually counted, straight from the engine — the tally,
+        // the outcome line and this list can never disagree (C-1).
+        val counted = DayRules.countedVoters(state, lookup, orderedVoters, isExile, rules)
         val uncounted = orderedVoters
-            .filter { DayRules.butlerVotingIllegally(state, lookup, it, orderedVoters) }
+            .filterNot { it in counted }
             .associateWith { id ->
                 val name = state.player(id)?.name ?: "That seat"
-                if (secret) {
-                    "$name's hand is up but doesn't count — their Master's hand is down."
-                } else {
-                    "$name's Master is not voting — tally it anyway, then check."
-                }
+                ineligible[id]
+                    ?: "$name's hand is up but does not count — their Master's hand is down."
             }
 
         val highest = DayRules.highestVotesToday(state)
@@ -236,6 +236,18 @@ object NominationModel {
         else -> "Check this, then call the vote."
     }
 
+    /**
+     * The ⊘ lines under the chip row: one per seat that may not vote at all,
+     * capped so a Voudon day does not print one for every living seat. The
+     * per-seat chip carries its own ⊘ and is not tappable, so this is the
+     * explanation, not the only signal.
+     */
+    fun ineligibleLines(view: VoteView, max: Int = MAX_INELIGIBLE_LINES): List<String> {
+        val all = view.order.mapNotNull { view.ineligible[it] }
+        if (all.size <= max) return all
+        return all.take(max) + "…and ${all.size - max} more may not vote."
+    }
+
     private fun ineligibleReason(player: Player): String = when {
         !player.alive && player.ghostVoteUsed -> "${player.name} — ghost vote already spent."
         !player.alive -> "${player.name} — dead."
@@ -259,4 +271,7 @@ object NominationModel {
     /** Never narrower than this: a name plus a seat number has to fit (§3.4.7). */
     const val MIN_SEAT_DP: Float = 46f
     const val MAX_SEAT_DP: Float = 78f
+
+    /** How many "may not vote" lines the panel prints before it summarises. */
+    const val MAX_INELIGIBLE_LINES: Int = 3
 }
