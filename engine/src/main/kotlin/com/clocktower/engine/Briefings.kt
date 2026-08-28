@@ -373,6 +373,41 @@ object Briefings {
                     ),
                 )
             }
+            // The Butler is the commonest day-time constraint on the base
+            // scripts, and it was the one the briefing never mentioned: a table
+            // with a living Butler and a placed Master read "Nothing constrains
+            // today" (playtest C-6).
+            for (seat in state.seats) {
+                if (seat.characterId?.let(Character::normalizeId) != "butler") continue
+                // While they can still vote at all — a spent ghost vote ends it.
+                if (!seat.alive && seat.ghostVoteUsed) continue
+                if (!Status.hasAbility(state, lookup, seat.id)) continue
+                val master = DayRules.masterOf(state, seat.id)?.let { state.player(it) } ?: continue
+                add(
+                    BriefingItem(
+                        key = "day:$day:butler:${seat.id}",
+                        kind = BriefingKind.STANDING_FACT,
+                        severity = BriefingSeverity.ACTION,
+                        sourceId = "butler",
+                        text = "${seat.name} (Butler) may only vote if ${master.name} votes — " +
+                            "a hand raised alone does not count.",
+                        playerId = seat.id,
+                    ),
+                )
+            }
+            for (id in DayRules.mustVote(state, lookup)) {
+                val seat = state.player(id) ?: continue
+                add(
+                    BriefingItem(
+                        key = "day:$day:zealot:$id",
+                        kind = BriefingKind.STANDING_FACT,
+                        severity = BriefingSeverity.ACTION,
+                        sourceId = "zealot",
+                        text = "${seat.name} (Zealot) must vote for every nomination today.",
+                        playerId = id,
+                    ),
+                )
+            }
             DayRules.holderOfWithAbility(state, lookup, "psychopath")?.let { psycho ->
                 add(
                     BriefingItem(

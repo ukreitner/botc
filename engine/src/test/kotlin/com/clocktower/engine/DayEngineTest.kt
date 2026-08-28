@@ -414,10 +414,49 @@ class DayEngineTest {
     }
 
     @Test
+    fun `the Butler's Master is a standing fact of the day briefing`() {
+        // Playtest C-6: a living Butler with a placed Master read
+        // "Nothing constrains today" — the commonest day constraint on the
+        // base scripts was the one the briefing never mentioned.
+        var state = day1()
+        state = assign(state, 1L, "butler")
+        val butlerName = assertNotNull(state.player(1L)).name
+        val masterName = assertNotNull(state.player(2L)).name
+
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .none { it.sourceId == "butler" },
+            "with no Master token there is nothing to say yet",
+        )
+
+        state = token(state, 2L, "butler", "Master")
+        val fact = assertNotNull(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .find { it.sourceId == "butler" },
+            "the Butler's constraint is a standing fact",
+        )
+        assertTrue(butlerName in fact.text && masterName in fact.text, fact.text)
+        assertTrue("may only vote if" in fact.text, fact.text)
+
+        // A spent ghost vote ends it: they cannot vote at all any more.
+        state = Deaths.attempt(state, lookup, 1L, KillCause(DeathCause.STORYTELLER)).state
+        state = state.updatePlayer(1L) { it.copy(ghostVoteUsed = true) }
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .none { it.sourceId == "butler" },
+        )
+    }
+
+    @Test
     fun `a Zealot must vote with five or more alive`() {
         var state = day1(6)
         state = assign(state, 3L, "zealot")
         assertEquals(listOf(3L), DayRules.mustVote(state, lookup))
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DAY_START).standing
+                .any { it.sourceId == "zealot" && "must vote" in it.text },
+            "and the briefing says so before nominations open",
+        )
         state = Deaths.attempt(state, lookup, 5L, KillCause(DeathCause.STORYTELLER)).state
         state = Deaths.attempt(state, lookup, 4L, KillCause(DeathCause.STORYTELLER)).state
         assertEquals(4, state.aliveCountWithTravellers)
