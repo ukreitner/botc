@@ -1,11 +1,16 @@
-# Minimal from-scratch repro of the three grimoire/day defects that do not
-# need the 12-player BMR game:
+# The three grimoire/day defects that do not need the 12-player BMR game.
 #
-#   * step 06-09 : "+ Token" -> Drunk, then Remove twice -> the token stays
-#   * step 14-15 : "Show the grimoire to a player..." -> both buttons are
-#                  under the gesture inset (audit reports CENTRE UNTAPPABLE)
-#   * step 22-24 : the nomination screen -> `audit` reports the seat circle
-#                  overlapping the vote-chip row
+# It began as a REPRO — every step below was written to walk into the bug and
+# leave a screenshot of it. All three are fixed now, so the same walk asserts
+# the fix instead:
+#
+#   * "+ Token" -> Drunk -> Remove really removes it (it used to be a no-op,
+#     and so was Suspend)
+#   * "Show the grimoire to a player…" -> [HAND IT OVER] / [Cancel] are inside
+#     the safe area and tappable by NAME (they used to sit under the gesture
+#     inset, reachable only by hitting a 4 px sliver with `tapxy`)
+#   * the nomination screen -> `audit` finds no overlap between the seat circle
+#     and the vote-chip row
 #
 #   ./emu.sh launch emulator-5560 --fresh
 #   ./scenario.py emulator-5560 D_repro_grimoire
@@ -19,33 +24,39 @@ STEPS = [
     ("tap",   "^Close$"),
     ("sleep", 1.0),
 
-    # --- Remove / Suspend on a hand-placed token are no-ops ---------------
+    # --- Remove really removes a hand-placed token ------------------------
     ("tap",   "^Seat 1,"),
     ("sleep", 1.2),
     ("tap",   r"\+ Token"),
     ("sleep", 1.5),
     ("tap",   "^Drunk$"),
     ("sleep", 1.5),
-    ("tap",   "^Remove$"),     # nothing happens
+    ("find",  "^Remove$"),     # the token is on the seat, with its controls
+    ("tap",   "^Remove$"),
     ("sleep", 1.5),
-    ("tap",   "^Suspend$"),    # nothing happens either
-    ("sleep", 1.5),
-    ("tap",   "^Remove$"),     # still nothing: the token is still listed
-    ("sleep", 1.5),
+    ("absent", "^Remove$"),    # …and now it is gone, controls and all
     ("back",  None),
     ("sleep", 1.2),
 
-    # --- Spy read-only mode: the action row is off the bottom -------------
+    # --- Spy read-only mode: the action row is inside the safe area -------
     ("tap",   "^Menu$"),
     ("sleep", 1.2),
     ("tap",   "Show the grimoire to a player"),
     ("sleep", 1.8),
-    ("audit", None),           # SAFE-AREA VIOLATIONS: HAND IT OVER, Cancel
-    ("tapxy", ["950", "2360"]),  # only reachable by hitting the 4px sliver
+    ("audit", None),           # no CENTRE UNTAPPABLE on HAND IT OVER / Cancel
+    ("find",  "HAND IT OVER"),
+    ("tap",   "^Cancel$"),     # by name: it used to need a `tapxy` sliver
+    ("sleep", 1.5),
+    # Leaving read-only mode lands on the privacy cover, by design.
+    ("hold",  ["press and hold to open", "1600"]),
     ("sleep", 1.5),
 
     # --- Nomination: circle seats overlap the vote chips ------------------
     ("tap",   "Begin night"),
+    ("sleep", 2.0),
+    # An empty-start game has no bag, so the begin-night guard says so and
+    # offers the override. Nothing below needs a legal bag.
+    ("tap",   "Start the night anyway"),
     ("sleep", 2.0),
     ("tap",   "^Dawn$"),
     ("sleep", 1.5),

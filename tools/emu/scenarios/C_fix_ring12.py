@@ -15,8 +15,8 @@ STEPS = [
     ("wait", "TABLE"),
     ("tap", "Trouble Brewing"),
     ("sleep", 2.0),
-    ("tap", "Dismiss update banner"),
-    ("sleep", 1.0),
+    # No update banner to dismiss any more: a debug build skips the check on an
+    # emulator (README, "The update banner is off on emulators").
 
     # 8 seats by default; four more. TABLE opens itself once the script is
     # chosen, so it must NOT be tapped — that collapses it.

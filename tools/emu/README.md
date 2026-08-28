@@ -76,6 +76,16 @@ itself uninstalls first, so it clears app data anyway; the plain `launch` is
 what you want after a *reinstall*, and after any other moment the tree goes
 quiet (a process death, a long idle).
 
+The same silence happens now and then in the middle of a run, most often on a
+crowded screen — measured on the twelve-seat grimoire, once in about three
+`--fresh` launches, and lasting well past a 45 s `wait`. The screen is drawn
+correctly (take a screenshot and you will see it); `uiautomator dump` simply
+comes back with the system windows and nothing else, so `find`, `tap` and
+`wait` all report "no match" and `audit` says "0 clickable node(s)" and passes
+vacuously. **A vacuous audit is not a clean audit** — check the node count.
+If a plain `launch` does not bring the tree back, that instance needs
+restarting: `./emu.sh kill` then `./emu.sh boot N`.
+
 ### How many instances fit
 
 Measured on the 16 GB / 12-core reference machine, per instance:

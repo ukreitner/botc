@@ -54,7 +54,21 @@ STEPS = [
     ("sleep",  2.5),
     ("tap",    "OPEN DAY 1"),
     ("sleep",  2.5),
-    ("tapxy",  ["880", "220"]),          # the top bar's Dusk button
+    # The top bar's Dusk button is gone (F-3 / D77) — that coordinate is now
+    # the Dawn/phase button — so the day closes from the Day tab's DUSK stage
+    # card, the one path there is (F_fix_dusk drives it the same way).
+    ("tap",    "^Day$"),
+    ("sleep",  1.5),
+    ("swipe",  ["up", "800"]),
+    ("swipe",  ["up", "800"]),
+    ("swipe",  ["up", "800"]),
+    ("swipe",  ["up", "800"]),
+    ("swipe",  ["up", "800"]),
+    ("swipe",  ["up", "800"]),
+    ("sleep",  0.8),
+    ("tap",    "^DUSK$"),
+    ("sleep",  1.2),
+    ("tap",    "Everyone, eyes closed"),
     ("sleep",  2.0),
     ("tap",    "BEGIN NIGHT 2"),
     ("sleep",  2.5),
