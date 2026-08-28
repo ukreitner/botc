@@ -385,6 +385,28 @@ fun RevealSheet(
  * It is deliberately NOT gated on `phase == SETUP` (defect #5): a Pit-Hag
  * creating a Drunk on night 3 raises `drunk.token:<seat>` and the sheet re-opens.
  */
+/**
+ * "Open the checklist" as something any screen can ask for.
+ *
+ * Playtest A-4: the checklist had NO permanent entry point — the overflow menu
+ * has no row for it and the begin-night guard's "Fix setup" button just closed
+ * the dialog — so once dismissed, the storyteller's setup contract could only
+ * be reopened by the side effect of assigning a character to a seat. The sheet
+ * is rendered by [SetupIdentityPrompts], which the shell composes once; this is
+ * how the rest of the app reaches it without every caller having to own the
+ * sheet's state. Same shape as `UpdateManager.state`.
+ */
+object SetupChecklist {
+    /** Bumped by [open]; [SetupIdentityPrompts] raises the sheet when it changes. */
+    var openRequests by mutableStateOf(0)
+        private set
+
+    /** Raise the "Before the first night" sheet, wherever the storyteller is. */
+    fun open() {
+        openRequests += 1
+    }
+}
+
 @Composable
 fun SetupIdentityPrompts(
     viewModel: GameViewModel,
@@ -408,6 +430,10 @@ fun SetupIdentityPrompts(
             blockingKey != dismissedKey -> open = true
         }
     }
+    // Someone asked for it explicitly ("Fix setup", the hand-out screen): open
+    // it whatever the checklist currently owes, including nothing at all.
+    val requests = SetupChecklist.openRequests
+    LaunchedEffect(requests) { if (requests > 0) open = true }
     if (open) {
         SetupChecklistSheet(
             viewModel = viewModel,

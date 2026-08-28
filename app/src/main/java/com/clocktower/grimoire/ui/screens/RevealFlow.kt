@@ -404,6 +404,12 @@ private fun HandOutRoster(
             TextButton(onClick = { viewModel.resetTokenHandout() }) {
                 Text("Start over", color = Color.Gray)
             }
+            // A-4: a permanent way back to the checklist. This screen is itself
+            // always reachable (⋮ → "Reveal characters to players…"), so from
+            // here the setup contract is too.
+            TextButton(onClick = onChecklist) {
+                Text("Checklist", color = Parchment)
+            }
             TextButton(onClick = onDone) {
                 Text(if (next == null) "Done" else "Finish later", color = AgedGold)
             }
