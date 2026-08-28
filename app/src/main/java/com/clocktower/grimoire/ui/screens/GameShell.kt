@@ -74,6 +74,7 @@ import com.clocktower.engine.Briefings
 import com.clocktower.engine.Effects
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Phase
+import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.Team
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
@@ -113,6 +114,12 @@ fun GameShell(
     var grimoireLocked by rememberSaveable { mutableStateOf(false) }
     var showTravellerJoin by rememberSaveable { mutableStateOf(false) }
     var spyMode by rememberSaveable { mutableStateOf(false) }
+    var showSetupChecklist by rememberSaveable { mutableStateOf(false) }
+    // How much of the "Before the first night" checklist is still owed, for the
+    // menu entry that re-opens it (playtest D, P1-10).
+    val setupOutstanding = remember(state) {
+        SetupRequirements.unmet(state, viewModel::characterById).count { it.blocking }
+    }
 
     // The table's phone must not sleep mid-game — and the browser drops its
     // wake lock on every tab switch, so it is re-requested on resume too.
@@ -243,6 +250,24 @@ fun GameShell(
                         Icon(Icons.Filled.MoreVert, contentDescription = "Menu")
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        // Playtest D P1-10: once the "Before the first night"
+                        // sheet had been dismissed with the same rows still
+                        // outstanding, `SetupIdentityPrompts` would not raise it
+                        // again — and no menu entry reached it, so the Lunatic's
+                        // Demon token, their bluffs and the Grandchild were
+                        // unreachable. The checklist is always one tap away now.
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (setupOutstanding == 0) {
+                                        "Setup checklist"
+                                    } else {
+                                        "Setup checklist · $setupOutstanding to do"
+                                    },
+                                )
+                            },
+                            onClick = { showMenu = false; showSetupChecklist = true },
+                        )
                         DropdownMenuItem(
                             text = { Text("Demon bluffs") },
                             onClick = { showMenu = false; showBluffs = true },
@@ -402,6 +427,9 @@ fun GameShell(
     }
     // Setup identity prompts live in GameExtras.kt (WP0 extraction; WP11 owns them next).
     SetupIdentityPrompts(viewModel, state)
+    if (showSetupChecklist) {
+        SetupChecklistSheet(viewModel, state, onDismiss = { showSetupChecklist = false })
+    }
 
     openSeat?.let { seatId ->
         SeatSheet(
