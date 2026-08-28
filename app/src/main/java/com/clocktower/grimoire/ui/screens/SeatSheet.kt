@@ -802,6 +802,31 @@ private fun CharacterPickRow(character: Character, inPlay: Boolean, onClick: () 
 }
 
 /**
+ * Every character whose reminder tokens the token picker offers: the script,
+ * plus any character actually SITTING at the table that the script does not
+ * list (playtest C-20).
+ *
+ * `GameData.resolve(script)` walks `script.characterIds`, and travellers are
+ * not in there — they come from `GameData.travellersFor(script)`. So a game
+ * with a seated Voudon, Bureaucrat, Thief and Beggar had no `3 Votes`, no
+ * `Negative Vote` and no traveller tokens at all in the picker: they could
+ * only ever be placed by the traveller's own night step, and a mid-day
+ * correction ("that token is on the wrong seat") was impossible. Anything
+ * seated and off-script is folded in — which also covers a character a Pit-Hag
+ * created from outside the script — and it sorts into the "In play" group,
+ * because that is exactly what it is.
+ */
+internal fun tokenPickerCharacters(
+    onScript: List<Character>,
+    seatedCharacterIds: Collection<String>,
+    lookup: (String) -> Character?,
+): List<Character> {
+    val known = onScript.map { it.id }.toSet()
+    val extra = seatedCharacterIds.filterNot { it in known }.distinct().sorted()
+    return onScript + extra.mapNotNull(lookup)
+}
+
+/**
  * Token picker: in-play characters first, search, and one chip per DISTINCT
  * label with its copy count.
  *
@@ -809,6 +834,8 @@ private fun CharacterPickRow(character: Character, inPlay: Boolean, onClick: () 
  * raw render showed the Pukka's "Poisoned Poisoned". [labelCopies] collapses
  * them to `Poisoned ×2`, and [GameActionsApi.placeToken] enforces the same N
  * when placing.
+ *
+ * Which characters it draws from is [tokenPickerCharacters].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -820,8 +847,14 @@ fun ReminderPicker(
     onPick: (PlacedReminder) -> Unit,
     onBack: () -> Unit,
 ) {
-    val scriptCharacters = remember(state.script) { viewModel.gameData.resolve(state.script) }
     val inPlayIds = state.seats.mapNotNull { it.characterId }.toSet()
+    val scriptCharacters = remember(state.script, state.seats) {
+        tokenPickerCharacters(
+            onScript = viewModel.gameData.resolve(state.script),
+            seatedCharacterIds = inPlayIds,
+            lookup = viewModel::characterById,
+        )
+    }
     var search by rememberSaveable { mutableStateOf("") }
     val (inPlay, offScript) = scriptCharacters.partition { it.id in inPlayIds }
 
@@ -834,6 +867,14 @@ fun ReminderPicker(
             .fillMaxWidth()
             .imePadding()
             .padding(horizontal = 20.dp)
+            // The token list is long enough to push this sheet to its full
+            // height on every script, and a full-height `ModalBottomSheet`
+            // starts 8 px ABOVE the status-bar inset on the reference phone —
+            // which put the header's [Back] button's top edge under the status
+            // bar (`audit`: "top 8px under the status bar/cutout"). The list
+            // scrolls, so the only row that ever sits at that edge is this
+            // first one.
+            .padding(top = 8.dp)
             .padding(bottom = overlayBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
