@@ -671,9 +671,12 @@ object DayRules {
             .filter { Team.DEMON in Registration.registersAs(state, lookup, it) }
             .map { it.id }
         // The weighted tally is only recomputed when raw hands were supplied:
-        // a caller that passed a headcount straight through keeps it.
+        // a caller that passed a headcount straight through keeps it. It goes
+        // through the same Butler filter as [tally] — under secret voting an
+        // Organ Grinder day must not record a hand the rules do not count.
         val votes = if (nomination.voterIds.isNotEmpty()) {
-            rules.tally(nomination.voterIds) + nomination.extraVotes.values.sum()
+            val counted = countedVoters(state, lookup, nomination.voterIds, nomination.isExile)
+            rules.tally(counted) + nomination.extraVotes.values.sum()
         } else {
             nomination.votes
         }
@@ -785,13 +788,25 @@ object DayRules {
         isExile: Boolean,
     ): Int {
         val rules = voteRules(state, lookup, isExile)
-        val counted = if (!isExile && secretVoting(state, lookup)) {
+        return rules.tally(countedVoters(state, lookup, voterIds, isExile))
+    }
+
+    /**
+     * The hands that actually count. Under secret voting (a sober Organ
+     * Grinder) a Butler whose Master's hand is down is dropped; an exile and an
+     * ordinary day count every hand raised.
+     */
+    private fun countedVoters(
+        state: GameState,
+        lookup: (String) -> Character?,
+        voterIds: List<Long>,
+        isExile: Boolean,
+    ): List<Long> =
+        if (!isExile && secretVoting(state, lookup)) {
             voterIds.filterNot { butlerVotingIllegally(state, lookup, it, voterIds) }
         } else {
             voterIds
         }
-        return rules.tally(counted)
-    }
 
     /** True when this seat is a Butler whose Master's hand is not up. */
     fun butlerVotingIllegally(

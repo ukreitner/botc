@@ -414,6 +414,31 @@ class DayEngineTest {
     }
 
     @Test
+    fun `recording a nomination applies the same Butler exception as the tally`() {
+        var state = day1()
+        state = assign(state, 6L, "organgrinder")
+        state = assign(state, 1L, "butler")
+        state = token(state, 4L, "butler", "Master")
+        val voters = listOf(1L, 2L)
+
+        state = DayRules.record(state, lookup, nomination(state, 0L, 3L, voters = voters), force = true)
+        val recorded = assertNotNull(state.nominations.lastOrNull())
+        assertEquals(
+            DayRules.tally(state, lookup, voters, isExile = false),
+            recorded.votes,
+            "the Butler's hand is down with its Master's — record must not count it",
+        )
+        assertEquals(1, recorded.votes)
+
+        // Without the Organ Grinder both hands count, so record and tally agree there too.
+        var open = day1()
+        open = assign(open, 1L, "butler")
+        open = token(open, 4L, "butler", "Master")
+        open = DayRules.record(open, lookup, nomination(open, 0L, 3L, voters = voters), force = true)
+        assertEquals(2, assertNotNull(open.nominations.lastOrNull()).votes)
+    }
+
+    @Test
     fun `Legion fails an execution when only evil voted`() {
         var state = day1()
         state = assign(state, 0L, "legion")
