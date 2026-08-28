@@ -21,6 +21,7 @@ import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
+import com.clocktower.engine.HouseRules
 import com.clocktower.engine.Identity
 import com.clocktower.engine.KillCause
 import com.clocktower.engine.KillOutcome
@@ -418,9 +419,7 @@ interface GameActionsApi {
      * screen recording that a step is finished — after the shared `KillSheet`
      * applied a death the row was about to apply, or after a deliberate skip.
      */
-    fun markNightStepDone(key: StepKey) = update {
-        if (key.token in it.nightStepsDone) it else NightPlan.toggleDone(it, key.token)
-    }
+    fun markNightStepDone(key: StepKey) = update { NightPlan.markDone(it, key.token) }
 
     /**
      * Records a card that was actually held up to a player — true or false.
@@ -580,6 +579,19 @@ interface GameActionsApi {
         }
         next
     }
+
+    /**
+     * Writes the table's house rules (lead D80).
+     *
+     * Every screen that offers one goes through here — the setup card and the
+     * mid-game Fabled sheet — so they can never disagree about where the flag
+     * lives. It is a method on the interface rather than an extension function
+     * next to the sheet that calls it, because D26 says a verb is wired ONCE:
+     * an extension compiles for both platforms but is invisible to anyone
+     * reading the interface for "what can the UI do", and the next house rule
+     * would have had no obvious home.
+     */
+    fun setHouseRules(rules: HouseRules) = update { it.copy(houseRules = rules) }
 
     // ---- WP10: grimoire, seat sheet, kill sheet ----
 
