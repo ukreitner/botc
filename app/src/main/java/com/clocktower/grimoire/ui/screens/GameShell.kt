@@ -114,7 +114,6 @@ fun GameShell(
     var grimoireLocked by rememberSaveable { mutableStateOf(false) }
     var showTravellerJoin by rememberSaveable { mutableStateOf(false) }
     var spyMode by rememberSaveable { mutableStateOf(false) }
-    var showSetupChecklist by rememberSaveable { mutableStateOf(false) }
     // How much of the "Before the first night" checklist is still owed, for the
     // menu entry that re-opens it (playtest D, P1-10).
     val setupOutstanding = remember(state) {
@@ -250,23 +249,26 @@ fun GameShell(
                         Icon(Icons.Filled.MoreVert, contentDescription = "Menu")
                     }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        // Playtest D P1-10: once the "Before the first night"
-                        // sheet had been dismissed with the same rows still
+                        // A-4 / D P1-10: once the "Before the first night" sheet
+                        // had been dismissed with the same rows still
                         // outstanding, `SetupIdentityPrompts` would not raise it
                         // again — and no menu entry reached it, so the Lunatic's
                         // Demon token, their bluffs and the Grandchild were
-                        // unreachable. The checklist is always one tap away now.
+                        // unreachable. The checklist is always one tap away now,
+                        // under the name it wears on its own header, and it
+                        // opens through the SAME opener as the begin-night
+                        // guard's "Fix setup" so there is one sheet, not two.
                         DropdownMenuItem(
                             text = {
                                 Text(
                                     if (setupOutstanding == 0) {
-                                        "Setup checklist"
+                                        "Before the first night…"
                                     } else {
-                                        "Setup checklist · $setupOutstanding to do"
+                                        "Before the first night… · $setupOutstanding to do"
                                     },
                                 )
                             },
-                            onClick = { showMenu = false; showSetupChecklist = true },
+                            onClick = { showMenu = false; SetupChecklist.open() },
                         )
                         DropdownMenuItem(
                             text = { Text("Demon bluffs") },
@@ -424,11 +426,11 @@ fun GameShell(
         // "Night 3 · press and hold to open" (grimoire-and-seats §8).
         PrivacyCover(caption = phaseLabel, onUnlock = { grimoireLocked = false })
     }
-    // Setup identity prompts live in GameExtras.kt (WP0 extraction; WP11 owns them next).
+    // Setup identity prompts live in GameExtras.kt (WP0 extraction; WP11 owns
+    // them next). It also renders the checklist sheet — including for every
+    // `SetupChecklist.open()` request, from the overflow menu and from the
+    // begin-night guard's "Fix setup".
     SetupIdentityPrompts(viewModel, state)
-    if (showSetupChecklist) {
-        SetupChecklistSheet(viewModel, state, onDismiss = { showSetupChecklist = false })
-    }
 
     openSeat?.let { seatId ->
         SeatSheet(
