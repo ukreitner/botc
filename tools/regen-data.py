@@ -28,6 +28,13 @@ fields:
   * ``edition`` — the app's edition ids (``exp`` for ``carousel``, ``sv``
     for ``snv``) and the app's convention that every Fabled/Loric lives in
     the ``fabled`` / ``loric`` edition group.
+  * ``reminders`` — per-character deltas ON TOP of the official reminder
+    lists: extra copies of a label, extra labels the official set has no
+    token for, and labels reclassified as global.  Every entry carries its
+    own ``why`` and is reproduced in ``tools/DATA.md`` §"Wave 6C".
+  * ``nightOrder`` — the rows the official ``nightsheet.json`` omits (a
+    mid-game Widow / Ogre / Snitch, a night-1 Plague Doctor death).  Each
+    insertion names the row it follows and carries its own ``why``.
 
 Outputs (both pretty-printed with one-space indent, grouped by edition then
 team then id, matching the existing files so diffs stay reviewable):
@@ -198,9 +205,49 @@ def normalise_official_prose(text: str) -> str:
     return " ".join(text.split())
 
 
-def build_characters(roles, overlay, loric_value):
+def apply_reminder_delta(cid, delta, reminders, global_reminders, problems):
+    """The app's reminder additions on top of the official lists (Wave 6C).
+
+    Four operations, applied in this order, each of which must actually change
+    something — a no-op means the official data has caught up and the overlay
+    entry should be deleted rather than left to rot:
+
+      ``copies``    {label: n} — the official list carries the label once and
+                    the app needs n physical copies of it.
+      ``add``       labels appended to ``reminders``: a state the character's
+                    run-book names but the official token set has no label for.
+      ``addGlobal`` the same, appended to ``remindersGlobal``.
+      ``toGlobal``  labels moved from ``reminders`` to ``remindersGlobal``.
+    """
+    for label, want in delta.get("copies", {}).items():
+        have = reminders.count(label)
+        if have == 0:
+            problems.append(f"{cid}: copies names {label!r}, which is not an official reminder")
+            continue
+        if have >= want:
+            problems.append(f"{cid}: copies of {label!r} is already {have} — drop the overlay entry")
+            continue
+        at = reminders.index(label) + have
+        reminders[at:at] = [label] * (want - have)
+    for label in delta.get("add", []):
+        reminders.append(label)
+    for label in delta.get("addGlobal", []):
+        global_reminders.append(label)
+    for label in delta.get("toGlobal", []):
+        if label not in reminders:
+            problems.append(f"{cid}: toGlobal names {label!r}, which is not an official reminder")
+            continue
+        while label in reminders:
+            reminders.remove(label)
+            global_reminders.append(label)
+    return reminders, global_reminders
+
+
+def build_characters(roles, overlay, loric_value, problems=None):
     manual = overlay["manualOverrides"]
     per_id = overlay["characters"]
+    deltas = overlay.get("reminders", {})
+    problems = problems if problems is not None else []
     out = []
     for role in roles:
         cid = role["id"]
@@ -238,9 +285,13 @@ def build_characters(roles, overlay, loric_value):
                 "otherNightReminder",
                 normalise_official_prose(role.get("otherNightReminder", "")),
             ),
-            "reminders": list(role.get("reminders", [])),
-            "remindersGlobal": list(role.get("remindersGlobal", [])),
+            "reminders": list(role.get("reminders") or []),
+            "remindersGlobal": list(role.get("remindersGlobal") or []),
         }
+        if cid in deltas:
+            entry["reminders"], entry["remindersGlobal"] = apply_reminder_delta(
+                cid, deltas[cid], entry["reminders"], entry["remindersGlobal"], problems,
+            )
         for field, value in manual.get(cid, {}).items():
             entry[field] = value
         spent = extra.get("spentLabel", "")
@@ -280,11 +331,43 @@ def build_jinxes(jinx_groups):
     return flat
 
 
-def build_night_orders(nightsheet):
+def build_night_orders(nightsheet, overlay=None, problems=None):
+    """The official order, plus the rows the official sheet omits.
+
+    `nightsheet.json` is verbatim truth for every row it carries, and the app
+    never reorders it.  It does, however, describe a game that starts as it is
+    dealt: a character whose text says "on your 1st night" gets no other-night
+    row, so a Widow / Ogre / Snitch created mid-game (Pit-Hag, Summoner,
+    Kazali) has no step at all, and a Plague Doctor who dies before the first
+    night ends has nowhere for the storyteller to take the Minion ability.
+
+    `app-overlay.json`'s `nightOrder` block adds exactly those rows, each one
+    anchored to the row it follows and each carrying its own `why`.  The
+    registry gates keep them silent in an ordinary game.
+    """
+    problems = problems if problems is not None else []
+
     def convert(ids):
         return [MARKER_MAP.get(i, i) for i in ids]
 
-    return convert(nightsheet["firstNight"]), convert(nightsheet["otherNight"])
+    orders = {
+        "firstNight": convert(nightsheet["firstNight"]),
+        "otherNight": convert(nightsheet["otherNight"]),
+    }
+    for name, insertions in (overlay or {}).get("nightOrder", {}).items():
+        order = orders[name]
+        for insertion in insertions:
+            cid, anchor = insertion["id"], insertion["after"]
+            if cid in order:
+                problems.append(
+                    f"{name}: the official sheet now carries {cid} — drop the overlay insertion",
+                )
+                continue
+            if anchor not in order:
+                problems.append(f"{name}: insertion anchor {anchor!r} is not in the order")
+                continue
+            order.insert(order.index(anchor) + 1, cid)
+    return orders["firstNight"], orders["otherNight"]
 
 
 # ---------------------------------------------------------------------------
@@ -292,18 +375,20 @@ def build_night_orders(nightsheet):
 # ---------------------------------------------------------------------------
 
 
-def validate(characters, jinxes, first_night, other_night, loric_value):
-    problems = []
+def validate(characters, jinxes, first_night, other_night, loric_value, problems=None):
+    problems = problems if problems is not None else []
     by_id = {c["id"]: c for c in characters}
 
     if len(characters) != 181:
         problems.append(f"expected 181 characters, got {len(characters)}")
     if len(jinxes) != 131:
         problems.append(f"expected 131 jinxes, got {len(jinxes)}")
-    if len(first_night) != 80:
-        problems.append(f"expected 80 firstNight entries, got {len(first_night)}")
-    if len(other_night) != 99:
-        problems.append(f"expected 99 otherNight entries, got {len(other_night)}")
+    # 80 official + 1 overlay insertion (plaguedoctor); 99 official + 3
+    # (widow, snitch, ogre). See `nightOrder` in tools/app-overlay.json.
+    if len(first_night) != 81:
+        problems.append(f"expected 81 firstNight entries, got {len(first_night)}")
+    if len(other_night) != 102:
+        problems.append(f"expected 102 otherNight entries, got {len(other_night)}")
 
     ids = [c["id"] for c in characters]
     if len(ids) != len(set(ids)):
@@ -432,6 +517,8 @@ def bootstrap_overlay():
         OVERLAY_PATH,
         {
             "_comment": previous.get("_comment", ""),
+            "nightOrder": previous.get("nightOrder", {}),
+            "reminders": previous.get("reminders", {}),
             "manualOverrides": previous.get("manualOverrides", {}),
             "characters": per_id,
         },
@@ -465,9 +552,10 @@ def main() -> int:
     overlay = load_json(OVERLAY_PATH)
     loric_value = loric_team_value(args.loric_team)
 
-    characters = build_characters(roles, overlay, loric_value)
+    problems = []
+    characters = build_characters(roles, overlay, loric_value, problems)
     jinxes = build_jinxes(jinx_groups)
-    first_night, other_night = build_night_orders(nightsheet)
+    first_night, other_night = build_night_orders(nightsheet, overlay, problems)
 
     if not args.check:
         write_json(os.path.join(DATA_DIR, "characters.json"), characters)
@@ -477,7 +565,7 @@ def main() -> int:
         )
 
     summarise(characters, jinxes, first_night, other_night, loric_value)
-    problems = validate(characters, jinxes, first_night, other_night, loric_value)
+    validate(characters, jinxes, first_night, other_night, loric_value, problems)
     if problems:
         print(f"\n{len(problems)} problem(s):", file=sys.stderr)
         for p in problems:
