@@ -1,6 +1,24 @@
 # C_setup10 — 10-player Trouble Brewing game, characters assigned by hand.
 # Run from a FRESH app:  ./emu.sh launch emulator-5558 --fresh
 #
+# KNOWN BLOCKED (wave-2 polish, verified 2026-08-29; NOT caused by the shell
+# inset change). It strands on "no node matches '^Seat 3,'" after seat 2.
+#
+# The loop below dismisses the seat sheet with `back`. During SETUP the
+# "Before the first night" checklist raises ITSELF over the seat sheet
+# whenever an assignment introduces a requirement id the list did not have —
+# assigning the Butler adds "Outsider: 1 in bag, expected 0" and up it comes,
+# so that seat's `back` closes the CHECKLIST and the seat sheet stays open.
+# It does not happen on every seat (seat 3's Mayor adds no new row, and
+# nothing pops), so no fixed sequence of `back`s is right for all ten, and the
+# harness has no conditional step.
+#
+# Two ways out, neither this wave's: give `ui.py` a tolerant
+# "dismiss whatever sheet is on top, if any" step, or stop the checklist
+# re-raising itself over an open sheet (the same class of complaint as D78's
+# "one checklist opener"). `C_day_repro` covers the day flow this fixture was
+# built for and passes.
+#
 # Seats: 1 Virgin, 2 Butler, 3 Mayor, 4 Saint, 5 Poisoner, 6 Imp,
 #        7 Washerwoman, 8 Librarian, 9 Chef, 10 Empath
 

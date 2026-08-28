@@ -36,6 +36,13 @@ STEPS = [
     ("sleep",      0.8),
     ("tap",        "^Sentinel$"),
     ("sleep",      1.0),
+    # Card 4 grew a HOUSE RULES section (A-14 / G-2), so the two swipes above
+    # now leave its header off the top of the screen — and a header scrolled
+    # out of view is not in the semantics tree at all, so `tap "FABLED"` had
+    # nothing to match. Scroll back to it before collapsing.
+    ("swipe",      ["down", "900"]),
+    ("swipe",      ["down", "900"]),
+    ("sleep",      0.8),
     ("tap",        "FABLED"),             # collapse
     ("sleep",      0.8),
     ("tap",        "^BAG$"),

@@ -5,8 +5,15 @@
 # closed again:
 #
 #     ./scenario.py emulator-5556 B_fix_night1
-#     …finish night 1, OPEN THE DAY →, OPEN DAY 1 →, the Dusk button,
-#       BEGIN NIGHT 2 →…
+#     …then, by hand, to night 2 — the top bar's Dusk button is gone (F-3 /
+#       D77), so the day closes from the Day tab:
+#         ./ui.py <serial> tap "^Dawn$" ; ./ui.py <serial> tap "Dawn anyway"
+#         ./ui.py <serial> tap "OPEN DAY 1"
+#         ./ui.py <serial> tap "^Day$"
+#         …swipe up to the DUSK stage card…
+#         ./ui.py <serial> tap "^DUSK$"
+#         ./ui.py <serial> tap "Everyone, eyes closed"
+#         ./ui.py <serial> tap "BEGIN NIGHT 2"
 #     ./scenario.py emulator-5556 B_fix_starpass
 #
 # Proves:
@@ -46,11 +53,12 @@ STEPS = [
     ("hold",   ["BECOMES THE IMP", "1300"]),
     ("sleep",  2.0),
 
-    # KNOWN FOLLOW-UP, not this wave's: any mid-game character change re-raises
-    # the "Before the first night" checklist, because `SetupRequirements` still
-    # counts bag legality ("Demon: 2 in bag") once the game is running. The
-    # sheet is dismissible and owns no state.
-    ("tap",    "^Close$"),
+    # This used to be followed by dismissing the "Before the first night"
+    # checklist, which any mid-game character change re-raised because
+    # `SetupRequirements` still counted bag legality once the game was running.
+    # Fix-E closed that (D81: bag rows exist only in SETUP), so a star pass
+    # raises nothing and there is no sheet to close.
+    ("absent", "Before the first night"),
     ("sleep",  1.0),
 
     # The grimoire really changed, and nobody was told good had won.

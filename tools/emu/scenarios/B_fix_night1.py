@@ -14,8 +14,41 @@
 # 5 Washerwoman · 6 Imp · 7 Butler · 8 Investigator.
 #
 # A fresh app opens on 8 seats (5/1/1/1), which is the deal below.
-# The bag is ticked by label. Only the FIRST tick moves the list (the "in the
-# bag" strip grows a row of tokens), so the swipes below are taken after it.
+#
+# The bag used to be ticked by scrolling to each row, with the swipes tuned to
+# where the list sat. That is not reproducible: the "IN THE BAG" tray grows the
+# moment the first token lands (and again whenever the token row wraps), and a
+# row that has scrolled out is not in the semantics tree at all, so `tap` had
+# nothing to match. `B_night1_tb` carries the same fix — filter the BAG card's
+# search field to one character, tap its ABILITY line (the NAME also matches
+# what was just typed into the field), clear, repeat. Tick ORDER is unchanged,
+# so the bag the deal shuffles is the same list as before.
+def tick(name, ability):
+    return [
+        ("tap",   "Search characters"),
+        ("sleep", 0.6),
+        ("type",  name),
+        ("sleep", 1.0),
+        ("back",  None),                  # dismiss the keyboard
+        ("sleep", 0.8),
+        ("tap",   ability),
+        ("sleep", 0.8),
+        ("tap",   "Clear the search"),
+        ("sleep", 1.0),
+    ]
+
+
+BAG = [
+    ("Chef",         "how many pairs of evil players"),
+    ("Investigator", "particular Minion"),
+    ("Librarian",    "particular Outsider"),
+    ("Washerwoman",  "particular Townsfolk"),
+    ("Butler",       "you may only vote if they are voting"),
+    ("Poisoner",     "they are poisoned tonight and tomorrow"),
+    ("Imp",          "If you kill yourself this way"),
+    ("Empath",       "how many of your 2 alive neighbors"),
+]
+
 STEPS = [
     ("wait",   "New game"),
     ("tap",    "New game"),
@@ -25,33 +58,10 @@ STEPS = [
     ("tap",    "^TABLE$"),               # collapse
     ("tap",    "^BAG$"),                 # expand
     ("sleep",  0.6),
-
-    ("tap",    "^Chef$"),
-    ("swipe",  ["up", "600"]),
-    ("sleep",  0.7),
-    ("tap",    "^Investigator$"),
-    ("tap",    "^Librarian$"),
-    ("swipe",  ["up", "600"]),
-    ("sleep",  0.7),
-    ("tap",    "^Washerwoman$"),
-    ("swipe",  ["up", "600"]),
-    ("sleep",  0.7),
-    ("tap",    "^Butler$"),
-    ("swipe",  ["up", "400"]),
-    ("sleep",  0.7),
-    ("tap",    "^Poisoner$"),
-    ("swipe",  ["up", "600"]),
-    ("sleep",  0.7),
-    ("tap",    "^Imp$"),
-    ("swipe",  ["down", "600"]),
-    ("sleep",  0.7),
-    ("swipe",  ["down", "600"]),
-    ("sleep",  0.7),
-    ("swipe",  ["down", "600"]),
-    ("sleep",  0.7),
-    ("swipe",  ["down", "600"]),
-    ("sleep",  0.7),
-    ("tap",    "^Empath$"),
+]
+for _name, _ability in BAG:
+    STEPS += tick(_name, _ability)
+STEPS += [
     ("wait",   "IN THE BAG · 8 / 8"),
 
     ("tap",    "Deal & hand out"),

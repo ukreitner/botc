@@ -339,6 +339,38 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Grandmother is not offered as her own Grandchild`() {
+        // Fix-E residual: the picker listed the Grandmother herself, one row
+        // away from the seat that was actually marked. "You start knowing a
+        // GOOD PLAYER & their character" is somebody else, and D81 already
+        // bars the holder from the `grandmother.grandchild` setup requirement.
+        var state = game("pukka", "grandmother", "gossip", "chambermaid", "gambler", "courtier")
+        val granny = seat(state, "grandmother")
+        val child = seat(state, "gossip")
+        state = Effects.placeExclusiveReminder(state, child, PlacedReminder("grandmother", "Grandchild"))
+
+        val action = assertIs<ShowInfo>(require(state, "grandmother").action)
+        assertTrue(
+            TargetConstraint.NOT_SELF in action.constraints,
+            "the picker greys her own seat out: ${action.constraints}",
+        )
+
+        // End to end: even a hand-built input naming her is dropped, so the
+        // CHOICE can never record the Grandmother as her own grandchild.
+        val resolved = NightPlan.resolve(
+            state,
+            lookup,
+            require(state, "grandmother").key,
+            NightInput(playerIds = listOf(granny)),
+        )
+        assertEquals(
+            emptyList(),
+            Memory.lastChoice(resolved, "grandmother", granny)?.targetIds.orEmpty(),
+            "her own seat is filtered out of the answer: ${resolved.ledger}",
+        )
+    }
+
+    @Test
     fun `the Grandmother's row names her own death before the button lands it`() {
         // The same shape: `pending` kills the holder, so the card must be able
         // to promise it.

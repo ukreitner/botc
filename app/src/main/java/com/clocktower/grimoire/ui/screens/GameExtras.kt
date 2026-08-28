@@ -166,14 +166,9 @@ fun ReorderSeatsDialog(
 // ---------------------------------------------------------------------------
 // House rules (ux/day-screen §F, A-14)
 // ---------------------------------------------------------------------------
-
-/**
- * Writes the table's house rules. Every screen that offers one goes through
- * here, so the setup card and the mid-game sheet can never disagree about
- * where the flag lives. Declared on [GameActionsApi] rather than on
- * `GameViewModel` so the web view model gets it for free (D26).
- */
-fun GameActionsApi.setHouseRules(rules: HouseRules) = update { it.copy(houseRules = rules) }
+// The writer itself is `GameActionsApi.setHouseRules` — a member of the
+// interface, not an extension out here, so D26 ("every verb the UI calls is
+// wired once, in one visible place") is literal.
 
 /** The short names of the rules in force — for a collapsed card's summary. */
 fun houseRuleLabels(rules: HouseRules): List<String> = buildList {

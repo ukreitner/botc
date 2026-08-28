@@ -59,6 +59,33 @@ clean app state (which is what you want for a playtest anyway).
 `install` always uninstalls first: debug and CI builds are signed with different
 keys, so a plain `adb install -r` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
 
+### After an install, the tree can come back empty
+
+Right after `./emu.sh install`, `ui.py dump` sometimes reports no hierarchy at
+all (or `uiautomator dump produced no hierarchy after 3 tries`): the process
+that owned the window is gone and nothing has taken the foreground yet. It is
+not a broken emulator and not a lost game.
+
+```sh
+./emu.sh launch emulator-5554        # NO --fresh
+```
+
+brings the activity back and the tree with it. Use `--fresh` only when you
+actually want `pm clear` — it wipes the game in progress. Note that `install`
+itself uninstalls first, so it clears app data anyway; the plain `launch` is
+what you want after a *reinstall*, and after any other moment the tree goes
+quiet (a process death, a long idle).
+
+The same silence happens now and then in the middle of a run, most often on a
+crowded screen — measured on the twelve-seat grimoire, once in about three
+`--fresh` launches, and lasting well past a 45 s `wait`. The screen is drawn
+correctly (take a screenshot and you will see it); `uiautomator dump` simply
+comes back with the system windows and nothing else, so `find`, `tap` and
+`wait` all report "no match" and `audit` says "0 clickable node(s)" and passes
+vacuously. **A vacuous audit is not a clean audit** — check the node count.
+If a plain `launch` does not bring the tree back, that instance needs
+restarting: `./emu.sh kill` then `./emu.sh boot N`.
+
 ### How many instances fit
 
 Measured on the 16 GB / 12-core reference machine, per instance:
@@ -89,7 +116,7 @@ compressor, you are past the useful limit no matter what RSS says.
 | `dump` | compact semantics tree; raw XML written to `out/<serial>-dump.xml` |
 | `find <regex>` | every match with its centre coords, flagged if untappable |
 | `absent <regex>` | the inverse of `find`: exits 0 only when NOTHING matches, and lists the offenders when something does. A scenario asserting a control was *taken away* (the day's top-bar Dusk button, C-18) cannot use `find`, because a step that is meant to fail looks exactly like a broken one |
-| `tap <regex>` | taps the centre of the best match — **refuses off-screen taps**, see below |
+| `tap <regex>` | taps the centre of the best match — **refuses off-screen and scrolled-out taps**, see below |
 | `tapxy <x> <y>` | raw coordinate tap |
 | `hold <regex> [ms]` | press-and-hold, default 800 ms |
 | `swipe up\|down\|left\|right [px]` | scrolls within the safe area |
@@ -203,6 +230,34 @@ OFFSCREEN 'Deal & hand out tokens' centre=(540,2350) bounds=[32,2287][1048,2413]
 
 That is a bug to file, not a reason to fall back to `tapxy`. Use `tapxy` only
 for canvas gestures (dragging a token round the circle) where there is no node.
+
+### …and taps on rows that have scrolled out of view
+
+uiautomator reports every node's **unclipped** layout bounds. A list row that
+has been scrolled past keeps a perfectly plausible box on screen — in a band
+that now belongs to whatever is drawn over the list. Playtest A-20 tapped one
+of those: the row's box lay under a sticky footer, the tap landed on the
+footer's button, the run went somewhere else entirely, and `tap` reported
+success.
+
+So `tap`, `hold` and `find` compare a match's **centre** against its nearest
+**scrollable ancestor**. If the centre is outside that container, the match is
+skipped in favour of a visible one; if it is the only match, `tap` refuses:
+
+```
+CLIPPED 'Deal & hand out tokens' bounds=[32,1904][1048,2030]
+        centre (540,1967) is outside its scroll container #13 [0,505][1080,1800] —
+        scrolled out of view; a tap there lands on whatever is drawn over it
+        scroll it into view first (swipe up/down), then tap.
+```
+
+`audit` drops the same nodes before checking anything and says how many
+("N scrolled out of a list … — not audited"): their boxes are real but their
+pixels are not theirs, and auditing them produced phantom findings — a
+half-scrolled row "under the status bar", a list item "under the gesture
+inset" — that buried the genuine ones. A node whose centre is still inside the
+container is audited as before, even if its top or bottom is clipped: the
+centre is where `tap` lands.
 
 ---
 

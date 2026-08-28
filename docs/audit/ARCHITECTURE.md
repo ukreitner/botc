@@ -2669,7 +2669,9 @@ and the regeneration script under `tools/` — **WP5 exclusively**.
   **one** picker component → consequence preview from `Deaths.killOutcome` → **one**
   full-width 56 dp primary button whose label states the **outcome**, not the verb
   ("EVE SURVIVES — NOBODY DIES", "SHOW 0 TO BEN") → a collapsed secondary drawer
-  (other outcomes · show a card · skip · how to run · undo this step).
+  (other outcomes · show a card · skip · how to run). Undo is **not** in the
+  drawer: un-ticking has exactly one home, `[Undo]` on the collapsed row beside
+  `[Run anyway]` (lead D81), so the primary can be idempotent.
 - The primary button calls `viewModel.resolveNightStep(step.key, input)`, which applies
   the state change, places tokens, writes the ledger, ticks the step and advances to the
   next required step.

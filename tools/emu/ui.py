@@ -4,7 +4,7 @@
     ui.py <serial> dump                  compact semantics tree (raw XML written beside it)
     ui.py <serial> find <regex>          matching nodes + centre coords
     ui.py <serial> absent <regex>        the inverse of find: fails if ANYTHING matches
-    ui.py <serial> tap <regex>           tap centre of first match (refuses off-screen / inset taps)
+    ui.py <serial> tap <regex>           tap centre of first match (refuses off-screen / scrolled-out taps)
     ui.py <serial> tapxy <x> <y>
     ui.py <serial> hold <regex> [ms]     press-and-hold (default 800 ms)
     ui.py <serial> swipe up|down|left|right [amount]
@@ -67,12 +67,13 @@ BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
 
 class Node:
-    __slots__ = ("i", "depth", "text", "desc", "cls", "rid", "bounds", "attrs")
+    __slots__ = ("i", "depth", "text", "desc", "cls", "rid", "bounds", "attrs", "parent")
 
-    def __init__(self, i, depth, el):
+    def __init__(self, i, depth, el, parent=None):
         a = el.attrib
         self.i = i
         self.depth = depth
+        self.parent = parent
         self.text = a.get("text", "")
         self.desc = a.get("content-desc", "")
         self.cls = a.get("class", "").rsplit(".", 1)[-1]
@@ -145,17 +146,58 @@ def parse_nodes(xml_text):
         fail("could not parse hierarchy XML: %s" % e)
     nodes, counter = [], [0]
 
-    def walk(el, depth):
+    def walk(el, depth, parent):
         for child in el:
             if child.tag != "node":
                 continue
-            n = Node(counter[0], depth, child)
+            n = Node(counter[0], depth, child, parent)
             counter[0] += 1
             nodes.append(n)
-            walk(child, depth + 1)
+            walk(child, depth + 1, n)
 
-    walk(root, 0)
+    walk(root, 0, None)
     return nodes
+
+
+# --------------------------------------------------- scrolled out of view
+
+def scroll_host(node):
+    """The nearest SCROLLABLE ancestor of `node`, or None.
+
+    uiautomator reports a node's *unclipped* layout bounds. A row that has
+    been scrolled out of a list therefore keeps a perfectly plausible-looking
+    box on screen, in a band that now belongs to whatever is drawn over the
+    list — a sticky footer, the next section, the tab bar.
+    """
+    p = node.parent
+    while p is not None:
+        if p.flag("scrollable"):
+            return p
+        p = p.parent
+    return None
+
+
+def clipped_reason(node):
+    """Why `node`'s centre is not where it looks, or None if it is fine.
+
+    Playtest A-20 tapped a row whose box sat under a sticky footer: the tap
+    landed on the footer's button and the scenario went somewhere else
+    entirely, with `tap` reporting success. The centre being outside the
+    scroll container is exactly that condition, and it is the only cheap test
+    for it — uiautomator does not report clipping.
+    """
+    host = scroll_host(node)
+    if host is None:
+        return None
+    x1, y1, x2, y2 = host.bounds
+    if x2 <= x1 or y2 <= y1:
+        return None
+    cx, cy = node.centre
+    if x1 <= cx < x2 and y1 <= cy < y2:
+        return None
+    return ("centre (%d,%d) is outside its scroll container #%d [%d,%d][%d,%d] — "
+            "scrolled out of view; a tap there lands on whatever is drawn over it"
+            % (cx, cy, host.i, x1, y1, x2, y2))
 
 
 def get_nodes(serial, save_raw=True, tag="dump"):
@@ -315,7 +357,12 @@ def cmd_find(serial, args):
     for n in hits:
         x, y = n.centre
         why = ins.why_unsafe(x, y)
-        print(n.describe() + ("  << OFFSCREEN: " + why if why else ""))
+        note = ""
+        if why:
+            note = "  << OFFSCREEN: " + why
+        elif clipped_reason(n):
+            note = "  << CLIPPED: " + clipped_reason(n)
+        print(n.describe() + note)
 
 
 def cmd_absent(serial, args):
@@ -346,7 +393,18 @@ def _resolve_tap_target(serial, pattern):
         fail("no node matches %r (see %s)" % (pattern, path))
     # Prefer an interactive node, then the tightest box (labels nest inside buttons).
     hits.sort(key=lambda n: (0 if n.flag("clickable") or n.flag("long-clickable") else 1, n.area))
-    n = hits[0]
+    # A match that has been scrolled out of its list is not a target: its box
+    # is real but the pixels belong to whatever is drawn over it. Skip it while
+    # a genuinely visible match remains; refuse if it is the only one.
+    visible = [n for n in hits if clipped_reason(n) is None]
+    if not visible:
+        n = hits[0]
+        print("CLIPPED %s bounds=[%d,%d][%d,%d]" % (_q(n.label), *n.bounds), file=sys.stderr)
+        print("        %s" % clipped_reason(n), file=sys.stderr)
+        print("        scroll it into view first (swipe up/down), then tap.", file=sys.stderr)
+        print("        raw XML: %s" % path, file=sys.stderr)
+        sys.exit(1)
+    n = visible[0]
     x, y = n.centre
     ins = get_insets(serial)
     why = ins.why_unsafe(x, y)
@@ -493,7 +551,13 @@ def cmd_audit(serial, args):
     print(ins.render())
     print("\nraw XML: %s" % path)
 
-    clickable = [n for n in nodes if n.flag("clickable") and n.area > 0]
+    # Scrolled-out rows are not controls: their boxes are real but the pixels
+    # belong to whatever the list is drawn under. Auditing them produced
+    # phantom findings — a half-scrolled row "under the status bar", a list
+    # item "under the gesture inset" — and hid the real ones in the noise.
+    on_screen = [n for n in nodes if n.flag("clickable") and n.area > 0]
+    clickable = [n for n in on_screen if clipped_reason(n) is None]
+    scrolled_out = len(on_screen) - len(clickable)
     screen_area = float(ins.w * ins.h)
 
     # A sheet/dialog SCRIM: drawn from the physical top-left corner, the full
@@ -513,6 +577,9 @@ def cmd_audit(serial, args):
     controls = [n for n in clickable if not is_backdrop(n)]
     print("\n%d clickable node(s) — %d control(s), %d full-bleed backdrop(s) ignored for clipping"
           % (len(clickable), len(controls), len(clickable) - len(controls)))
+    if scrolled_out:
+        print("%d scrolled out of a list (centre outside its scroll container) — not audited"
+              % scrolled_out)
 
     unsafe = []
     for n in clickable:

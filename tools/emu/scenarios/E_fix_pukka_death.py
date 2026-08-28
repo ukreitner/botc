@@ -16,6 +16,11 @@
 #         DEV — POISONED · FINN DIES. It used to read `DEV — POISONED`, with
 #         Finn's name nowhere on the card, and one tap killed him in silence.
 STEPS = [
+    # `E_fix_night_pointer` ends at the TOP of the sheet (it scrolls up to show
+    # [Undo] on the finished row 6). The open card is step 9, below the
+    # collapsed rows 6-8, so scroll back down to it before asserting.
+    ("swipe", ["up", "900"]),
+    ("sleep", 0.8),
     # ---- night 1: the Grandmother, then the Chambermaid ------------------
     ("wait",  "SHOW “FOOL” TO ERIN"),
     ("tap",   "SHOW “FOOL” TO ERIN"),
@@ -50,7 +55,21 @@ STEPS = [
     ("sleep", 2.5),
     ("tap",   "OPEN DAY 1"),
     ("sleep", 2.5),
-    ("tap",   "^Dusk$"),
+    # The top bar's Dusk button is gone (F-3 / D77). The day closes from the
+    # Day tab's DUSK stage card, exactly as F_fix_dusk drives it.
+    ("tap",   "^Day$"),
+    ("sleep", 1.5),
+    # The DUSK stage card is the last one on the day timeline.
+    ("swipe", ["up", "800"]),
+    ("swipe", ["up", "800"]),
+    ("swipe", ["up", "800"]),
+    ("swipe", ["up", "800"]),
+    ("swipe", ["up", "800"]),
+    ("swipe", ["up", "800"]),
+    ("sleep", 0.8),
+    ("tap",   "^DUSK$"),
+    ("sleep", 1.0),
+    ("tap",   "Everyone, eyes closed"),
     ("sleep", 2.0),
     ("tap",   "BEGIN NIGHT 2"),
     ("sleep", 2.5),

@@ -62,6 +62,12 @@ STEPS = [
     ("sleep", 1.2),
     ("tap",   "Begin night"),
     ("sleep", 2.0),
+    # This scenario never marks the Grandchild, so the begin-night guard now
+    # says so ("Setup isn't legal yet — Grandmother: mark the Grandchild") and
+    # offers [Fix setup] / [Start the night anyway]. Nothing below depends on
+    # the Grandmother, so take the override, as B_fix_night1 does.
+    ("tap",   "Start the night anyway"),
+    ("sleep", 2.0),
 
     ("tap",   "DONE — NEXT STEP"),       # 1 Dusk
     ("sleep", 1.5),

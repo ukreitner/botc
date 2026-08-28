@@ -65,11 +65,13 @@ import com.clocktower.engine.Tokens
 import com.clocktower.engine.Verdict
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.OverlayInsets
 import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.components.StatusPip
 import com.clocktower.grimoire.ui.components.TokenCopies
+import com.clocktower.grimoire.ui.components.bottomActionPadding
 import com.clocktower.grimoire.ui.components.labelCopies
-import com.clocktower.grimoire.ui.components.overlayBottomPadding
+import com.clocktower.grimoire.ui.components.rememberOverlayInsets
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.MarkerGrey
 import com.clocktower.grimoire.ui.theme.OnBlockGold
@@ -114,6 +116,12 @@ fun SeatSheet(
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Measured OUTSIDE the sheet, where the numbers still exist: a
+    // `ModalBottomSheet` reports its insets as already consumed, so a nested
+    // `windowInsetsPadding` inside it is a no-op and `overlayBottomPadding`
+    // has only its own 24 dp margin to work with — 63 px against the 84 px
+    // the home indicator swallows (components/SafeArea.kt).
+    val overlayInsets = rememberOverlayInsets()
     ModalBottomSheet(
         onDismissRequest = { flush(); onDismiss() },
         sheetState = sheetState,
@@ -136,6 +144,7 @@ fun SeatSheet(
             SeatSheetMode.PICK_CHARACTER -> CharacterPicker(
                 viewModel = viewModel,
                 state = state,
+                insets = overlayInsets,
                 onPick = { picked, traveller ->
                     if (state.phase == Phase.SETUP) {
                         viewModel.assign(player.id, picked?.id, traveller)
@@ -150,6 +159,7 @@ fun SeatSheet(
             SeatSheetMode.PICK_SHOWN_CHARACTER -> CharacterPicker(
                 viewModel = viewModel,
                 state = state,
+                insets = overlayInsets,
                 title = "Identity shown to player",
                 clearLabel = "Show their actual character",
                 includeTravellers = false,
@@ -162,6 +172,7 @@ fun SeatSheet(
             SeatSheetMode.ADD_REMINDER -> ReminderPicker(
                 viewModel = viewModel,
                 state = state,
+                insets = overlayInsets,
                 targetName = player.name,
                 onKill = { mode = SeatSheetMode.ACTIONS; killing = true },
                 onPick = { reminder ->
@@ -176,7 +187,9 @@ fun SeatSheet(
                     .imePadding()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp)
-                    .padding(bottom = overlayBottomPadding()),
+                    // Same measured-outside insets as the two pickers: a long
+                    // table's swap list runs to the bottom edge too.
+                    .padding(bottom = bottomActionPadding(overlayInsets.bottom)),
             ) {
                 Text("Swap characters with…", style = MaterialTheme.typography.headlineSmall)
                 Text(
@@ -680,11 +693,18 @@ private fun seatHistory(
     return out.sortedBy { it.order }
 }
 
-/** Grid of script characters (plus travellers) to assign to a seat. */
+/**
+ * Grid of script characters (plus travellers) to assign to a seat.
+ *
+ * [insets] must be measured at the SHEET's call site
+ * (`rememberOverlayInsets()`), not in here: inside a `ModalBottomSheet` the
+ * insets read as consumed and every number comes back zero.
+ */
 @Composable
 fun CharacterPicker(
     viewModel: GameViewModel,
     state: GameState,
+    insets: OverlayInsets,
     title: String = "Choose character",
     clearLabel: String = "Clear seat (no character)",
     includeTravellers: Boolean = true,
@@ -705,8 +725,28 @@ fun CharacterPicker(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = overlayBottomPadding()),
+            .padding(horizontal = 20.dp),
+        // CONTENT padding, not layout padding, and the difference matters:
+        //
+        // * top 8 dp — a full-height `ModalBottomSheet` starts 8 px ABOVE the
+        //   status-bar inset on the reference phone, which put [Back]'s top
+        //   edge under the status bar ("top 8px under the status bar/cutout").
+        // * bottom — `overlayBottomPadding()` is 24 dp of margin plus an inset
+        //   the sheet reports as consumed, so it could only offer 63 px
+        //   against the home indicator's 84 px ("bottom 21px under the gesture
+        //   inset"). [insets] carries the real number in from outside.
+        //
+        // As `Modifier.padding` both of these shrink the list's VIEWPORT, and
+        // with `imePadding()` also taking the keyboard's height that leaves a
+        // few hundred pixels: the first search result fell outside the viewport
+        // and off the semantics tree entirely, so `D_bmr_assign.sh` could not
+        // find any row to tap. As `contentPadding` the viewport keeps its full
+        // height and the padding is space at the ends of the SCROLL — which is
+        // what "the last row must clear the home indicator" actually means.
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = bottomActionPadding(insets.bottom),
+        ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         item {
@@ -842,6 +882,7 @@ internal fun tokenPickerCharacters(
 fun ReminderPicker(
     viewModel: GameViewModel,
     state: GameState,
+    insets: OverlayInsets,
     targetName: String = "this seat",
     onKill: () -> Unit = {},
     onPick: (PlacedReminder) -> Unit,
@@ -866,16 +907,16 @@ fun ReminderPicker(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .padding(horizontal = 20.dp)
-            // The token list is long enough to push this sheet to its full
-            // height on every script, and a full-height `ModalBottomSheet`
-            // starts 8 px ABOVE the status-bar inset on the reference phone —
-            // which put the header's [Back] button's top edge under the status
-            // bar (`audit`: "top 8px under the status bar/cutout"). The list
-            // scrolls, so the only row that ever sits at that edge is this
-            // first one.
-            .padding(top = 8.dp)
-            .padding(bottom = overlayBottomPadding()),
+            .padding(horizontal = 20.dp),
+        // The character picker's reasoning, verbatim (see there): 8 dp of top
+        // so [Back] clears the status bar a full-height sheet starts 8 px
+        // above, the measured inset at the bottom so the last chip clears the
+        // home indicator — and both as CONTENT padding, so the keyboard and
+        // the safe area do not eat the viewport between them.
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = bottomActionPadding(insets.bottom),
+        ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         item {

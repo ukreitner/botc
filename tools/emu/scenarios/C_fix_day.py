@@ -26,9 +26,10 @@ STEPS = [
     ("wait", "TABLE"),
     ("tap", "Trouble Brewing"),
     ("sleep", 2.0),
-    # The update banner covers the setup screen's own primary action.
-    ("tap", "Dismiss update banner"),
-    ("sleep", 1.0),
+    # The update banner used to cover the setup screen's own primary action and
+    # had to be dismissed here. A debug build no longer runs the update check on
+    # an emulator at all (README, "The update banner is off on emulators"), so
+    # there is nothing to dismiss and the step failed as a missing node.
     ("wait", "Start empty"),
     ("tap", "Start empty"),
     ("wait", "Before the first night"),

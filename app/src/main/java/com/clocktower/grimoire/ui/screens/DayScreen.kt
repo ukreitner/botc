@@ -813,9 +813,13 @@ private fun DuskBody(
             Text("Everyone, eyes closed ▸", fontWeight = FontWeight.Bold)
         }
     } else {
+        // The top bar's Dusk button was removed (F-3 / D77): the day closes
+        // from this card's own "Everyone, eyes closed ▸" button, which the
+        // shell always supplies. Only a preview host leaves `onDusk` null.
         Text(
-            "Tap Dusk in the top bar to close the day — that sheet confirms the " +
-                "execution or records that there was none.",
+            "The day closes from the Day tab's own “Everyone, eyes closed ▸” " +
+                "button — that sheet confirms the execution or records that " +
+                "there was none.",
             style = MaterialTheme.typography.bodySmall,
             color = FadedInk,
         )
