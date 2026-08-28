@@ -497,7 +497,15 @@ class GameActionsTest {
         val player = assertNotNull(state.player(0))
         assertEquals("drunk", player.characterId)
         assertEquals("empath", player.characterShownToPlayerId)
-        assertEquals("empath", player.nightRoleId)
+        // `Player.nightRoleId` was the pre-WP2 two-character special case and is
+        // deprecated; `Identity.actingRoles` is the general answer. A Drunk has
+        // ONE acting role, the believed character, and it never works (D70's
+        // `alwaysFalse`, shared with the Marionette and the Lunatic).
+        val acting = Identity.actingRoles(state, data::character, player)
+        assertEquals(listOf("empath"), acting.map { it.abilityId })
+        assertEquals(listOf("empath"), acting.map { it.slotId })
+        assertEquals(listOf("drunk"), acting.map { it.sourceId })
+        assertTrue(acting.single().alwaysFalse, "a Drunk's ability never works")
 
         val empathStep = assertNotNull(
             NightPlan.build(state, data::character).steps.find { it.slotId == "empath" },
