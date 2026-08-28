@@ -836,6 +836,43 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Godfather learns the Outsiders on the first night and never again`() {
+        // Playtest D P0-4: the "these Outsiders are in play" block, and its four
+        // SHOW buttons, were rendered again on night 2 and night 3.
+        val base = game("godfather", "pukka", "tinker", "chambermaid", "professor", "gossip")
+        val first = require(base, "godfather")
+        assertTrue(
+            first.cards.any { it.truthful && "TINKER" in it.label.uppercase() },
+            "night 1 shows the Outsider tokens: ${first.cards.map { it.label }}",
+        )
+        assertTrue(
+            NightPlan.givesInfoTonight(base, lookup, "godfather", first.holderId),
+            "and the engine says the row gives information tonight",
+        )
+
+        // Day 1: an Outsider is executed, so night 2's row does fire — with the
+        // kill only, and not one word about which Outsiders are in play.
+        var day = Phases.advancePhase(base, lookup)
+        day = Deaths.attempt(day, lookup, seat(base, "tinker"), KillCause(DeathCause.EXECUTION)).state
+        val armed = Phases.advancePhase(day, lookup)
+        val second = require(armed, "godfather")
+        assertEquals(StepGate.Fire, second.gate)
+        assertTrue(
+            second.cards.isEmpty(),
+            "no Outsider tokens to show a second time: ${second.cards.map { it.label }}",
+        )
+        assertFalse(
+            NightPlan.givesInfoTonight(armed, lookup, "godfather", second.holderId),
+            "and the screen is told not to compute the block either",
+        )
+
+        // Night 3, with nobody dead today, is skipped — and still says nothing.
+        val third = require(nextNight(armed), "godfather")
+        assertIs<StepGate.Skip>(third.gate)
+        assertTrue(third.cards.isEmpty(), "${third.cards.map { it.label }}")
+    }
+
+    @Test
     fun `the Assassin kills through every protection, once`() {
         var state = game("assassin", "pukka", "innkeeper", "chambermaid", "professor", "gossip")
         val assassin = seat(state, "assassin")

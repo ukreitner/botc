@@ -157,13 +157,24 @@ interface GameActionsApi {
     /** Ticks or un-ticks one row by its [StepKey.token]. */
     fun toggleNightStep(key: StepKey) = update { NightPlan.toggleDone(it, key.token) }
 
-    /** The information one step computes, typed, with the lies it may be told with. */
+    /**
+     * The information one step computes, typed, with the lies it may be told with.
+     *
+     * Gated on the engine's own answer for tonight: a screen that derives the
+     * calculator key from the ability alone would show the Godfather their
+     * first-night Outsider list again on every later night (playtest D, P0-4).
+     */
     fun nightInfo(
         state: GameState,
         characterId: String,
         holderId: Long?,
         targets: List<Long> = emptyList(),
-    ): InfoResult? = InfoCalc.compute(state, lookup, characterId, holderId, targets)
+    ): InfoResult? =
+        if (!NightPlan.givesInfoTonight(state, lookup, characterId, holderId)) {
+            null
+        } else {
+            InfoCalc.compute(state, lookup, characterId, holderId, targets)
+        }
 
     // ---- WP3: day, ledger, execution ----
 

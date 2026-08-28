@@ -957,7 +957,10 @@ private fun godfather() = CharacterRule(
                 ),
             )
         },
-        infoId = "godfather",
+        // "You START knowing which Outsiders are in play": the info block is the
+        // first night's and nothing else's. Shown again on night 2 and night 3 it
+        // hands evil the Outsider list two more times (playtest D, P0-4).
+        infoId = "",
     ),
 )
 

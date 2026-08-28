@@ -424,6 +424,36 @@ data class NightPlan(
             return next
         }
 
+        /**
+         * Whether the row for [characterId] on [holderId]'s seat gives its
+         * information TONIGHT.
+         *
+         * `NightRule.infoId = ""` says "this step computes no information" and
+         * the planner has always honoured it for the cards it builds itself. A
+         * screen that derives the calculator key from the ability alone does not
+         * — which is why the Godfather's first-night "these Outsiders are in
+         * play" block, plus its four SHOW buttons, was rendered again on every
+         * later night (playtest D, P0-4). The engine is the authority; ask it.
+         *
+         * Deliberately conservative: only an explicit `infoId = ""` on the rule
+         * that runs tonight suppresses anything. No row, no rule, or a rule that
+         * leaves `infoId` at its default keeps whatever the caller asked for.
+         */
+        fun givesInfoTonight(
+            state: GameState,
+            lookup: (String) -> Character?,
+            characterId: String,
+            holderId: Long? = null,
+        ): Boolean {
+            val id = Character.normalizeId(characterId)
+            val step = build(state, lookup).steps.firstOrNull {
+                it.abilityId == id && (holderId == null || it.holderId == holderId)
+            } ?: return true
+            val rule = CharacterRules.of(step.abilityId, lookup(step.abilityId))
+            val nightRule = rule.nightRule(step.style == WakeStyle.FIRST_NIGHT) ?: return true
+            return nightRule.infoId != ""
+        }
+
         fun toggleDone(state: GameState, token: String): GameState = toggleDone(state, token, false)
 
         private fun toggleDone(state: GameState, token: String, forceDone: Boolean): GameState =
