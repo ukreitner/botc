@@ -3,6 +3,7 @@ package com.clocktower.grimoire.uicheck
 import com.clocktower.engine.Answer
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.DeathCause
+import com.clocktower.engine.DeferredDeath
 import com.clocktower.engine.InfoObligation
 import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.NightEffect
@@ -169,6 +170,48 @@ class NightRowsTest {
     @Test
     fun `chose nobody is a real answer with its own label`() {
         assertEquals("THEY CHOSE NOBODY", primaryLabel(picked = listOf("Ben"), none = true))
+    }
+
+    @Test
+    fun `a standing death is on the button beside tonight's own outcome`() {
+        // The Pukka: Dev is poisoned tonight, Ben — poisoned LAST night — dies
+        // now. The button used to read `DEV — POISONED` and Ben's name appeared
+        // nowhere on the card (playtest D, P1-9).
+        val dies = deathHeadline(KillOutcome.Dies(""), "Ben")
+        assertEquals(
+            "DEV — POISONED · BEN DIES",
+            primaryLabel(picked = listOf("Dev"), places = listOf("Poisoned"), deferredLine = dies),
+        )
+        // An Exorcised Pukka asks nothing at all — and still kills Ben.
+        assertEquals("BEN DIES", primaryLabel(deferredLine = dies))
+        // "They chose nobody" is a real answer, and Ben still dies.
+        assertEquals(
+            "THEY CHOSE NOBODY · BEN DIES",
+            primaryLabel(picked = listOf("Dev"), none = true, deferredLine = dies),
+        )
+        // The Grandmother: nothing is picked, she dies.
+        assertEquals(
+            "GRAN SURVIVES — NOBODY DIES",
+            primaryLabel(
+                deferredLine = deathHeadline(
+                    KillOutcome.Prevented(by = null, reason = "protected", announce = ""),
+                    "Gran",
+                ),
+            ),
+        )
+        // No standing death: nothing is appended.
+        assertEquals("DEV — POISONED", primaryLabel(picked = listOf("Dev"), places = listOf("Poisoned")))
+    }
+
+    @Test
+    fun `the engine names the standing deaths, the screen never guesses them`() {
+        assertEquals(emptyList<Long>(), step().deferredDeaths.map { it.playerId })
+        val standing = step().copy(
+            deferredDeaths = listOf(DeferredDeath(7L, DeathCause.GOOD_ABILITY, respectProtection = false)),
+        )
+        assertEquals(listOf(7L), standing.deferredDeaths.map { it.playerId })
+        assertEquals(DeathCause.GOOD_ABILITY, standing.deferredDeaths.single().cause)
+        assertFalse(standing.deferredDeaths.single().respectProtection)
     }
 
     @Test

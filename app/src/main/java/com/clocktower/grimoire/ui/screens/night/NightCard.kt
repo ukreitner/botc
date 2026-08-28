@@ -178,6 +178,35 @@ fun NightCard(
         deathHeadline(outcome, state.player(id)?.name.orEmpty())
     }.trim(' ', '·')
 
+    // ---- and what the STANDING half will do, through the same funnel -------
+    // The Pukka poisons tonight's pick and kills LAST night's; the kill is in
+    // the rule's `pending`, so nothing on the card named the victim and the
+    // button read `DEV — POISONED` while Ben died (playtest D, P1-9). The
+    // engine names the seats on the step; the outcome is previewed here exactly
+    // as the action's own attack is.
+    val deferred: List<Pair<Long, KillOutcome>> = remember(state, key.token, step.deferredDeaths) {
+        if (skipped) {
+            emptyList()
+        } else {
+            step.deferredDeaths.map { death ->
+                death.playerId to Deaths.killOutcome(
+                    state,
+                    viewModel::characterById,
+                    death.playerId,
+                    KillCause(
+                        cause = death.cause,
+                        sourceCharacterId = step.abilityId,
+                        sourcePlayerId = step.holderId,
+                        ignoresProtection = !death.respectProtection,
+                    ),
+                )
+            }
+        }
+    }
+    val deferredLine = deferred.joinToString(" · ") { (id, outcome) ->
+        deathHeadline(outcome, state.player(id)?.name.orEmpty())
+    }.trim(' ', '·')
+
     // A card the storyteller has deliberately chosen from the offers. It, and
     // not the computed truth, is then what the primary promises: for a poisoned
     // holder the card itself says "give false info", and the one gold button
@@ -195,6 +224,7 @@ fun NightCard(
         picked = pick.playerIds.mapNotNull { state.player(it)?.name },
         places = placedLabels(effects),
         deathLine = deathLine,
+        deferredLine = deferredLine,
         answer = shownAnswer,
         holder = holderName,
         none = pick.none,
@@ -377,7 +407,9 @@ fun NightCard(
             }
 
             // ---- 9. the consequence, before the button that applies it ----
-            for ((id, outcome) in outcomes) {
+            // The standing half comes first: it is the one the storyteller did
+            // not ask for and so the one they are about to miss.
+            for ((id, outcome) in deferred + outcomes) {
                 Text(
                     text = "${state.player(id)?.name.orEmpty()}: ${outcomeDetail(outcome)}",
                     fontSize = nightSp(16f).sp,
@@ -393,7 +425,14 @@ fun NightCard(
                 PrimaryButton(
                     label = if (needsKillSheet) "RESOLVE THE DEATH…" else label,
                     enabled = primaryEnabled(action, pick) && !(owesFalseInfo && chosen == null),
-                    holdMillis = if (isDestructive(effects) && !needsKillSheet) HOLD_CONFIRM_MILLIS else 0,
+                    // A standing death is as destructive as a chosen one.
+                    holdMillis = if (
+                        (isDestructive(effects) || deferred.isNotEmpty()) && !needsKillSheet
+                    ) {
+                        HOLD_CONFIRM_MILLIS
+                    } else {
+                        0
+                    },
                     onConfirm = {
                         when {
                             needsKillSheet ->

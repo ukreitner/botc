@@ -299,6 +299,17 @@ fun primaryLabel(
     places: List<String> = emptyList(),
     /** The kill funnel's own words when the action ends in a death attempt. */
     deathLine: String = "",
+    /**
+     * The kill funnel's words for a death this row causes tonight that NOBODY
+     * chooses tonight — `NightStep.deferredDeaths`, which is the Pukka's
+     * standing victim and the Grandmother's own death.
+     *
+     * It is APPENDED to whatever else the button promises rather than replacing
+     * it, because both things happen: tonight's pick is poisoned AND last
+     * night's pick dies. The button read `DEV — POISONED` and killed Ben without
+     * printing his name anywhere on the card (playtest D, P1-9).
+     */
+    deferredLine: String = "",
     /** The information to be shown, already formatted ("1", "YES", "POISONER"). */
     answer: String = "",
     /** Who is being woken — "SHOW 1 TO BEN". */
@@ -317,9 +328,10 @@ fun primaryLabel(
      */
     impairedHolder: String = "",
 ): String {
+    val also = if (deferredLine.isBlank()) "" else " · ${deferredLine.uppercase()}"
     if (dawn) return "OPEN THE DAY →"
-    if (none) return "THEY CHOSE NOBODY"
-    if (deathLine.isNotBlank()) return deathLine.uppercase()
+    if (none) return "THEY CHOSE NOBODY$also"
+    if (deathLine.isNotBlank()) return deathLine.uppercase() + also
     if (impairedHolder.isNotBlank()) return "PICK WHAT TO SHOW — ${impairedHolder.uppercase()} IS IMPAIRED"
     if (answer.isNotBlank()) {
         val shown = "SHOW “${answer.uppercase()}”"
@@ -327,10 +339,15 @@ fun primaryLabel(
     }
     if (picked.isNotEmpty()) {
         val names = picked.joinToString(", ") { it.uppercase() }
-        if (places.isNotEmpty()) return "$names — ${places.joinToString(" + ") { it.uppercase() }}"
-        return "CONFIRM: $names"
+        if (places.isNotEmpty()) {
+            return "$names — ${places.joinToString(" + ") { it.uppercase() }}$also"
+        }
+        return "CONFIRM: $names$also"
     }
     if (skipped) return "RUN IT ANYWAY"
+    // A row with nothing to ask and a standing death to land — an Exorcised
+    // Pukka. `DONE — NEXT STEP` said nothing while a player died (playtest D).
+    if (deferredLine.isNotBlank()) return deferredLine.uppercase()
     return "DONE — NEXT STEP"
 }
 
