@@ -243,23 +243,34 @@ Defaults are correct on the reference machine; override by exporting:
 `out/` is gitignored. Emulator boot logs land in `out/logs/<port>.log` — check
 there first if `boot` times out.
 
-### The update banner moves every screen
+### The update banner is off on emulators
 
 An APK built with `-PbuildSha=<sha>` asks GitHub for the rolling `latest-apk`
 release on first launch and, when the shas differ, shows a "New build available
 (…)" banner **above the bottom action bar**. It steals ~126 px from every
-screen, so a scenario written against a build without it will miss buttons —
-`tap "Start empty"` simply stops finding anything.
+screen, so a scenario written against a build without it misses buttons —
+`tap "Start empty"` simply stopped finding anything (STATUS.md, HARNESS NOTE).
 
-Two ways to keep a driven emulator honest, both fine:
+**A debug build no longer runs that check on an emulator.**
+`UpdateManager.checkOnce()` returns immediately when `BuildConfig.DEBUG` and the
+device looks like goldfish/ranchu (`Build.FINGERPRINT` / `Build.HARDWARE` /
+`Build.MODEL` / `Build.PRODUCT`), so nothing is fetched and no banner is drawn —
+whatever `-PbuildSha` says and whether or not the emulator has network. A real
+phone and the web build are untouched, and a release APK always asks.
+
+So all three of these are banner-free now, and the scenarios under `scenarios/`
+assume it:
 
 ```sh
 ./gradlew :app:assembleDebug                       # BUILD_SHA=dev: no check at all
-adb -s emulator-5554 shell svc wifi disable        # …or take that instance offline
+./gradlew :app:assembleDebug -PbuildSha=$(git rev-parse HEAD)   # …suppressed on emulators
+adb -s emulator-5554 shell svc wifi disable        # …belt and braces: take it offline
 adb -s emulator-5554 shell svc data disable
 ```
 
-The scenarios under `scenarios/` are all written against a banner-free screen.
+If you ever need to *see* the banner on an emulator, build a release APK or
+temporarily drop the `BuildConfig.DEBUG && onEmulator` guard in
+`app/src/main/java/com/clocktower/grimoire/UpdateBanner.kt`.
 
 ---
 
