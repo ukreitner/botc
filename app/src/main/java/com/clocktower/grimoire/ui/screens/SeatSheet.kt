@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -474,30 +475,40 @@ private fun SeatActions(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth(),
         ) {
+            // Four controls have to fit 1080 px. With Material's default 24 dp
+            // of horizontal button padding "Change…" was left ~114 px of room
+            // and wrapped to "Chang / e…", and "+ Token" to "+ / Token"
+            // (playtest D, P2-13). The touch targets are unchanged: only the
+            // padding INSIDE each button shrinks.
+            val tight = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 Button(
                     onClick = onKill,
                     enabled = player.alive,
+                    contentPadding = tight,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                ) { Text("Kill…") }
+                ) { Text("Kill…", maxLines = 1, softWrap = false) }
                 FilledTonalButton(
                     onClick = onAddReminder,
+                    contentPadding = tight,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                ) { Text("+ Token") }
+                ) { Text("+ Token", maxLines = 1, softWrap = false) }
                 FilledTonalButton(
                     onClick = onPickCharacter,
+                    contentPadding = tight,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                ) { Text("Change…") }
+                ) { Text("Change…", maxLines = 1, softWrap = false) }
                 // Undo, reachable WHILE the sheet is open (P1-10).
                 TextButton(
                     onClick = { viewModel.undo() },
                     enabled = canUndo,
+                    contentPadding = tight,
                     modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("⤺ Undo") }
+                ) { Text("⤺ Undo", maxLines = 1, softWrap = false) }
             }
         }
     }
