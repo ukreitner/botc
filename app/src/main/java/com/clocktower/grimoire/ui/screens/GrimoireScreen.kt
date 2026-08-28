@@ -284,11 +284,13 @@ private fun GrimoireHeader(
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Bluffs left, Fabled right — one tap away, as before.
+            // Bluffs left, Fabled right — one tap away, as before. Their
+            // height is load-bearing: see [HEADER_CHIP_HEIGHT].
             Row(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .heightIn(min = HEADER_CHIP_HEIGHT)
                     .clip(RoundedCornerShape(10.dp))
                     .clickable(onClick = onOpenBluffs)
                     .padding(2.dp),
@@ -310,6 +312,7 @@ private fun GrimoireHeader(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
+                    .heightIn(min = HEADER_CHIP_HEIGHT)
                     .clip(RoundedCornerShape(10.dp))
                     .clickable(onClick = onOpenFabled)
                     .padding(2.dp),
@@ -400,6 +403,25 @@ private fun GrimoireHeader(
 }
 
 private const val FILTER_DEAD = "__dead"
+
+/**
+ * The minimum touch target, and why the header's two chips must declare it.
+ *
+ * `+ bluffs` / `fabled +` are a line of 11 sp text: about 18 dp tall laid out.
+ * Compose does not leave a target that small unhittable — it expands the
+ * clickable's *touch* bounds towards 48 dp around the centre — but that
+ * expansion is invisible to the layout, so the grown rect reached down into
+ * the row below and overlapped the Search field's top-right corner by 40 %
+ * (`ui.py audit`, reported by the harness author and again by every wave-2
+ * agent). Two hit targets fighting over the same pixels means a tap near the
+ * top of Search opens the Fabled sheet instead.
+ *
+ * Asking for the 48 dp in LAYOUT gives the chip the same target it was already
+ * being granted, in the only place a `Column` can see it — so the search row
+ * begins below the chip instead of underneath it. The row grows by ~30 dp,
+ * which is the honest price of a control that was always claiming that space.
+ */
+private val HEADER_CHIP_HEIGHT = 48.dp
 
 /** How many seats carry at least one token of each group. Drives the chips. */
 private fun groupCounts(
