@@ -274,6 +274,36 @@ class DayEngineTest {
     }
 
     @Test
+    fun `the Goblin question needs a Goblin in play, and never fires on an exile`() {
+        // Playtest C-2: it fired on every nomination of every Trouble Brewing
+        // game — a script with no Goblin — and on exiles, where the win cannot
+        // apply at all.
+        var plain = day1()
+        plain = assign(plain, 4L, "chef")
+        assertNull(
+            DayRules.checkNomination(plain, lookup, 1L, 4L).triggers.find { it.sourceId == "goblin" },
+            "no Goblin is in play",
+        )
+
+        var withGoblin = day1()
+        withGoblin = assign(withGoblin, 6L, "goblin")
+        withGoblin = assign(withGoblin, 4L, "chef")
+        assertNotNull(
+            DayRules.checkNomination(withGoblin, lookup, 1L, 4L)
+                .triggers.find { it.sourceId == "goblin" },
+            "with a Goblin in play the claim is worth asking about",
+        )
+
+        // An exile is not an execution, so the claim can win nothing.
+        var exile = withGoblin
+        exile = assign(exile, 5L, "beggar", traveller = true)
+        assertNull(
+            DayRules.checkNomination(exile, lookup, 1L, 5L).triggers.find { it.sourceId == "goblin" },
+            "on an exile it does not fire",
+        )
+    }
+
+    @Test
     fun `withdrawn nominations are recordable and consume both rights`() {
         var state = day1()
         state = DayRules.record(

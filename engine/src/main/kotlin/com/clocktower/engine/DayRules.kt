@@ -467,7 +467,16 @@ object DayRules {
 
         // Goblin: "If you publicly claim to be the Goblin when nominated, and are
         // executed that day, your team wins."
-        if (nominee != null && nominee.characterId != null) {
+        //
+        // Gated like every sibling above it on the character being able to win
+        // it at all: a Goblin must be IN PLAY, and an exile is not an execution
+        // (day-engine §D test 38 — "On an exile it does not fire"). Ungated it
+        // fired on every nomination of every Trouble Brewing game, where nobody
+        // can be the Goblin, and the claim it invited then carried an
+        // "…if they are the Goblin, EVIL WINS" advisory into the execution
+        // sheet of a game with no Goblin (playtest C-2).
+        val goblin = holderOf(state, "goblin")
+        if (goblin != null && nominee != null && !nominee.isTraveller) {
             add(
                 NominationTrigger(
                     kind = TriggerKind.CHOICE,
