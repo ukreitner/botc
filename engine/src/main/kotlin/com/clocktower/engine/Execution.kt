@@ -259,6 +259,82 @@ object Execution {
     }
 
     /**
+     * The same rows, for an execution that has **not happened yet** — what the
+     * confirmation sheet has to show *before* the button (day-engine §F: the
+     * resolution is "shown before the button is pressed", ux/day-screen §G).
+     *
+     * Playtest C-5: the sheet rendered only the kill funnel's verdict, so
+     * executing the Saint — which ends the game for good — read "Before you
+     * execute: Nothing stops it — they die." and nothing else, and the Saint
+     * advisory arrived only after the death.
+     *
+     * The hypothetical record carries the same snapshots [execute] would take,
+     * and its outcome is the kill funnel's own verdict, so a Saint who would be
+     * saved raises no "EVIL WINS" and a Saint who would die raises it every
+     * time. An unanswered `KillOutcome.Choice` counts as a death: the rows that
+     * end a game must be read before the choice is made, not after.
+     */
+    fun previewConsequences(
+        state: GameState,
+        lookup: (String) -> Character?,
+        playerId: Long,
+        nominatorId: Long? = null,
+        nominationIndex: Int? = null,
+        via: ExecutionVia = ExecutionVia.VOTE,
+    ): List<ExecutionConsequence> = consequences(
+        state,
+        lookup,
+        pendingRecord(state, lookup, playerId, nominatorId, nominationIndex, via),
+    )
+
+    /** The `ExecutionRecord` [execute] would write for this seat, right now. */
+    private fun pendingRecord(
+        state: GameState,
+        lookup: (String) -> Character?,
+        playerId: Long,
+        nominatorId: Long?,
+        nominationIndex: Int?,
+        via: ExecutionVia,
+    ): ExecutionRecord {
+        val target = state.player(playerId)
+        val nomination = nominationIndex?.let { state.nominations.getOrNull(it) }
+            ?: state.nominations.lastOrNull {
+                it.day == state.cycle && !it.isExile && it.nomineeId == playerId
+            }
+        val decided = Deaths.killOutcome(
+            state,
+            lookup,
+            playerId,
+            KillCause(
+                cause = DeathCause.EXECUTION,
+                sourceCharacterId = viaSource(via),
+                sourcePlayerId = nominatorId ?: nomination?.nominatorId,
+            ),
+        )
+        val outcome = when (decided) {
+            is KillOutcome.Dies, is KillOutcome.Redirect, is KillOutcome.Choice ->
+                ExecutionOutcome.DIED
+
+            else -> ExecutionOutcome.SURVIVED
+        }
+        return ExecutionRecord(
+            day = state.cycle,
+            outcome = outcome,
+            playerId = playerId,
+            nominatorId = nominatorId ?: nomination?.nominatorId,
+            nominationIndex = nominationIndex,
+            // Who dies instead is not settled until the storyteller picks, so a
+            // preview never guesses: the rows are read for the nominee.
+            via = via,
+            characterIdAtExecution = target?.characterId,
+            wasEvilAtExecution = target?.let { Registration.registersEvil(state, lookup, it) },
+            abilityImpairedAtExecution = target?.let { Status.isImpaired(state, lookup, it.id) },
+            tally = nomination?.votes ?: 0,
+            threshold = nomination?.voteRules?.threshold ?: state.executionThreshold,
+        )
+    }
+
+    /**
      * Applies the consequence the storyteller confirmed (W7G).
      *
      * The rows are recomputed against [record] rather than passed in, so the

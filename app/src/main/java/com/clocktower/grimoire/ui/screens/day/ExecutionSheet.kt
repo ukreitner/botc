@@ -88,6 +88,14 @@ private fun ExecutionSheetBody(
         return
     }
     val preview = remember(state, targetId) { viewModel.executionPreview(state, targetId) }
+    // Everything the execution funnel already knows, BEFORE the button: the
+    // Saint, the Goblin claim, the Zombuul's shroud, the Mastermind's extra
+    // day. The sheet used to show only what might stop the kill, so the one
+    // execution that ends the game for good read "Nothing stops it — they die."
+    // and the Saint advisory arrived after the death (C-5).
+    val consequences = remember(state, targetId, nominatorId, nominationIndex) {
+        viewModel.executionConsequencePreview(state, targetId, nominatorId, nominationIndex)
+    }
     val secret = viewModel.secretVoting(state)
 
     fun execute(optionId: String = "") {
@@ -118,6 +126,28 @@ private fun ExecutionSheetBody(
 
         Text("Before you execute:", style = MaterialTheme.typography.titleSmall)
         PreviewLine(preview)
+        for (consequence in consequences) {
+            Text(
+                "! ${consequence.headline}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (consequence.impaired) PaleGold else EmberRed,
+            )
+            if (consequence.detail.isNotBlank()) {
+                Text(
+                    consequence.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = FadedInk,
+                )
+            }
+            if (consequence.impaired) {
+                Text(
+                    "The ability may not work — you decide anyway.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PoisonGreen,
+                )
+            }
+        }
 
         when (preview) {
             is KillOutcome.Choice -> {
@@ -178,9 +208,11 @@ private fun ExecutionSheetBody(
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Executed — but they don't die") }
 
+        // Bound to the button above it, not to both (finding 19): only the
+        // survival needs the second sentence.
         Text(
-            "Say \"${target.name} is executed\", then \"${target.name} is still alive.\" " +
-                "Never say why.",
+            "If they don't die, say \"${target.name} is executed\", then " +
+                "\"${target.name} is still alive.\" Never say why.",
             style = MaterialTheme.typography.bodySmall,
             color = FadedInk,
         )

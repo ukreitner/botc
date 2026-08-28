@@ -627,6 +627,51 @@ class DayEngineTest {
     // ==================================================================
 
     @Test
+    fun `the execution sheet can warn about the Saint before the button`() {
+        // Playtest C-5: the sheet showed only what might STOP the kill, so the
+        // one execution that ends the game for good read "Nothing stops it —
+        // they die." and the Saint advisory arrived after the death.
+        var state = day1()
+        state = assign(state, 4L, "saint")
+
+        val before = Execution.previewConsequences(state, lookup, 4L)
+        val saint = assertNotNull(
+            before.find { it.sourceId == "saint" },
+            "the Saint row is offered BEFORE the execution: ${before.map { it.sourceId }}",
+        )
+        assertTrue("EVIL WINS" in saint.headline, saint.headline)
+
+        // A Saint who would not die raises nothing: the preview reads the same
+        // kill funnel the button will run.
+        val safe = Effects.place(
+            state = state,
+            target = 4L,
+            kind = EffectKind.SURVIVES_EXECUTION,
+            sourceCharacterId = "devilsadvocate",
+            sourcePlayerId = 5L,
+            until = Until.DUSK,
+            label = "Survives Execution",
+        ).state
+        assertNull(
+            Execution.previewConsequences(safe, lookup, 4L).find { it.sourceId == "saint" },
+            "a Saint the Devil's Advocate saves loses nobody the game",
+        )
+
+        // And the rows are not only about the kill: a claimed Goblin is one.
+        var goblin = day1()
+        goblin = assign(goblin, 4L, "goblin")
+        goblin = DayRules.record(
+            goblin,
+            lookup,
+            nomination(goblin, 1L, 4L).copy(goblinClaim = true),
+        )
+        assertNotNull(
+            Execution.previewConsequences(goblin, lookup, 4L).find { it.sourceId == "goblin" },
+            "the claim they made before the votes is on the sheet that kills them",
+        )
+    }
+
+    @Test
     fun `an execution that kills nobody is still an execution`() {
         var state = day1()
         state = assign(state, 3L, "chef")
