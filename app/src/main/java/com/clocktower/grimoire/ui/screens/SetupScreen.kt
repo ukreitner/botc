@@ -938,7 +938,12 @@ private fun BagHeader(
         }
 
         if (seatlessNote.isNotBlank()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The whole line, not the 20 dp box: this is the acknowledgement
+            // the one-tap bag builders read (A-8), so it should be easy to hit.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { onSeatlessAck(!seatlessAck) },
+            ) {
                 Checkbox(checked = seatlessAck, onCheckedChange = onSeatlessAck)
                 Text(seatlessNote, style = MaterialTheme.typography.bodySmall)
             }
