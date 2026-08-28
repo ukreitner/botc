@@ -166,6 +166,10 @@ object DayRules {
     private const val TOKEN_CLAIMED = "Claimed"
     private const val TOKEN_MASTER = "Master"
     private const val TOKEN_NO_ABILITY = "No Ability"
+    private const val TOKEN_BEGGAR = "Token"
+
+    /** The one character that spends a physical vote token to vote (lead D72). */
+    private const val BEGGAR = "beggar"
 
     // ---- who may nominate / be nominated ----
 
@@ -711,7 +715,75 @@ object DayRules {
                 }
             }
         }
+        // "You must use a vote token to vote." Only on an execution: the Beggar
+        // supports exiles freely and spends nothing (lead D72).
+        if (!frozen.isExile) {
+            for (voter in frozen.voterIds) {
+                val p = next.player(voter) ?: continue
+                if (isBeggar(p) && p.voteTokens > 0) {
+                    next = next.updatePlayer(voter) { it.copy(voteTokens = it.voteTokens - 1) }
+                }
+            }
+        }
         return next
+    }
+
+    /** True for a seat whose TRUE character is the Beggar. */
+    private fun isBeggar(player: Player): Boolean =
+        player.characterId?.let(Character::normalizeId) == BEGGAR
+
+    /**
+     * "If a dead player gives you their vote token, you learn their alignment."
+     *
+     * One irreversible transfer: the donor's token moves to the Beggar's hoard
+     * and the donor's ghost vote goes with it (a vote token given away is a vote
+     * not cast). The `beggar/Token` reminder records WHO gave it —
+     * `PlacedReminder.targetPlayerId` — so one token per gift is enough, and the
+     * alignment the Beggar learns is written to the ledger as a private TOLD.
+     *
+     * Returns the state unchanged when the gift is not legal: only a DEAD, seated
+     * donor with a token left may give, and only to a seated Beggar.
+     */
+    fun giveVoteToken(
+        state: GameState,
+        lookup: (String) -> Character?,
+        donorId: Long,
+        beggarId: Long,
+    ): GameState {
+        val donor = state.player(donorId) ?: return state
+        val beggar = state.player(beggarId) ?: return state
+        if (!donor.seated || !beggar.seated) return state
+        if (donor.id == beggar.id) return state
+        if (donor.alive || donor.voteTokens <= 0) return state
+        if (!isBeggar(beggar)) return state
+
+        val evil = Registration.registersEvil(state, lookup, donor)
+        val alignment = if (evil) "evil" else "good"
+        var next = state
+            .updatePlayer(donorId) { it.copy(voteTokens = it.voteTokens - 1, ghostVoteUsed = true) }
+            .updatePlayer(beggarId) { it.copy(voteTokens = it.voteTokens + 1) }
+        next = Effects.addReminder(
+            next,
+            beggarId,
+            PlacedReminder(
+                sourceId = BEGGAR,
+                label = TOKEN_BEGGAR,
+                targetPlayerId = donorId,
+                note = "${donor.name} gave their vote token — they are $alignment.",
+                placedCycle = next.cycle,
+            ),
+        )
+        return Ledger.record(
+            next,
+            LedgerEntry(
+                kind = LedgerKind.TOLD,
+                sourceId = BEGGAR,
+                actorId = beggarId,
+                targetIds = listOf(donorId),
+                text = "${donor.name} gave ${beggar.name} (Beggar) their vote token.",
+                shown = alignment,
+            ),
+        )
     }
 
     /** WP0 move of `GameActions.recordNomination` — appends with no checks. */
@@ -769,6 +841,13 @@ object DayRules {
             ) {
                 weight = 2
                 reasons += "${seat.name} (Banshee) may raise two hands."
+            }
+            // "You must use a vote token to vote." The Bureaucrat's ×3 and the
+            // Thief's −1 still apply to the vote they do spend a token on — this
+            // only zeroes the weight of a Beggar with an empty hoard (lead D72).
+            if (isBeggar(seat) && seat.voteTokens <= 0) {
+                weight = 0
+                reasons += "${seat.name} (Beggar) has no vote token left to spend."
             }
             if (Status.live(state, lookup, seat.id, EffectKind.NO_VOTE).isNotEmpty()) {
                 weight = 0

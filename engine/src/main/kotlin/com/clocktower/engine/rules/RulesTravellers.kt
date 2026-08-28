@@ -105,8 +105,10 @@ internal val TRAVELLER_RULES: List<CharacterRule> = listOf(
  * returns empty for a live SOBER_HEALTHY). A Poisoner's token stays placeable
  * and visible — it simply has no effect.
  *
- * The vote-token hoard (`Player.voteTokens`) and the donor's alignment reveal
- * are not expressible yet: see this package's report (WP0 / WP2 / WP5).
+ * W7b closed the rest: `Player.voteTokens` (lead D72) is the hoard,
+ * `DayRules.record` spends one per execution vote, and the day ability below
+ * moves a dead player's token over — placing the `beggar/Token` reminder that
+ * names the donor and writing the alignment the Beggar learns to the ledger.
  */
 private fun beggar(): CharacterRule = CharacterRule(
     id = "beggar",
@@ -147,15 +149,30 @@ private fun beggar(): CharacterRule = CharacterRule(
         }
     },
     day = DayRule(
+        // W7b: the hoard is REAL. `DayRules.giveVoteToken` moves one token from
+        // a dead seat to this one, places the `beggar/Token` reminder naming the
+        // donor and writes the alignment the Beggar learns; `DayRules.record`
+        // spends one on every execution vote the Beggar's hand is up for.
+        ability = DayAbility(
+            label = "Take a dead player's vote token",
+            recordsAs = "beggar",
+            available = { state, _, holder ->
+                holder.alive &&
+                    state.seats.any { !it.alive && it.seated && it.voteTokens > 0 }
+            },
+        ),
         briefing = { ctx ->
+            val tokens = ctx.holder.voteTokens
             dayStart(
                 ctx,
                 "beggar",
                 BriefingSeverity.ACTION,
-                "${ctx.holder.name} is the Beggar: they may only vote on an execution while holding " +
-                    "a vote token, and a dead player may hand one over at any time — show the Beggar " +
-                    "that player's alignment privately. They support exiles freely, spending nothing, " +
-                    "and they cannot be drunk or poisoned.",
+                "${ctx.holder.name} is the Beggar and holds " +
+                    (if (tokens == 1) "1 vote token" else "$tokens vote tokens") +
+                    ": each execution vote spends one, and with none left their hand does not " +
+                    "count. A dead player may hand theirs over at any time — take it from the " +
+                    "Beggar's day ability and show them that player's alignment privately. They " +
+                    "support exiles freely, spending nothing, and cannot be drunk or poisoned.",
             )
         },
     ),
