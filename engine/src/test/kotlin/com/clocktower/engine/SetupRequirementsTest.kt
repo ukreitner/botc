@@ -443,6 +443,46 @@ class SetupRequirementsTest {
     }
 
     @Test
+    fun `bag legality is asked only during SETUP, so a star pass raises no checklist`() {
+        // A legal 7-player Trouble Brewing bag: 5 Townsfolk, 0 Outsiders,
+        // 1 Minion, 1 Demon. The bag itself owes nothing at setup.
+        var state = game(
+            "imp", "poisoner", "washerwoman", "librarian", "investigator", "chef", "empath",
+        )
+        assertEquals(emptyList(), ids(state).filter { it.startsWith("bag.") })
+
+        // Night 3: the Imp stars off onto the Poisoner. The grimoire now holds
+        // TWO Imps and no Minion, which is precisely what the rules ask for and
+        // exactly what the bag table rejects.
+        state = state.copy(phase = Phase.NIGHT, cycle = 3)
+        val before = ids(state)
+        state = Identity.changeCharacter(state, lookup, 1, "imp", ChangeReason.STAR_PASS)
+        assertEquals(
+            emptyList(),
+            ids(state).filter { it.startsWith("bag.") },
+            "a star pass must not re-raise the bag checklist: ${ids(state)}",
+        )
+        // Nothing NEW is owed either — `SetupIdentityPrompts` re-opens the sheet
+        // on any change to this set, so the star pass must not change it.
+        assertEquals(before, ids(state), "the star pass raised a new checklist row")
+
+        // The same illegal grimoire DURING setup is still one blocking row per
+        // problem — nothing about the bag check itself changed.
+        val atSetup = state.copy(phase = Phase.SETUP)
+        assertTrue(
+            ids(atSetup).any { it.startsWith("bag.") },
+            "setup still validates the bag: ${ids(atSetup)}",
+        )
+
+        // …and a per-character obligation created by the SAME mid-game change
+        // still fires, which is the half that must keep working.
+        val pitHag = Identity.changeCharacter(
+            state.copy(phase = Phase.NIGHT), lookup, 6, "fortuneteller", ChangeReason.PIT_HAG,
+        )
+        assertTrue("fortuneteller.herring:6" in ids(pitHag), ids(pitHag).toString())
+    }
+
+    @Test
     fun `the Lord of Typhon's evil line is checked around the middle seat`() {
         // poisoner · lordoftyphon · baron — a line with the Typhon in the middle.
         val ok = game("chef", "poisoner", "lordoftyphon", "baron", "empath", "monk", "mayor")
