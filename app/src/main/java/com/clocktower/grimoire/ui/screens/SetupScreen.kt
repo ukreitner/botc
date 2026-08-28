@@ -53,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -75,6 +76,12 @@ import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.Twilight
 import com.clocktower.grimoire.ui.theme.color
 import kotlin.random.Random
+
+/**
+ * How far the setup list scrolls past its last row, so nothing has to be tapped
+ * through the sliver the sticky bag tray leaves (A-20). One bag row's height.
+ */
+private const val BAG_ROW_CLEARANCE_DP = 72
 
 /** Which card of the one-page setup screen is expanded. */
 private const val CARD_SCRIPT = 0
@@ -285,8 +292,22 @@ fun SetupScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            // A-20: a row half-hidden by the sticky tray still reported its FULL
+            // hit rect, so its centre could sit under the tray — and a tap there
+            // hit the tray and did nothing, on a row the storyteller could see.
+            // Clipping the list to its own bounds cuts the hit rect (and the
+            // accessibility bounds screen readers and `ui.py` read) at the same
+            // line the pixels stop, so what looks tappable is tappable.
+            modifier = Modifier.weight(1f).clipToBounds(),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                end = 12.dp,
+                top = 4.dp,
+                // …and the list scrolls a full row clear of the tray, so the
+                // last character in the bag never has to be tapped through a
+                // 13 dp sliver.
+                bottom = BAG_ROW_CLEARANCE_DP.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // ---- 1 SCRIPT ---------------------------------------------------
