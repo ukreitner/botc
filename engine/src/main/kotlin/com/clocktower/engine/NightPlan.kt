@@ -161,11 +161,25 @@ data class NightStep(
 data class NightInput(
     val playerIds: List<Long> = emptyList(),
     val characterIds: List<String> = emptyList(),
+    /**
+     * (seat, character) pairs for a [ChoosePlayersAndCharacters] step — the
+     * Engineer's rebuild, where each seat gets its OWN character.
+     *
+     * Kept separate from the parallel [playerIds] / [characterIds] lists so a
+     * partially-filled answer can never pair a seat with the wrong character.
+     */
+    val assignments: List<Pair<Long, String>> = emptyList(),
     val yes: Boolean? = null,
     val number: Int? = null,
     /** The "they chose nobody / were not woken" answer — a REAL answer, recorded. */
     val none: Boolean = false,
     val optionId: String = "",
+    /**
+     * One answer per [Options] stage of a [Sequence], in stage order — the
+     * Al-Hadikhia's three independent live/die answers. A stage with no entry
+     * falls back to [optionId], so a plain single-[Options] step is unchanged.
+     */
+    val optionIds: List<String> = emptyList(),
     /** True when the storyteller made the choice rather than the player (Goon, lead D1). */
     val byStoryteller: Boolean = false,
 )
@@ -305,11 +319,15 @@ data class NightPlan(
             val pending = nightRule?.pending?.invoke(nightCtx).orEmpty()
 
             val targets = resolvedTargets(state, lookup, step, action, input)
+            // A per-pair answer names its characters in `assignments`; the
+            // whole-step list is what everything downstream reads.
+            val chosenCharacters =
+                input.characterIds.ifEmpty { input.assignments.map { it.second } }
             val scope = EffectScope(
                 sourceId = holderId,
                 sourceCharacterId = step.abilityId,
                 targets = targets,
-                characterIds = input.characterIds,
+                characterIds = chosenCharacters,
                 previous = Memory.forbiddenTargets(state, step.abilityId, holderId),
             )
 
@@ -324,7 +342,7 @@ data class NightPlan(
             }
             next = applyEffects(next, lookup, pending, scope)
 
-            next = recordChoice(next, step, targets, input, impaired)
+            next = recordChoice(next, step, targets, input, chosenCharacters, impaired)
             next = recordWakes(next, step, targets)
             if (impaired && step.wakeCounts == WakeCount.ACT && step.required) {
                 next = recordMalfunction(next, step, holderId)
@@ -1201,7 +1219,17 @@ data class NightPlan(
             /** What this ability chose on its previous wake — [Ref.PreviousTarget]. */
             val previous: Set<Long> = emptySet(),
             var current: Long? = null,
-        )
+            /**
+             * The character paired with [current] on a per-pair action
+             * ([ChoosePlayersAndCharacters]). Null everywhere else, where the
+             * step's single answer in [characterIds] is the whole story.
+             */
+            var currentCharacterId: String? = null,
+        ) {
+            /** The character an empty payload means: this pair's, else the step's. */
+            fun character(): String? =
+                currentCharacterId?.ifEmpty { null } ?: characterIds.firstOrNull()
+        }
 
         /**
          * Constraints are checked AT RESOLVE TIME, not only at pick time: a target
@@ -1216,18 +1244,27 @@ data class NightPlan(
             input: NightInput,
         ): List<Long> {
             if (input.none) return emptyList()
+            // A per-pair answer carries its seats in `assignments`; everything
+            // else reads `playerIds`.
+            val picked = if (action is ChoosePlayersAndCharacters && input.assignments.isNotEmpty()) {
+                input.assignments.map { it.first }
+            } else {
+                input.playerIds
+            }
             val constraints = when (action) {
                 is ChoosePlayers -> action.constraints
                 is ChoosePlayerAndCharacter -> action.playerConstraints
+                is ChoosePlayersAndCharacters -> action.playerConstraints
                 is ShowInfo -> action.constraints
                 else -> emptyList()
             }
             val max = when (action) {
                 is ChoosePlayers -> action.max
-                is ShowInfo -> if (action.targetsNeeded > 0) action.targetsNeeded else input.playerIds.size
-                else -> input.playerIds.size
+                is ChoosePlayersAndCharacters -> action.max
+                is ShowInfo -> if (action.targetsNeeded > 0) action.targetsNeeded else picked.size
+                else -> picked.size
             }
-            return input.playerIds
+            return picked
                 .distinct()
                 .filter { allowed(state, lookup, step, constraints, it) }
                 .take(max.coerceAtLeast(0))
@@ -1328,6 +1365,27 @@ data class NightPlan(
                     )
                 }
 
+                // N pairs at once — the Engineer's rebuild. Each pair carries its
+                // OWN character, so `scope.currentCharacterId` moves with the seat
+                // and an empty payload can never take the first pick's character.
+                is ChoosePlayersAndCharacters -> {
+                    val pairs = input.assignments
+                        .filter { it.first in targets && it.second.isNotBlank() }
+                        .distinctBy { it.first }
+                    if (input.none || pairs.isEmpty()) {
+                        next = applyEffects(next, lookup, action.onNone, scope)
+                    } else {
+                        for ((seat, characterId) in pairs) {
+                            scope.current = seat
+                            scope.currentCharacterId = characterId
+                            next = applyEffects(next, lookup, action.perPair, scope)
+                            next = Effects.reconcile(next, lookup)
+                        }
+                        next = applyEffects(next, lookup, action.onResolve, scope)
+                    }
+                    scope.currentCharacterId = null
+                }
+
                 is YesNo -> {
                     scope.current = targets.firstOrNull()
                     next = applyEffects(
@@ -1338,9 +1396,22 @@ data class NightPlan(
                     )
                 }
 
+                // Each [Options] stage consumes its OWN answer from
+                // `input.optionIds`, in stage order — the Al-Hadikhia's three
+                // independent live/die questions in one resolve. A stage with no
+                // entry falls back to `input.optionId`, so a Sequence with a
+                // single Options stage behaves exactly as before.
                 is Sequence -> {
+                    var answered = 0
                     for (stage in action.stages) {
-                        next = applyAction(next, lookup, stage, input, targets, scope)
+                        val stageInput = if (stage is Options) {
+                            val id = input.optionIds.getOrNull(answered) ?: input.optionId
+                            answered++
+                            input.copy(optionId = id)
+                        } else {
+                            input
+                        }
+                        next = applyAction(next, lookup, stage, stageInput, targets, scope)
                     }
                 }
 
@@ -1389,7 +1460,7 @@ data class NightPlan(
                         ?: if (rule?.impairs == true) EffectKind.POISONED else EffectKind.MARKER
                     // An empty payload falls back to the character picked on this
                     // step, so a Cerenovus's Mad token names what it is mad about.
-                    val payload = effect.characterId?.ifEmpty { scope.characterIds.firstOrNull() }
+                    val payload = effect.characterId?.ifEmpty { scope.character() }
                     val linked = effect.linkedPlayerId
                         ?.let { seats(next, lookup, it, scope).firstOrNull() }
                     for (target in seats(next, lookup, effect.on, scope)) {
@@ -1475,7 +1546,7 @@ data class NightPlan(
                     // no pick to fall back on the effect does NOTHING: passing
                     // null through would clear the seat's character, which is not
                     // a rule any character has.
-                    val newId = effect.characterId.ifEmpty { scope.characterIds.firstOrNull() }
+                    val newId = effect.characterId.ifEmpty { scope.character() }
                     if (!newId.isNullOrBlank()) {
                         for (target in seats(next, lookup, effect.on, scope)) {
                             next = Identity.changeCharacter(
@@ -1599,7 +1670,7 @@ data class NightPlan(
                 }
 
                 is NightEffect.GrantAbility -> {
-                    val abilityId = effect.abilityId.ifEmpty { scope.characterIds.firstOrNull() }
+                    val abilityId = effect.abilityId.ifEmpty { scope.character() }
                         ?.let(Character::normalizeId)
                         .orEmpty()
                     if (abilityId.isNotEmpty()) {
@@ -1765,6 +1836,7 @@ data class NightPlan(
             step: NightStep,
             targets: List<Long>,
             input: NightInput,
+            characterIds: List<String>,
             impaired: Boolean,
         ): GameState {
             if (step.action == null && targets.isEmpty() && !input.none) return state
@@ -1774,7 +1846,7 @@ data class NightPlan(
                 sourceId = step.abilityId,
                 actorId = step.holderId,
                 targetIds = targets,
-                characterIds = input.characterIds,
+                characterIds = characterIds,
                 // "They chose nobody" is a REAL answer and is recorded as one.
                 text = if (input.none) NO_CHOICE else "",
                 impaired = impaired,

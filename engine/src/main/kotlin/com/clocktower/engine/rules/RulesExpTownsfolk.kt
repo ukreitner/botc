@@ -10,6 +10,7 @@ import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChooseCharacter
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
+import com.clocktower.engine.ChoosePlayersAndCharacters
 import com.clocktower.engine.DayAbility
 import com.clocktower.engine.DayRule
 import com.clocktower.engine.DeathCause
@@ -700,34 +701,53 @@ private fun cultLeader(): CharacterRule {
 /**
  * "Once per game, at night, choose which Minions or which Demon is in play."
  *
- * The rebuild is SEVERAL seats and several characters at once, which no single
- * `NightAction` carries: `ChoosePlayerAndCharacter` is one pair. The row
- * therefore records WHICH seats are being rebuilt and spends the ability; the
- * storyteller assigns each new character from the seat sheet, which already
- * clears the old character's tokens (`Identity.changeCharacter`) and — since
- * lead D67 — keeps the seat's alignment by default.
+ * The rebuild is SEVERAL seats and several characters at once, so W7b gave the
+ * schema the action it needs: [ChoosePlayersAndCharacters] carries N (seat,
+ * character) pairs in one answer, and `NightPlan` applies `perPair` once per
+ * pair with that pair's own character. Before it, the row could only record
+ * which seats were being rebuilt and leave the transform to the seat sheet.
  *
- * W7D closed the dangerous half of this gap: `BecomeCharacter` with an empty
- * character id and nothing picked used to WIPE the seat. It is now inert. An
- * N-pair action for the multi-seat rebuild is still owed (wave 7b).
+ * Alignment is PRESERVED (lead D67): `BecomeCharacter.evil = null`. An evil
+ * seat rebuilt into another evil character stays evil, and the storyteller can
+ * still override from the seat sheet.
+ *
+ * The pool is every evil character, not Minions alone: the card's two branches
+ * are "which Minions" and "which Demon", and the prompt says they are branches
+ * rather than a menu to mix.
  */
 private fun engineer(): CharacterRule {
     val rule = NightRule(
         gate = Gates.all(Gates.aliveHolder, Gates.notSpent()),
-        prompt = "The Engineer may choose which Minions OR which Demon is in play. " +
-            "Change each seat from the seat sheet, then wake the changed players one " +
-            "at a time and show the 'You are' token and their new character.",
+        prompt = "The Engineer may choose which Minions OR which Demon is in play — one or the " +
+            "other, never a mix. Assign each evil seat its new character, then wake the changed " +
+            "players one at a time and show the 'You are' token and their new character. " +
+            "Nobody changes alignment.",
         infoId = "",
         action = {
-            ChoosePlayers(
+            ChoosePlayersAndCharacters(
                 sourceId = "engineer",
-                prompt = "WHICH EVIL SEATS ARE THEY REBUILDING?",
+                prompt = "WHICH EVIL SEATS BECOME WHICH CHARACTERS?",
                 min = 1,
                 max = 3,
-                constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.EVIL),
+                playerConstraints = listOf(
+                    TargetConstraint.ANY_LIVING_STATE,
+                    TargetConstraint.EVIL,
+                ),
+                pool = CharacterPool.EVIL,
                 sort = TargetSort.DEMON_FIRST,
                 allowNone = true,
                 noneLabel = "Declined — nothing changes and the ability is NOT used",
+                perPair = listOf(
+                    NightEffect.BecomeCharacter(
+                        on = Ref.Target,
+                        // Empty = the character paired with THIS seat.
+                        characterId = "",
+                        // Null keeps the seat's alignment (lead D67).
+                        evil = null,
+                        reason = ChangeReason.ENGINEER,
+                    ),
+                    NightEffect.ShowCardTo(on = Ref.Target, card = "YOU ARE"),
+                ),
                 onResolve = listOf(NightEffect.MarkSpent("engineer")),
             )
         },

@@ -642,13 +642,43 @@ class RulesExpTownsfolkTest {
         assertFalse(has(declined, 0L, "engineer", "No Ability"), "a decline never spends")
         assertEquals(StepGate.Fire, gate(atNight(declined, 3), "engineer"))
 
-        // When they rebuild the Minions
-        state = run(state, "engineer", NightInput(playerIds = listOf(2L, 3L)))
+        // When they rebuild the Minions — one character per seat, in one answer
+        state = run(
+            state,
+            "engineer",
+            NightInput(assignments = listOf(2L to "godfather", 3L to "spy")),
+        )
 
-        // Then the ability is spent and the row is gone for good
+        // Then each seat took ITS OWN character, keeping its alignment (D67)…
+        assertEquals("godfather", state.player(2L)?.characterId)
+        assertEquals("spy", state.player(3L)?.characterId)
+        assertTrue(assertNotNull(state.player(2L)).isEvil(lookup))
+        assertTrue(assertNotNull(state.player(3L)).isEvil(lookup))
+        assertEquals(
+            listOf("godfather", "spy"),
+            state.ledger.last { it.kind == LedgerKind.CHOICE && it.sourceId == "engineer" }
+                .characterIds,
+        )
+        // …and the ability is spent, so the row is gone for good
         assertTrue(has(state, 0L, "engineer", "No Ability"))
         assertTrue(Memory.isSpent(state, "engineer", 0L))
         assertTrue(gate(atNight(state, 3), "engineer") is StepGate.Skip)
+    }
+
+    @Test
+    fun `the Engineer may rebuild the Demon alone, and an unpaired seat changes nothing`() {
+        var state = atNight(game("engineer", "imp", "poisoner", "baron", "chef", "mayor"), 2)
+        val action = assertIs<ChoosePlayersAndCharacters>(assertNotNull(step(state, "engineer")).action)
+        assertEquals(CharacterPool.EVIL, action.pool)
+        assertEquals(3, action.max)
+        assertTrue(TargetConstraint.EVIL in action.playerConstraints)
+
+        // Only the Demon seat is paired: nobody else changes.
+        state = run(state, "engineer", NightInput(assignments = listOf(1L to "vortox")))
+        assertEquals("vortox", state.player(1L)?.characterId)
+        assertEquals("poisoner", state.player(2L)?.characterId)
+        assertEquals("baron", state.player(3L)?.characterId)
+        assertTrue(Memory.isSpent(state, "engineer", 0L))
     }
 
     // ==================================================================

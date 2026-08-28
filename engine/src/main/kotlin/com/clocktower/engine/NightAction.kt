@@ -51,6 +51,35 @@ data class ChoosePlayerAndCharacter(
     val onNone: List<NightEffect> = emptyList(),
 ) : NightAction
 
+/**
+ * N (seat, character) pairs in ONE answer — the Engineer's rebuild.
+ *
+ * "Once per game, at night, choose which Minions or which Demon is in play" is
+ * several seats and several characters at once, which [ChoosePlayerAndCharacter]
+ * (exactly one pair) cannot carry. The answer arrives as
+ * `NightInput.assignments`; [perPair] is applied once per pair, in pick order,
+ * with `Ref.Target` addressing that pair's seat and an empty `characterId` /
+ * `abilityId` resolving to that pair's character.
+ */
+@Serializable
+data class ChoosePlayersAndCharacters(
+    override val sourceId: String,
+    override val prompt: String,
+    val min: Int = 1,
+    val max: Int = 3,
+    val playerConstraints: List<TargetConstraint> = emptyList(),
+    val pool: CharacterPool,
+    val sort: TargetSort = TargetSort.SEAT_ORDER,
+    val requireNotInPlay: Boolean = false,
+    val allowNone: Boolean = true,
+    val noneLabel: String = "They chose nobody",
+    /** Applied per pair, IN PICK ORDER, re-deriving state between each. */
+    val perPair: List<NightEffect> = emptyList(),
+    val onResolve: List<NightEffect> = emptyList(),
+    /** The head-shake: "they rebuilt nothing". Never runs [onResolve]. */
+    val onNone: List<NightEffect> = emptyList(),
+) : NightAction
+
 /** Organ Grinder, Po head-shake, Professor pass. */
 @Serializable
 data class YesNo(
