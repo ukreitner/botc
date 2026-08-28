@@ -218,14 +218,17 @@ object CharacterRules {
     }
 
     /**
-     * The rule for [id]: a WP7 registry row, else the WP7 stopgap below, else one
-     * derived from `characters.json` so homebrew and not-yet-written characters
-     * still get a working step.
+     * The rule for [id]: a WP7 registry row, else one derived from
+     * `characters.json` so homebrew and not-yet-written characters still get a
+     * working step.
+     *
+     * The WP2 stopgap map that used to sit between the two is gone (lead D64):
+     * every one of its five rows — ravenkeeper, zombuul, godfather, pukka,
+     * chambermaid — is now a real registry row.
      */
     fun of(id: String, character: Character?): CharacterRule {
         val key = Character.normalizeId(id)
         all[key]?.let { return it }
-        STOPGAP[key]?.let { return it }
         return generic(key, character)
     }
 
@@ -292,145 +295,11 @@ object CharacterRules {
                 prompt = "",
                 infoId = if (InfoCalc.supports(key)) key else "",
             )
-            CharacterRule(
-                id = key,
-                firstNight = rule,
-                otherNight = rule,
-                keepsAbilityWhenDead = key in StatusQuery.KEEPS_ABILITY_WHEN_DEAD,
-            )
+            // A character the registry does not know keeps nothing in the
+            // grave: the WP1 stopgap id set is gone (lead D64) and every real
+            // row declares `keepsAbilityWhenDead` for itself.
+            CharacterRule(id = key, firstNight = rule, otherNight = rule)
         }
-
-    // ------------------------------------------------------------------
-    // WP7 STOPGAP — delete each row as its edition's registry file lands
-    // ------------------------------------------------------------------
-
-    /**
-     * The handful of rows the WP2 acceptance criteria are stated in terms of,
-     * so the night engine can be tested before WP7a–i exist. [all] wins over
-     * this map, so a real registry row replaces its stopgap silently.
-     *
-     * Same shape as WP1's `StatusQuery.KEEPS_ABILITY_WHEN_DEAD` id set, and it
-     * goes the same way: **the merger deletes a row here when WP7 lands it**.
-     */
-    private val STOPGAP: Map<String, CharacterRule> by lazy {
-        listOf(
-            // Only on the night they die (night-engine §2, digest tb-townsfolk).
-            CharacterRule(
-                id = "ravenkeeper",
-                actsWhileDead = true,
-                firstNight = ravenkeeper(),
-                otherNight = ravenkeeper(),
-            ),
-            // "If no-one died today, the Zombuul attacks" — the reverse gate.
-            CharacterRule(
-                id = "zombuul",
-                actsWhileDead = true,
-                killCause = DeathCause.DEMON_KILL,
-                otherNight = NightRule(
-                    gate = Gates.all(Gates.someoneDiedToday(expected = false), Gates.notExorcised),
-                    prompt = "Wake the Zombuul. They point at a player.",
-                    action = { attack("zombuul") },
-                ),
-            ),
-            // "If an Outsider died today, the Godfather kills" — the Conditional gate.
-            CharacterRule(
-                id = "godfather",
-                killCause = DeathCause.EVIL_ABILITY,
-                otherNight = NightRule(
-                    gate = Gates.someoneDiedToday(expected = true, team = Team.OUTSIDER),
-                    prompt = "Wake the Godfather. They point at a player.",
-                    action = { attack("godfather", DeathCause.EVIL_ABILITY) },
-                    infoId = "godfather",
-                ),
-                firstNight = NightRule(infoId = "godfather", wakeCounts = WakeCount.ACT),
-            ),
-            // Poison tonight, kill the standing victim at the NEXT wake (lead D4).
-            CharacterRule(
-                id = "pukka",
-                killCause = DeathCause.DEMON_KILL,
-                firstNight = pukka(),
-                otherNight = pukka(),
-            ),
-            // "You do not wake with fewer than 2 other alive players."
-            CharacterRule(
-                id = "chambermaid",
-                firstNight = chambermaid(),
-                otherNight = chambermaid(),
-            ),
-        ).associateBy { Character.normalizeId(it.id) }
-    }
-
-    private fun ravenkeeper() = NightRule(
-        gate = Gates.diedTonight(),
-        prompt = "Wake them. They point at a player; show that player's character token.",
-        action = { ShowInfo("ravenkeeper", "WHO DID THEY CHOOSE?", targetsNeeded = 1) },
-        infoId = "ravenkeeper",
-    )
-
-    private fun chambermaid() = NightRule(
-        gate = Gates.minAlive(2),
-        prompt = "Wake them. They point at two players; show how many woke tonight.",
-        action = { ShowInfo("chambermaid", "WHICH TWO DID THEY CHOOSE?", targetsNeeded = 2) },
-        infoId = "chambermaid",
-    )
-
-    private fun pukka() = NightRule(
-        gate = Gates.notExorcised,
-        prompt = "Wake the Pukka. They point at a player — that player is poisoned.",
-        action = {
-            ChoosePlayers(
-                sourceId = "pukka",
-                prompt = "WHO DID THEY CHOOSE?",
-                min = 1,
-                max = 1,
-                constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED),
-                sort = TargetSort.ALIVE_FIRST,
-                allowNone = true,
-                noneLabel = "They chose nobody",
-                perTarget = listOf(
-                    NightEffect.PlaceToken(
-                        sourceId = "pukka",
-                        label = "Poisoned",
-                        on = Ref.Target,
-                        kind = EffectKind.POISONED,
-                        until = Until.ON_SOURCE_STEP,
-                    ),
-                ),
-            )
-        },
-        // The player poisoned on a previous night dies now — and dies POISONED,
-        // then becomes healthy whether or not the death was prevented (lead D4).
-        pending = { ctx ->
-            val key = Tokens.key("pukka", "Poisoned")
-            ctx.state.seats
-                .filter { seat ->
-                    Status.effectsOn(ctx.state, ctx.lookup, seat.id)
-                        .any { Tokens.key(it.sourceCharacterId, it.label) == key }
-                }
-                .flatMap { victim ->
-                    listOf(
-                        NightEffect.Attack(
-                            on = Ref.Seat(victim.id),
-                            cause = DeathCause.DEMON_KILL,
-                            deferred = true,
-                        ),
-                        NightEffect.RemoveToken("pukka", "Poisoned", Ref.Seat(victim.id)),
-                    )
-                }
-        },
-    )
-
-    private fun attack(sourceId: String, cause: DeathCause = DeathCause.DEMON_KILL) = ChoosePlayers(
-        sourceId = sourceId,
-        prompt = "WHO DID THEY CHOOSE?",
-        min = 1,
-        max = 1,
-        constraints = listOf(TargetConstraint.ALIVE),
-        sort = TargetSort.ALIVE_FIRST,
-        allowNone = true,
-        noneLabel = "No kill (impaired, protected, or storyteller's choice)",
-        perTarget = listOf(NightEffect.Attack(Ref.Target, cause)),
-    )
 }
 
 // ---- the contexts a registry lambda receives (all read-only) ----

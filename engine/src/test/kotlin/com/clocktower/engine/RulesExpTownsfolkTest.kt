@@ -1,7 +1,7 @@
 package com.clocktower.engine
 
 import com.clocktower.engine.rules.EXP_TOWNSFOLK_RULES
-import com.clocktower.engine.rules.MISSING_INFO_IDS
+import com.clocktower.engine.rules.SUPPRESSED_INFO_IDS
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -131,30 +131,41 @@ class RulesExpTownsfolkTest {
     }
 
     @Test
-    fun `the info ids these rows name are either supported or filed to WP2`() {
-        val declared = EXP_TOWNSFOLK_RULES
-            .flatMap { listOfNotNull(it.firstNight, it.otherNight) }
-            .mapNotNull { it.infoId }
-            .filter { it.isNotEmpty() }
-            .distinct()
+    fun `every info id these rows name has a calculator, and none is a placeholder`() {
+        val rules = EXP_TOWNSFOLK_RULES.flatMap { listOfNotNull(it.firstNight, it.otherNight) }
+        // W7H: a NAMED id must be one `InfoCalc` really implements. Naming an
+        // unsupported id used to be how a row suppressed the planner's fallback;
+        // `infoId = ""` says that outright now, so a name here is a promise.
+        val named = rules.mapNotNull { it.infoId }.filter { it.isNotEmpty() }.distinct()
+        val unsupported = named.filterNot { InfoCalc.supports(it) }
+        assertTrue(unsupported.isEmpty(), "no calculator for: $unsupported")
 
-        // A named id that InfoCalc does NOT support is the deliberate marker-row
-        // signal, and must be on the filed list — no silent placeholders.
-        val unsupported = declared.filterNot { InfoCalc.supports(it) }
-        assertEquals(
-            MISSING_INFO_IDS.sorted(),
-            unsupported.sorted(),
-            "MISSING_INFO_IDS must be exactly the ids WP2 still owes",
-        )
+        // And the rows that compute nothing say so explicitly, never by omission.
+        val suppressed = EXP_TOWNSFOLK_RULES
+            .filter { rule ->
+                listOfNotNull(rule.firstNight, rule.otherNight).any { it.infoId == "" }
+            }
+            .map { it.id }
+        assertEquals(SUPPRESSED_INFO_IDS.sorted(), suppressed.sorted())
 
-        // The rows that leave `infoId` empty are the ones with a live calculator;
-        // the planner falls back to the ability id for those.
+        // `null` — the default — still falls back to the ability's own id.
         for (id in listOf(
             "balloonist", "bountyhunter", "cultleader", "king", "knight",
             "noble", "shugenja", "steward", "villageidiot",
         )) {
             assertTrue(InfoCalc.supports(id), "$id lost its calculator")
         }
+    }
+
+    @Test
+    fun `a suppressed info id offers no picker and no cards`() {
+        // The Acrobat learns nothing: `infoId = ""` must stop the planner
+        // inventing a `ShowInfo` out of the ability id (W7H).
+        val state = atNight(game("acrobat", "imp", "poisoner", "chef", "mayor"), 2)
+        val row = assertNotNull(step(state, "acrobat"))
+        assertIs<ChoosePlayers>(row.action, "its own action still stands")
+        assertTrue(row.cards.isEmpty(), "and nothing is pre-filled: ${row.cards.map { it.label }}")
+        assertNull(InfoCalc.compute(state, lookup, "acrobat", 0L))
     }
 
     // ==================================================================
@@ -802,10 +813,18 @@ class RulesExpTownsfolkTest {
         // Then the row is about the DEMON: it fires regardless, and is not a King wake
         assertEquals(StepGate.Fire, first.gate)
         assertEquals(WakeCount.INFORMED, first.wakeCounts)
-        assertEquals(
-            ShowCardSpec.CharacterCard("THIS PLAYER IS", "king"),
-            first.cards.single().card,
+        assertTrue(
+            first.cards.any { it.card == ShowCardSpec.CharacterCard("THIS PLAYER IS", "king") },
+            first.cards.map { it.label }.toString(),
         )
+        // W7H: `king.demon` has a calculator now, so the row also pre-fills the
+        // card that POINTS at the King — and the lies beside it.
+        val point = assertNotNull(
+            first.cards.map { it.card }.filterIsInstance<ShowCardSpec.PointCard>().firstOrNull(),
+        )
+        assertEquals(listOf(1), point.seatNumbers, "seat 1 holds the King")
+        assertEquals("king", point.characterId)
+        assertTrue(first.cards.any { !it.truthful }, "and a lie is offered")
 
         // Given 1 dead of 6 on night 2, the King does not wake
         var later = atNight(state, 2)

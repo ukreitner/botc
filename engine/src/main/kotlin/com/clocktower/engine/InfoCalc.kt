@@ -65,6 +65,8 @@ object InfoCalc {
     fun targetsNeeded(characterId: String): Int = when (Character.normalizeId(characterId)) {
         "fortuneteller", "seamstress", "chambermaid" -> 2
         "dreamer", "villageidiot", "ravenkeeper", "grandmother", "exorcist" -> 1
+        // W7H additions.
+        "harlot", "beggar" -> 1
         else -> 0
     }
 
@@ -83,6 +85,14 @@ object InfoCalc {
         "godfather", "juggler", "exorcist", "courtier", "savant", "tealady",
         // W7A: the one Fabled that computes a number (it has no seat).
         "duchess",
+        // W7H: the half of `MISSING_INFO_IDS` whose answer the grimoire really
+        // does know. The rest of that list is free text or a storyteller
+        // judgement, and those rows say `infoId = ""` instead.
+        // Ids are compared through `Character.normalizeId`, which strips the
+        // dot: the registry row spells it `king.demon`, this set spells the
+        // normalised form.
+        "choirboy", "kingdemon", "nightwatchman", "preacher", "farmer",
+        "harlot", "beggar",
     )
 
     /**
@@ -137,6 +147,13 @@ object InfoCalc {
             "savant" -> savant(ctx)
             "tealady" -> teaLady(ctx)
             "duchess" -> duchess(ctx)
+            "choirboy" -> choirboy(ctx)
+            "kingdemon" -> kingToDemon(ctx)
+            "nightwatchman" -> selfReveal(ctx, "nightwatchman", "THIS PLAYER IS")
+            "preacher" -> selfReveal(ctx, "preacher", "THIS CHARACTER SELECTED YOU")
+            "farmer" -> becomes(ctx, "farmer")
+            "harlot" -> revealCharacter(ctx, targets, "Harlot")
+            "beggar" -> beggar(ctx, targets)
             else -> null
         } ?: return null
         return finish(ctx, id, result)
@@ -896,6 +913,69 @@ object InfoCalc {
                 "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})"
             },
             caveats = misregistrations(ctx, visitors),
+        )
+    }
+
+    /**
+     * Choirboy — "you learn which player is the Demon" (the PLAYER, not the
+     * character), on the night the Demon kills the King.
+     */
+    private fun choirboy(ctx: Ctx): InfoResult {
+        val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
+        if (demons.isEmpty()) {
+            return InfoResult(Answer.Message("?"), "No Demon in the grimoire")
+        }
+        return InfoResult(
+            answer = Answer.Players(demons.map { it.id }),
+            headline = "The Demon is " + demons.joinToString { ctx.name(it) },
+            detail = "They learn the PLAYER, never the character.",
+            caveats = misregistrations(ctx, demons),
+        )
+    }
+
+    /** The Demon's first night: "you learn which player is the King". */
+    private fun kingToDemon(ctx: Ctx): InfoResult {
+        val kings = ctx.players.filter {
+            Character.normalizeId(it.characterId.orEmpty()) == "king"
+        }
+        if (kings.isEmpty()) return InfoResult(Answer.Message("—"), "No King in play")
+        return InfoResult(
+            answer = Answer.Players(kings.map { it.id }, characterId = "king"),
+            headline = "The King is " + kings.joinToString { ctx.name(it) },
+            detail = "Show the Demon the 'This player is' and King tokens, then point.",
+        )
+    }
+
+    /**
+     * "They learn you are the X" — the Nightwatchman's reveal, the Preacher's
+     * selection. The answer is a token, and the only thing the grimoire has to
+     * get right is WHICH token.
+     */
+    private fun selfReveal(ctx: Ctx, characterId: String, prefix: String): InfoResult = InfoResult(
+        answer = Answer.Characters(listOf(characterId)),
+        headline = "$prefix ${ctx.lookup(characterId)?.name ?: characterId}",
+    )
+
+    /** "They become the X" — the Farmer's replacement is shown their new token. */
+    private fun becomes(ctx: Ctx, characterId: String): InfoResult = InfoResult(
+        answer = Answer.Characters(listOf(characterId)),
+        headline = "YOU ARE the ${ctx.lookup(characterId)?.name ?: characterId}",
+        detail = "They do NOT get first-night information.",
+    )
+
+    /** Beggar — "if a dead player gives you their vote token, you learn their alignment". */
+    private fun beggar(ctx: Ctx, targets: List<Long>): InfoResult {
+        val donor = validTargets(ctx, targets, 1)?.firstOrNull()
+            ?: return InfoResult(Answer.Message("?"), "Select the seat that gave the token")
+        val evil = ctx.isEvil(donor)
+        return InfoResult(
+            answer = Answer.Message(if (evil) "EVIL" else "GOOD"),
+            headline = "${ctx.name(donor)} is ${if (evil) "EVIL" else "GOOD"}",
+            detail = "Show the Beggar privately. Their TRUE alignment, not what they register as.",
+            // A prose answer generates no lie on its own, and this one has
+            // exactly one: the other side.
+            alternatives = listOf(Answer.Message(if (evil) "GOOD" else "EVIL")),
+            caveats = misregistrations(ctx, listOf(donor)),
         )
     }
 

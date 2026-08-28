@@ -322,10 +322,15 @@ internal class StatusQuery(
 
     fun effectsOn(playerId: Long): List<Effect> = byTarget[playerId].orEmpty()
 
+    /**
+     * Registry-driven (lead D64): the WP1 id set that used to back this is gone,
+     * and every character that keeps its ability in the grave says so on its own
+     * `CharacterRule.keepsAbilityWhenDead`. A character with no row keeps
+     * nothing, which is the right default for homebrew.
+     */
     fun keepsAbilityWhenDead(characterId: String?): Boolean {
         val id = characterId?.let(Character::normalizeId) ?: return false
-        CharacterRules.all[id]?.let { return it.keepsAbilityWhenDead }
-        return id in KEEPS_ABILITY_WHEN_DEAD
+        return CharacterRules.all[id]?.keepsAbilityWhenDead == true
     }
 
     /**
@@ -530,17 +535,6 @@ internal class StatusQuery(
         return player.isEvil(lookup)
     }
 
-    internal companion object {
-        /**
-         * Stopgap for `CharacterRule.keepsAbilityWhenDead` until the WP7 registry
-         * rows land. The registry always wins when it has a row.
-         */
-        val KEEPS_ABILITY_WHEN_DEAD: Set<String> = setOf(
-            "recluse", "spy", "ravenkeeper", "sweetheart", "moonchild", "klutz", "barber",
-            "hatter", "poppygrower", "plaguedoctor", "heretic", "atheist", "politician",
-            "banshee", "zealot", "puzzlemaster",
-        )
-    }
 }
 
 /** Status queries over stored effects plus the standing rules (WP1). */
@@ -663,21 +657,19 @@ internal object Standing {
                 addAll(CharacterRules.all.getValue(id).standing!!.emit(state, p, lookup))
                 continue
             }
+            // W7H: soldier, vizier, drunk and lleech had arms here that could
+            // never run — each has a registry `standing` row, and the `continue`
+            // above takes it. What is left is the two that do NOT: a Marionette
+            // and a Lunatic are believed-role seats owned by `Identity`, and
+            // WP7-BMR's Sailor row deliberately declares no standing rule
+            // (declaring one would REPLACE this, and `emitSelf` has no
+            // `StatusQuery` to ask).
             when (id) {
-                "soldier" -> add(innate(p, EffectKind.SAFE_FROM_DEMON, id, p.id, state))
                 "sailor" -> add(innate(p, EffectKind.CANT_DIE, id, p.id, state))
-                "vizier" -> add(innate(p, EffectKind.DAY_IMMUNE, id, p.id, state))
                 // "It is just as if this player is the Drunk" — the source is their own
                 // character, so the effect must not end with it (ARCHITECTURE §2.3).
-                "drunk", "marionette", "lunatic" ->
+                "marionette", "lunatic" ->
                     add(innate(p, EffectKind.NO_ABILITY, id, null, state, endsWithSource = false))
-                "lleech" -> {
-                    val host = hostOf(state) ?: continue
-                    add(
-                        innate(p, EffectKind.DEATH_TIED_TO, id, p.id, state)
-                            .copy(linkedPlayerId = host),
-                    )
-                }
             }
         }
     }
@@ -834,16 +826,6 @@ internal object Standing {
         if (id == Tokens.STORYTELLER_SOURCE) return null
         val seats = state.seats.filter { it.characterId?.let(Character::normalizeId) == id }
         return seats.singleOrNull()?.id
-    }
-
-    /** The Lleech's host: the seat carrying its `Poisoned` token or effect. */
-    private fun hostOf(state: GameState): Long? {
-        state.effects.firstOrNull {
-            it.sourceCharacterId == "lleech" && it.kind == EffectKind.POISONED
-        }?.let { return it.targetId }
-        return state.players.firstOrNull { p ->
-            p.reminders.any { Tokens.key(it) == Tokens.key("lleech", "Poisoned") }
-        }?.id
     }
 
     /**

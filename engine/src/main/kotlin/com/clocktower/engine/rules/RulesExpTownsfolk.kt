@@ -104,14 +104,28 @@ internal val EXP_TOWNSFOLK_RULES: List<CharacterRule> = listOf(
 )
 
 /**
- * `InfoCalc` keys these rows name but the calculator does not implement yet.
- * Filed to WP2 as one batch; until then the step is a marker row with a prompt
- * and (where the answer is a token) a pre-filled card.
+ * The rows whose step computes NO information (W7H).
+ *
+ * `NightRule.infoId = ""` says so outright now: the planner offers no `ShowInfo`
+ * fallback and no cards, and the step is a marker row with a prompt. Before wave
+ * 7 the only way to suppress the fallback was to name an id `InfoCalc` did not
+ * support, which read as "a calculator we still owe" — and half of these are
+ * not owed at all.
+ *
+ * Three shapes, all genuinely uncomputable:
+ *  - nothing is learned: acrobat ("they learn nothing"), lycanthrope, princess,
+ *    poppygrower, engineer, huntsman, banshee (a PUBLIC announcement);
+ *  - a storyteller judgement: general (who is winning), highpriestess (who to
+ *    talk to), pixie (which Townsfolk they are mad about);
+ *  - a content transform of somebody else's step, not an answer: magician;
+ *  - free text by construction: amnesiac.
+ *
+ * The other seven of the old list got real calculators instead — choirboy,
+ * king.demon, nightwatchman, preacher, farmer, harlot, beggar.
  */
-internal val MISSING_INFO_IDS: List<String> = listOf(
-    "acrobat", "amnesiac", "banshee", "choirboy", "engineer", "farmer",
-    "general", "highpriestess", "huntsman", "king.demon", "lycanthrope",
-    "magician", "nightwatchman", "pixie", "poppygrower", "preacher", "princess",
+internal val SUPPRESSED_INFO_IDS: List<String> = listOf(
+    "acrobat", "amnesiac", "banshee", "engineer", "general", "highpriestess",
+    "huntsman", "lycanthrope", "magician", "pixie", "poppygrower", "princess",
 )
 
 // ---------------------------------------------------------------------------
@@ -133,7 +147,7 @@ private fun acrobat() = CharacterRule(
     otherNight = NightRule(
         gate = Gates.aliveHolder,
         prompt = "The Acrobat points at a player. They learn nothing — show them nothing.",
-        infoId = "acrobat",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "acrobat",
@@ -238,7 +252,7 @@ private fun amnesiac(): CharacterRule {
         gate = Gates.all(Gates.aliveHolder, amnesiacWakes()),
         prompt = "Run whatever the Amnesiac's invented ability needs. Mark each seat " +
             "involved with a '?' token and write what it means on the token.",
-        infoId = "amnesiac",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "amnesiac",
@@ -387,7 +401,7 @@ private fun banshee() = CharacterRule(
     otherNight = NightRule(
         gate = bansheeAwokeTonight(),
         prompt = "Announce publicly that the Banshee has died. Do not say who.",
-        infoId = "banshee",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
         cards = {
             listOf(
@@ -688,7 +702,7 @@ private fun engineer(): CharacterRule {
         prompt = "The Engineer may choose which Minions OR which Demon is in play. " +
             "Change each seat from the seat sheet, then wake the changed players one " +
             "at a time and show the 'You are' token and their new character.",
-        infoId = "engineer",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "engineer",
@@ -800,7 +814,7 @@ private fun general(): CharacterRule {
         gate = Gates.aliveHolder,
         prompt = "Show the General a thumb signal: up for good winning, down for evil " +
             "winning, to the side for neither.",
-        infoId = "general",
+        infoId = "",
         cards = {
             listOf(
                 CardOffer("SHOW: GOOD IS WINNING", ShowCardSpec.Message("GOOD", "GOOD IS WINNING"), true),
@@ -822,7 +836,7 @@ private fun highPriestess(): CharacterRule {
         gate = Gates.aliveHolder,
         prompt = "Point at the player they should talk to most. Alive or dead, good or " +
             "evil, Travellers included — do not filter. A repeat is a deliberate signal.",
-        infoId = "highpriestess",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "highpriestess",
@@ -858,7 +872,7 @@ private fun huntsman(): CharacterRule {
         prompt = "The Huntsman may guess a living player. If they chose the Damsel, " +
             "change that seat to a not-in-play Townsfolk and show them their new token. " +
             "The Huntsman learns nothing either way.",
-        infoId = "huntsman",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "huntsman",
@@ -982,7 +996,7 @@ private fun lycanthrope() = CharacterRule(
         prompt = "The Lycanthrope points at an alive player. If that player is good they " +
             "die, and NO ONE dies to the Demon tonight — the Demon still wakes and still " +
             "chooses. Monk and Soldier do not protect against this.",
-        infoId = "lycanthrope",
+        infoId = "",
         action = { ctx ->
             val demonSeats = ctx.state.seats
                 .filter { it.characterId?.let(ctx.lookup)?.team == Team.DEMON }
@@ -1098,7 +1112,7 @@ private fun magician() = CharacterRule(
         prompt = "The Magician does not wake. During Minion info, point at the Magician " +
             "AND the Demon without saying which is which. During Demon info, point at " +
             "the Magician among the Minions.",
-        infoId = "magician",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
     ),
 )
@@ -1168,7 +1182,7 @@ private fun pixie() = CharacterRule(
         gate = Gates.aliveHolder,
         prompt = "Show the Pixie an in-play Townsfolk token. They must be mad that they " +
             "are it. Mark the Pixie Mad and note which character.",
-        infoId = "pixie",
+        infoId = "",
         action = {
             ChooseCharacter(
                 sourceId = "pixie",
@@ -1258,7 +1272,7 @@ private fun poppyGrower() = CharacterRule(
         prompt = "Minion info and Demon info do NOT run tonight. Wake the Demon, show " +
             "'These characters are not in play' and 3 not-in-play good tokens. The " +
             "Minions learn nothing — do not wake them.",
-        infoId = "poppygrower",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
     ),
     otherNight = NightRule(
@@ -1266,7 +1280,7 @@ private fun poppyGrower() = CharacterRule(
         prompt = "1) Wake all Minions together (never the Marionette). Show 'This is the " +
             "Demon' and point at the Demon. Sleep. 2) Wake the Demon, show 'These are " +
             "your Minions' and point at the Minions (and the Marionette).",
-        infoId = "poppygrower",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
         // Nothing is chosen here, so the record is written by the always-run half:
         // `Evil Wakes` marks that the reveal happened on this seat.
@@ -1391,7 +1405,7 @@ private fun princess() = CharacterRule(
         gate = princessBlockActive(),
         prompt = "PRINCESS: wake the Demon and let them choose as normal, but NOBODY dies " +
             "to the Demon's kill tonight. Every other Demon effect still happens.",
-        infoId = "princess",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
     ),
     day = DayRule(

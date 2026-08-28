@@ -398,6 +398,38 @@ class NightPlanTest {
     }
 
     // ==================================================================
+    // W7H — the scaffolding is gone
+    // ==================================================================
+
+    @Test
+    fun `every stopgap character now resolves to a real registry row`() {
+        // `CharacterRules.STOPGAP` is deleted (lead D64). Its five rows must all
+        // be real registry entries, not the generic `characters.json` fallback.
+        for (id in listOf("ravenkeeper", "zombuul", "godfather", "pukka", "chambermaid")) {
+            val rule = CharacterRules.of(id, data.character(id))
+            assertEquals(
+                CharacterRules.all[id],
+                rule,
+                "$id fell through to the generic rule — its stopgap is gone",
+            )
+        }
+    }
+
+    @Test
+    fun `keeps-ability-when-dead is registry-driven, with no id set behind it`() {
+        // The WP1 stopgap id set is deleted (lead D64): every character that keeps
+        // its ability in the grave declares it on its own row.
+        for (id in listOf("recluse", "spy", "ravenkeeper", "sweetheart", "klutz", "barber")) {
+            assertTrue(
+                CharacterRules.all.getValue(id).keepsAbilityWhenDead,
+                "$id must declare keepsAbilityWhenDead itself",
+            )
+        }
+        // A character the registry does not know keeps nothing.
+        assertFalse(CharacterRules.of("nosuchcharacter", null).keepsAbilityWhenDead)
+    }
+
+    // ==================================================================
     // The source gate this package must pass (I1)
     // ==================================================================
 
