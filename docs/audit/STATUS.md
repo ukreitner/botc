@@ -115,3 +115,5 @@ W6A DONE + MERGED (3 commits). All CI gates LIVE (view-model gate flipped; day-p
 Waiting on W6C (data pass) → then Wave 7 schema pass.
 W6C DONE + MERGED (5 commits; overlay gained nightOrder + reminders delta blocks; 81/102 night order; 23 spentLabels; 297 guide channels). Suite 758/0/5; regen --check + patch-night-guide --check pass; uicheck 81; web green. bigwig reminders rejected (wiki names none); lycanthrope Faux Paw characterId is a placer gap (WP2 PlaceToken.characterId), not data.
 Wave 7 LAUNCHED: schema pass (single Opus agent, engine-wide, priorities (a)–(i) in the PAUSED checklist + D66–D70 + stopgap deletion).
+Wave 7 DONE + MERGED (9 commits, 44 files). Suite 788/0/5; regen --check pass; uicheck + web green. Scaffolding gone (STOPGAP, KEEPS_ABILITY_WHEN_DEAD, dead emitSelf arms). BmrSessionPlaytestTest un-ignored locally: Pukka ✅ DA ✅ Gossip ✅ Professor ✅ Lunatic ❌ (D70 fixture alignment → WP12 pass 2). D72–D73 recorded.
+Wave 8 LAUNCHED: WP12 pass 2 (tests/fixtures only) ∥ Wave 7b (engine leftovers per D73, disjoint files). Then final verification → push.
