@@ -56,4 +56,27 @@ class SeatsTest {
         assertEquals("washerwoman", state.player(drunk)?.shownCharacterId)
         assertNull(state.player(drunk)?.tokenShownAt, "the Drunk must be shown the new token")
     }
+
+    @Test
+    fun `swapSeats exchanges two positions and nothing else`() {
+        // W7I: the Matron's swap. `moveSeat` cannot express it — rotating one
+        // seat past another shifts every seat between them too.
+        var state = Seats.newGame(script, listOf("Ana", "Bo", "Cai", "Dee"))
+        state = Seats.assignCharacter(state, state.players[0].id, "chef")
+        state = Seats.assignCharacter(state, state.players[2].id, "imp")
+        val ana = state.players[0].id
+        val cai = state.players[2].id
+
+        val swapped = Seats.swapSeats(state, ana, cai)
+        assertEquals(listOf("Cai", "Bo", "Ana", "Dee"), swapped.players.map { it.name })
+        // The whole seat moves: the character travels with the player.
+        assertEquals("imp", swapped.players[0].characterId)
+        assertEquals("chef", swapped.players[2].characterId)
+        // And the two seats in between are untouched.
+        assertEquals(listOf("Bo", "Dee"), listOf(swapped.players[1].name, swapped.players[3].name))
+
+        // Swapping a seat with itself, or with an id that is not seated, is a no-op.
+        assertEquals(state.players, Seats.swapSeats(state, ana, ana).players)
+        assertEquals(state.players, Seats.swapSeats(state, ana, 999L).players)
+    }
 }

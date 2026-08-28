@@ -320,6 +320,7 @@ data class NightPlan(
             }
             if (choiceAllowed && action != null) {
                 next = applyAction(next, lookup, action, input, targets, scope)
+                next = fireOnChosen(next, state, lookup, step, targets)
             }
             next = applyEffects(next, lookup, pending, scope)
 
@@ -331,6 +332,56 @@ data class NightPlan(
             next = discharge(next, step)
             next = toggleDone(next, step.key.token, forceDone = true)
             return Effects.reconcile(next, lookup)
+        }
+
+        /**
+         * Runs `CharacterRule.onChosen` for every seat this step just picked
+         * (W7I) — the reactive half of the registry the Goon needed.
+         *
+         * The effects are applied with the CHOSEN seat as the source, so a row
+         * writes `Ref.Source` for itself and `Ref.Target` for whoever chose it.
+         * The chooser's own effects have already landed: the Goon's drunkenness
+         * arrives after the choice it is reacting to, which is the order the
+         * table plays it in.
+         */
+        private fun fireOnChosen(
+            state: GameState,
+            before: GameState,
+            lookup: (String) -> Character?,
+            step: NightStep,
+            targets: List<Long>,
+        ): GameState {
+            var next = state
+            for (targetId in targets) {
+                val chosen = next.player(targetId) ?: continue
+                val id = chosen.characterId?.let(Character::normalizeId) ?: continue
+                val hook = CharacterRules.all[id]?.onChosen ?: continue
+                val effects = hook(
+                    ChosenContext(
+                        state = next,
+                        before = before,
+                        lookup = lookup,
+                        night = next.cycle,
+                        holder = chosen,
+                        chooser = step.holderId?.let { next.player(it) },
+                        chooserAbilityId = step.abilityId,
+                    ),
+                )
+                if (effects.isEmpty()) continue
+                next = applyEffects(
+                    next,
+                    lookup,
+                    effects,
+                    EffectScope(
+                        sourceId = chosen.id,
+                        sourceCharacterId = id,
+                        targets = listOfNotNull(step.holderId),
+                        characterIds = emptyList(),
+                        current = step.holderId,
+                    ),
+                )
+            }
+            return next
         }
 
         fun toggleDone(state: GameState, token: String): GameState = toggleDone(state, token, false)
@@ -962,7 +1013,47 @@ data class NightPlan(
                     taken += step.key.token
                 }
             }
+            for (step in actsTwiceSteps(ctx, base, taken)) {
+                out += step
+                taken += step.key.token
+            }
             return out
+        }
+
+        /**
+         * A seat whose ability works TWICE tonight gets a second row (W7I).
+         *
+         * `StepVariant.AGAIN` existed from WP2 and nothing emitted it but a
+         * `Prompt`. The trigger is a live `EffectKind.ACTS_TWICE` — the Barista's
+         * token — so the planner never names a character; the second row sits
+         * immediately after the first rather than at the end of the sheet,
+         * because it is the same wake happening twice.
+         */
+        private fun actsTwiceSteps(
+            ctx: PlanContext,
+            base: List<NightStep>,
+            taken: Set<String>,
+        ): List<NightStep> {
+            val doubled = ctx.state.seats
+                .filter {
+                    Status.live(ctx.state, ctx.lookup, it.id, EffectKind.ACTS_TWICE).isNotEmpty()
+                }
+                .map { it.id }
+                .toSet()
+            if (doubled.isEmpty()) return emptyList()
+            return base.mapNotNull { row ->
+                if (row.holderId !in doubled) return@mapNotNull null
+                if (row.key.variant != StepVariant.NORMAL) return@mapNotNull null
+                // Nothing to run twice: a skipped row, or a marker with no action.
+                if (row.gate is StepGate.Skip || row.action == null) return@mapNotNull null
+                val key = row.key.copy(variant = StepVariant.AGAIN)
+                if (key.token in taken) return@mapNotNull null
+                row.copy(
+                    key = key,
+                    order = row.order + 0.5,
+                    badges = row.badges + "acts twice — this is the second run",
+                )
+            }
         }
 
         /**

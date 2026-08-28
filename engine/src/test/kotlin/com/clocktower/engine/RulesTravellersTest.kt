@@ -458,6 +458,36 @@ class RulesTravellersTest {
     }
 
     @Test
+    fun `Acts Twice gives the chosen seat a second row on tonight's sheet`() {
+        // W7I: `StepVariant.AGAIN` existed from WP2 and nothing but a `Prompt`
+        // emitted it, so the Barista's "their ability works twice" was a token
+        // with no consequence. The planner keys off `EffectKind.ACTS_TWICE`, so
+        // it never names the Barista.
+        var state = game(sv, "vortox", "pithag", "snakecharmer", "chef", "barista")
+        val charmer = seatOf(state, "snakecharmer").id
+        assertEquals(1, plan(state).steps.count { it.abilityId == "snakecharmer" })
+
+        state = resolve(state, "barista", NightInput(playerIds = listOf(charmer), yes = false))
+        assertTrue(DayRules.hasToken(state, charmer, "barista", "Acts Twice"))
+
+        val rows = plan(state).steps.filter { it.abilityId == "snakecharmer" }
+        assertEquals(2, rows.size, "the ability runs twice: ${rows.map { it.key }}")
+        assertEquals(listOf(StepVariant.NORMAL, StepVariant.AGAIN), rows.map { it.key.variant })
+        assertTrue(rows[1].order > rows[0].order, "the second run follows the first")
+        assertTrue(rows[1].badges.any { "acts twice" in it }, rows[1].badges.toString())
+        // Two DISTINCT tokens, so ticking one does not tick the other.
+        assertEquals(2, rows.map { it.key.token }.toSet().size)
+
+        // The other branch adds no row at all.
+        val sober = resolve(
+            game(sv, "vortox", "pithag", "snakecharmer", "chef", "barista"),
+            "barista",
+            NightInput(playerIds = listOf(charmer), yes = true),
+        )
+        assertEquals(1, plan(sober).steps.count { it.abilityId == "snakecharmer" })
+    }
+
+    @Test
     fun `a dead Barista stops sobering their target and stops waking`() {
         var state = game(sv, "vortox", "pithag", "saint", "chef", "barista")
         val chef = seatOf(state, "chef").id

@@ -16,6 +16,12 @@ enum class EffectKind {
     /** Bone Collector, Vigormortis-preserved Minion, Pixie. */
     HAS_ABILITY,
 
+    /**
+     * Barista — this seat's ability works TWICE tonight, so the planner emits a
+     * second `StepVariant.AGAIN` row for it.
+     */
+    ACTS_TWICE,
+
     // protective (see Deaths.PROTECTS — every kind declares which causes it blocks)
     /** Monk SAFE, Soldier (innate). */
     SAFE_FROM_DEMON,
@@ -86,8 +92,8 @@ val EffectKind.group: EffectGroup
         -> EffectGroup.PROTECTED
         EffectKind.MAD -> EffectGroup.MADNESS
         EffectKind.REGISTERS_AS -> EffectGroup.IDENTITY
-        EffectKind.SOBER_HEALTHY, EffectKind.HAS_ABILITY, EffectKind.SPENT,
-        EffectKind.NO_VOTE, EffectKind.NO_NOMINATE,
+        EffectKind.SOBER_HEALTHY, EffectKind.HAS_ABILITY, EffectKind.ACTS_TWICE,
+        EffectKind.SPENT, EffectKind.NO_VOTE, EffectKind.NO_NOMINATE,
         -> EffectGroup.ABILITY
         EffectKind.MARKER -> EffectGroup.MARKER
     }

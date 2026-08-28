@@ -764,6 +764,54 @@ class RulesExpTownsfolkTest {
         assertNull(step(atNight(state, 2), "magician"))
     }
 
+    @Test
+    fun `the Magician is interleaved into both info rows and hides the Marionette`() {
+        // W7I: the ability is a CONTENT TRANSFORM of the two shared info rows,
+        // which `NightInfo` owns. Before wave 7 those rows told the storyteller
+        // to do the exact opposite of this character.
+        var state = game(
+            "magician", "imp", "poisoner", "baron", "marionette",
+            "chef", "mayor", "monk",
+        )
+        val plan = NightPlan.build(state, lookup)
+        val minionInfo = assertNotNull(plan.steps.firstOrNull { it.slotId == "MINION_INFO" })
+        val demonInfo = assertNotNull(plan.steps.firstOrNull { it.slotId == "DEMON_INFO" })
+
+        // "Minions think you are a Demon": the Magician is shown beside the Imp.
+        assertTrue("MAGICIAN" in minionInfo.detail, minionInfo.detail)
+        assertTrue("P1" in minionInfo.detail, "the Magician's seat is named: ${minionInfo.detail}")
+
+        // "The Demon thinks you are a Minion": the Magician is in the Minion list,
+        // and the Marionette clause is SUPPRESSED — otherwise the Demon could
+        // subtract the Marionette and find the Magician.
+        assertTrue("MAGICIAN" in demonInfo.detail, demonInfo.detail)
+        assertTrue(
+            "Do not point out the Marionette" in demonInfo.detail,
+            demonInfo.detail,
+        )
+
+        // A DRUNK Magician confuses nobody: both rows go back to the truth.
+        state = Effects.place(
+            state, 0L, EffectKind.POISONED, "storyteller", null, Until.DUSK, "Poisoned",
+        ).state
+        val sober = NightPlan.build(state, lookup)
+        val demonAgain = assertNotNull(sober.steps.firstOrNull { it.slotId == "DEMON_INFO" })
+        assertFalse("MAGICIAN" in demonAgain.detail, demonAgain.detail)
+        assertTrue("Point out the Marionette" in demonAgain.detail, demonAgain.detail)
+    }
+
+    @Test
+    fun `a Vizier tells the Demon who they are, so the Magician row says the jinx`() {
+        val state = game(
+            "magician", "imp", "vizier", "baron", "chef", "mayor", "monk", "butler",
+        )
+        val demonInfo = assertNotNull(
+            NightPlan.build(state, lookup).steps.firstOrNull { it.slotId == "DEMON_INFO" },
+        )
+        assertTrue("JINX" in demonInfo.detail, demonInfo.detail)
+        assertTrue("Vizier" in demonInfo.detail, demonInfo.detail)
+    }
+
     // ==================================================================
     // nightwatchman / huntsman — once per game
     // ==================================================================

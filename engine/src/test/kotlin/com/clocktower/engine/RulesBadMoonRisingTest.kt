@@ -145,6 +145,48 @@ class RulesBadMoonRisingTest {
         }
     }
 
+    // ==================================================================
+    // W7I — the Goon, the one REACTIVE character in the registry
+    // ==================================================================
+
+    @Test
+    fun `the first ability to choose the Goon goes drunk, and the Goon takes their side`() {
+        // Given a Goon and a Poisoner, on a night where the Poisoner acts first
+        var state = game("goon", "poisoner", "pukka", "monk", "chambermaid", "fool")
+        val goon = seat(state, "goon")
+        val poisoner = seat(state, "poisoner")
+        assertFalse(assertNotNull(state.player(goon)).isEvil(lookup), "the Goon starts good")
+
+        // When the Poisoner points at the Goon…
+        state = resolve(state, "poisoner", NightInput(playerIds = listOf(goon)))
+
+        // Then the POISONER is drunk until dusk (W7I: `CharacterRule.onChosen`
+        // — before wave 7 the Goon had no behaviour at all)…
+        assertTrue(holds(state, poisoner, "goon", "Drunk"))
+        assertTrue(Status.isImpaired(state, lookup, poisoner))
+        // …and the Goon has taken their alignment, keeping their character.
+        assertTrue(assertNotNull(state.player(goon)).isEvil(lookup))
+        assertEquals("goon", assertNotNull(state.player(goon)).characterId)
+        assertTrue(state.identityLog.none { it.playerId == goon }, "not a character change")
+
+        // "The 1ST player to choose you": a second chooser tonight does nothing.
+        val pukka = seat(state, "pukka")
+        val again = resolve(state, "pukka", NightInput(playerIds = listOf(goon)))
+        assertFalse(holds(again, pukka, "goon", "Drunk"), "only the first chooser")
+    }
+
+    @Test
+    fun `an impaired Goon reacts to nobody`() {
+        var state = game("goon", "poisoner", "pukka", "monk", "chambermaid", "fool")
+        val goon = seat(state, "goon")
+        state = Effects.place(
+            state, goon, EffectKind.POISONED, "storyteller", null, Until.DUSK, "Poisoned",
+        ).state
+        state = resolve(state, "poisoner", NightInput(playerIds = listOf(goon)))
+        assertFalse(holds(state, seat(state, "poisoner"), "goon", "Drunk"))
+        assertFalse(assertNotNull(state.player(goon)).isEvil(lookup))
+    }
+
     @Test
     fun `the Moonchild keeps its ability while dead`() {
         val moonchild = assertNotNull(CharacterRules.all["moonchild"])

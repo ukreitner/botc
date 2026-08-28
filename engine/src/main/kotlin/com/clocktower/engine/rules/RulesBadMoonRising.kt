@@ -2,6 +2,7 @@ package com.clocktower.engine.rules
 
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.Character
+import com.clocktower.engine.ChosenContext
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChooseCharacter
@@ -608,7 +609,67 @@ private fun fool() = CharacterRule(id = "fool")
  * (`LedgerEntry.byStoryteller == false`). The engine has no hook for that yet;
  * see this package's report (WP2 follow-up). The token itself is correct today.
  */
-private fun goon() = CharacterRule(id = "goon")
+private fun goon() = CharacterRule(
+    id = "goon",
+    tokens = listOf(TokenRule("goon", "Drunk", EffectKind.DRUNK, Until.DUSK, impairs = true)),
+    // W7I: the Goon is the ONE reactive character in the whole registry, and
+    // before `CharacterRule.onChosen` existed it had no behaviour at all — the
+    // row was a bare `CharacterRule(id = "goon")`.
+    //
+    // "The 1ST player to choose you": once a Drunk token is out tonight the
+    // Goon is spent for the night, so a second chooser does nothing. The
+    // storyteller's own picks count too (lead D1's `byStoryteller`), which is
+    // why the trigger is the CHOICE and not the waking.
+    onChosen = { ctx ->
+        val chooser = ctx.chooser
+        when {
+            chooser == null -> emptyList()
+            chooser.id == ctx.holder.id -> emptyList()
+            // Judged AT THE MOMENT OF THE CHOICE: a Poisoner who poisons the
+            // Goon still triggers it, because the Goon was sober when chosen.
+            !Status.hasAbility(ctx.before, ctx.lookup, ctx.holder.id) -> emptyList()
+            goonAlreadyTriggered(ctx) -> emptyList()
+            else -> listOf(
+                NightEffect.PlaceToken(
+                    sourceId = "goon",
+                    label = "Drunk",
+                    on = Ref.Target,
+                    kind = EffectKind.DRUNK,
+                    until = Until.DUSK,
+                    note = "Goon (${ctx.holder.name}): the first player to choose them tonight.",
+                ),
+                // "You become their alignment." The Goon keeps its character and
+                // its team; only the side moves (lead D67's shape, W7E's effect).
+                NightEffect.SetAlignment(
+                    on = Ref.Source,
+                    evil = chooser.isEvil(ctx.lookup),
+                    note = "Goon: ${ctx.holder.name} takes ${chooser.name}'s alignment.",
+                ),
+                NightEffect.QueuePrompt(
+                    at = BriefingSlot.NOW,
+                    kind = PromptKind.INFO,
+                    sourceId = "goon",
+                    on = Ref.Target,
+                    title = "Goon: ${chooser.name} is drunk until dusk, and " +
+                        "${ctx.holder.name} is now " +
+                        (if (chooser.isEvil(ctx.lookup)) "EVIL" else "GOOD") +
+                        ". Neither is told; their choice tonight was made BEFORE the " +
+                        "drunkenness, so rule on it yourself.",
+                ),
+            )
+        }
+    },
+)
+
+/** The Goon's drunkenness is once a NIGHT: the first chooser, and only them. */
+private fun goonAlreadyTriggered(ctx: ChosenContext): Boolean {
+    val key = Tokens.key("goon", "Drunk")
+    return ctx.state.effects.any {
+        Tokens.key(it.sourceCharacterId, it.label) == key &&
+            it.createdCycle == ctx.night &&
+            it.createdAtNight
+    }
+}
 
 /**
  * "You think you are a Demon, but you are not. The Demon knows who you are & who

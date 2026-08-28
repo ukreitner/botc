@@ -510,7 +510,9 @@ private fun barista(): CharacterRule = CharacterRule(
     otherNight = baristaNight(),
     tokens = listOf(
         TokenRule("barista", "Sober & Healthy", EffectKind.SOBER_HEALTHY, Until.DUSK),
-        TokenRule("barista", "Acts Twice", null, Until.DUSK),
+        // W7I: a typed effect, so `NightPlan` emits the second
+        // `StepVariant.AGAIN` row without ever naming the Barista.
+        TokenRule("barista", "Acts Twice", EffectKind.ACTS_TWICE, Until.DUSK),
         // The official stand-ins for a doubled character's own one-of-a-kind reminders.
         TokenRule("barista", "?", null, Until.DUSK, copies = 2),
     ),

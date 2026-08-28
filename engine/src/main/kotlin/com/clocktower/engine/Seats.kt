@@ -40,6 +40,30 @@ object Seats {
         return state.copy(players = players)
     }
 
+    /**
+     * Exchanges two seats' POSITIONS around the circle — the Matron's swap (W7I).
+     *
+     * The whole seat moves: the player, their character, their tokens, their life
+     * and their ghost vote. Nothing about either player changes; only where they
+     * sit does, and every adjacency rule (Empath, Chef, Tea Lady, No Dashii,
+     * Marionette, the Lord of Typhon's line) re-derives from the new order on the
+     * next query, because none of them is stored.
+     *
+     * [moveSeat] cannot express this: rotating one seat past another shifts every
+     * seat between them too.
+     */
+    fun swapSeats(state: GameState, a: Long, b: Long): GameState {
+        if (a == b) return state
+        val players = state.players.toMutableList()
+        val i = players.indexOfFirst { it.id == a }
+        val j = players.indexOfFirst { it.id == b }
+        if (i < 0 || j < 0) return state
+        val held = players[i]
+        players[i] = players[j]
+        players[j] = held
+        return state.copy(players = players)
+    }
+
     fun rename(state: GameState, playerId: Long, name: String): GameState =
         state.updatePlayer(playerId) { it.copy(name = name) }
 

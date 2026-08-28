@@ -68,6 +68,20 @@ data class CharacterRule(
     val firstNight: NightRule? = null,
     val otherNight: NightRule? = null,
 
+    /**
+     * Fires when ANOTHER ability chooses this seat (W7I).
+     *
+     * The Goon is the whole reason it exists: "each night, the 1st player to
+     * choose you with their ability is drunk until dusk, and you become their
+     * alignment". Nothing else in the schema is reactive — every other hook is
+     * something this character does on its own row — so before wave 7 the Goon
+     * had no behaviour at all.
+     *
+     * The effects are applied with the CHOSEN seat as the source: `Ref.Source` is
+     * this rule's holder and `Ref.Target` is whoever chose them.
+     */
+    val onChosen: ((ChosenContext) -> List<NightEffect>)? = null,
+
     // ---- standing / tokens / death ----
     val standing: StandingRule? = null,
     val tokens: List<TokenRule> = emptyList(),
@@ -319,6 +333,29 @@ class NightContext(
     val resurrectedTonight: Set<Long>,
 )
 
+/** Everything a [CharacterRule.onChosen] lambda may look at. */
+class ChosenContext(
+    /** The board AFTER the choosing ability's own effects landed. */
+    val state: GameState,
+    /**
+     * The board as it was AT THE MOMENT OF THE CHOICE, before the chooser's
+     * effects landed.
+     *
+     * The Goon needs exactly this: a Poisoner who poisons the Goon still wakes
+     * the Goon's ability, because the Goon was sober when they were chosen.
+     * Asking [state] would let the Poisoner cancel the reaction to itself.
+     */
+    val before: GameState,
+    val lookup: (String) -> Character?,
+    val night: Int,
+    /** The seat that was chosen — this rule's holder. */
+    val holder: Player,
+    /** The seat whose ability chose them. Null for a seatless or group step. */
+    val chooser: Player?,
+    /** The ability that did the choosing: "monk", "poisoner", "fortuneteller". */
+    val chooserAbilityId: String,
+)
+
 class NominationContext(
     val state: GameState,
     val lookup: (String) -> Character?,
@@ -372,6 +409,9 @@ internal object NightInfo {
 
     private const val MARIONETTE = "marionette"
     private const val LUNATIC = "lunatic"
+    private const val MAGICIAN = "magician"
+    private const val VIZIER = "vizier"
+    private const val LEGION = "legion"
 
     /** Night-order slots this builder owns outright. */
     fun owns(slot: String): Boolean = slot in NightMarkers.all || slot == MARIONETTE
@@ -411,12 +451,22 @@ internal object NightInfo {
         if (minions.isEmpty()) return emptyList()
         // A Poppy Grower keeps the evil team apart until they die.
         val poppy = poppyGrowerActive(ctx)
+        // W7I: "Minions think you are a Demon" — the Magician is shown to the
+        // Minions ALONGSIDE the real Demon, and they are not told which is which.
+        val magicians = if (magicianWorks(ctx)) seatsOf(ctx, MAGICIAN) else emptyList()
+        val shown = (demons + magicians).sortedBy { seatIndex(ctx, it) }
         val detail = buildString {
             append("Wake all Minions")
             if (minions.isNotEmpty()) append(" (${minions.joinToString { it.name }})")
             append(". They see each other, then point out the Demon")
-            if (demons.isNotEmpty()) append(" (${demons.joinToString { it.name }})")
+            if (shown.isNotEmpty()) append(" (${shown.joinToString { it.name }})")
             append(".")
+            if (magicians.isNotEmpty()) {
+                append(
+                    " A MAGICIAN is in play: point out the Magician too, in seat order, and " +
+                        "say nothing about which is which. The Minions are not told there are two.",
+                )
+            }
             if (demons.isEmpty()) {
                 append(" There is no Demon seat yet — they see each other only.")
             }
@@ -447,15 +497,38 @@ internal object NightInfo {
         val marionettes = seatsOf(ctx, MARIONETTE)
         val lunatics = seatsOf(ctx, LUNATIC)
         val bluffs = ctx.state.demonBluffIds.mapNotNull { ctx.lookup(it)?.name }
+        // W7I, the Magician's three clauses:
+        //  - "The Demon thinks you are a Minion": the Magician is pointed out
+        //    with the Minions, interleaved in seat order, not appended;
+        //  - the Marionette clause is SUPPRESSED — the Demon must not be able to
+        //    subtract the Marionette from the list and find the Magician;
+        //  - the Vizier jinx: a Vizier knows who the Demon is, so the Magician
+        //    fools nobody and the row says so instead of pretending.
+        val magic = magicianWorks(ctx)
+        val magicians = if (magic) seatsOf(ctx, MAGICIAN) else emptyList()
+        val vizier = magic && seatsOf(ctx, VIZIER).isNotEmpty()
+        val pointOut = (minions + magicians).sortedBy { seatIndex(ctx, it) }
+        // "You register as both a Minion and a Demon": a Legion game has no
+        // separate Minion list to show, so the row says what it really is.
+        val legion = seatsOf(ctx, LEGION)
         val detail = buildString {
             append("Wake the Demon")
             if (demons.isNotEmpty()) append(" (${demons.joinToString { it.name }})")
             if (bluffsOnly) {
                 append(". A Poppy Grower is in play: show the bluffs ONLY — no Minions")
+            } else if (legion.isNotEmpty()) {
+                append(". LEGION: almost every player is Legion and they all know it. ")
+                append("Point out every Legion (${legion.joinToString { it.name }}) — ")
+                append("there are no Minions to show separately")
             } else {
                 append(". Point out the Minions")
-                if (minions.isNotEmpty()) append(" (${minions.joinToString { it.name }})")
-                if (marionettes.isNotEmpty()) {
+                if (pointOut.isNotEmpty()) append(" (${pointOut.joinToString { it.name }})")
+                if (magicians.isNotEmpty()) {
+                    append(
+                        ". A MAGICIAN is in play: they are in that list, in seat order, and the " +
+                            "Demon is NOT told which. Do not point out the Marionette",
+                    )
+                } else if (marionettes.isNotEmpty()) {
                     append(". Point out the Marionette")
                     append(" (${marionettes.joinToString { it.name }})")
                 }
@@ -467,6 +540,12 @@ internal object NightInfo {
                 append(" — no bluffs chosen yet! Pick them from the menu")
             }
             append(".")
+            if (vizier) {
+                append(
+                    " JINX: a Vizier is in play and knows who the Demon is, so the Magician's " +
+                        "confusion fools nobody — the Vizier may say so out loud.",
+                )
+            }
             if (lunatics.isNotEmpty()) {
                 append(
                     " Also show the Demon who the LUNATIC is " +
@@ -542,6 +621,19 @@ internal object NightInfo {
 
     private fun seatsOf(ctx: MarkerContext, id: String): List<Player> =
         ctx.state.seats.filter { Character.normalizeId(it.characterId.orEmpty()) == id }
+
+    private fun seatIndex(ctx: MarkerContext, p: Player): Int =
+        ctx.state.seats.indexOfFirst { it.id == p.id }
+
+    /**
+     * True when a Magician is in play with a WORKING ability (W7I).
+     *
+     * A drunk or poisoned Magician confuses nobody: the Demon sees the real
+     * Minions and the Minions see the real Demon, which is exactly the shape a
+     * content transform has to be able to turn off.
+     */
+    private fun magicianWorks(ctx: MarkerContext): Boolean =
+        seatsOf(ctx, MAGICIAN).any { Status.hasAbility(ctx.state, ctx.lookup, it.id) }
 
     private fun demonSeats(ctx: MarkerContext): List<Player> =
         ctx.state.seats.filter { it.characterId?.let(ctx.lookup)?.team == Team.DEMON }
