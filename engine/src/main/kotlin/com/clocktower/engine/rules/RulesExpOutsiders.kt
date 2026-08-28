@@ -17,6 +17,7 @@ import com.clocktower.engine.Decisions
 import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
 import com.clocktower.engine.GameState
+import com.clocktower.engine.GrantHolder
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Memory
 import com.clocktower.engine.NightEffect
@@ -29,6 +30,7 @@ import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.SetupRequirements
+import com.clocktower.engine.SeatPredicate
 import com.clocktower.engine.Status
 import com.clocktower.engine.StepGate
 import com.clocktower.engine.TargetConstraint
@@ -224,8 +226,8 @@ private fun hatter() = CharacterRule(
     tokens = listOf(TokenRule(HATTER, TEA_PARTY_TONIGHT, null, Until.DAWN)),
     onDeath = listOf(
         DeathTrigger(
-            gate = { _, event, holder -> event.playerId == holder.id },
-            produce = { state, event, holder ->
+            gate = { _, _, event, holder -> event.playerId == holder.id },
+            produce = { state, _, event, holder ->
                 if (event.abilityImpairedAtDeath == true) {
                     // Read the SNAPSHOT, never live state — a Hatter cured after
                     // death still holds no tea party.
@@ -290,14 +292,20 @@ private fun hatter() = CharacterRule(
                 pool = CharacterPool.EVIL,
                 requireNotInPlay = true,
                 onResolve = listOf(
+                    // W7D / lead D67: alignment is PRESERVED. The picker is
+                    // already restricted to evil seats and evil characters, so
+                    // forcing `evil = true` said nothing the pool did not — and
+                    // it would have overruled a Bounty Hunter's evil Townsfolk
+                    // or an Ogre-flipped seat sitting in the same chair.
                     NightEffect.BecomeCharacter(
                         on = Ref.Target,
                         characterId = "",
-                        evil = true,
                         reason = ChangeReason.HATTER,
                     ),
                     NightEffect.ShowCardTo(Ref.Target, "YOU ARE"),
                 ),
+                // The head-shake changes nothing at all.
+                onNone = listOf(NightEffect.RecordChoice()),
             )
         },
     ),
@@ -414,16 +422,39 @@ private fun ogreRule() = NightRule(
                     kind = EffectKind.MARKER,
                     until = Until.FOREVER,
                 ),
-                // SCHEMA GAP (filed to WP2): there is no `NightEffect.SetAlignment`,
-                // and the answer depends on the seat that was just picked, which a
-                // static effect list cannot branch on. The storyteller is asked
-                // instead — never guessed, never silently skipped.
+                // W7E: `NightEffect.When` branches on the seat that was just
+                // picked and `SetAlignment` writes the side without inventing a
+                // character change. The Ogre's team stays OUTSIDER either way,
+                // and the Ogre is never told.
+                NightEffect.When(
+                    predicate = SeatPredicate.REGISTERS_EVIL,
+                    on = Ref.Target,
+                    then = listOf(
+                        NightEffect.SetAlignment(
+                            on = Ref.Source,
+                            evil = true,
+                            note = "Ogre: their friend registers evil, so the Ogre is evil now. " +
+                                "Do not tell them; give no signal either way.",
+                        ),
+                    ),
+                    otherwise = listOf(
+                        NightEffect.SetAlignment(
+                            on = Ref.Source,
+                            evil = false,
+                            note = "Ogre: their friend registers good, so the Ogre stays good. " +
+                                "Do not tell them; give no signal either way.",
+                        ),
+                    ),
+                ),
+                // Misregistration is the storyteller's to rule on, so the choice
+                // is still surfaced — it now CONFIRMS a change rather than being
+                // the only thing that makes it.
                 NightEffect.QueuePrompt(
                     at = BriefingSlot.NOW,
                     kind = PromptKind.DECIDE,
                     sourceId = OGRE,
-                    title = "Set the Ogre's alignment now: their friend registers EVIL " +
-                        "-> the Ogre is evil; registers GOOD -> the Ogre stays good. " +
+                    title = "The Ogre's alignment now follows how their friend REGISTERS. " +
+                        "Overrule it here if you ruled a Recluse or a Spy the other way. " +
                         "The Ogre is never told, and their team stays OUTSIDER.",
                     on = Ref.Source,
                 ),
@@ -472,8 +503,8 @@ private fun plagueDoctor() = CharacterRule(
     ),
     onDeath = listOf(
         DeathTrigger(
-            gate = { _, event, holder -> event.playerId == holder.id },
-            produce = { _, event, holder ->
+            gate = { _, _, event, holder -> event.playerId == holder.id },
+            produce = { _, _, event, holder ->
                 val impaired = event.abilityImpairedAtDeath == true
                 TriggerResult(
                     prompts = listOf(
@@ -522,15 +553,22 @@ private fun plagueDoctorRule() = NightRule(
                     kind = EffectKind.MARKER,
                     until = Until.FOREVER,
                 ),
-                // SCHEMA GAP (filed to WP2): no `NightEffect.GrantAbility`, so the
-                // `FloatingGrant(holder = STORYTELLER)` that makes the gained ability
-                // wake at its own night position cannot be placed from here.
+                // W7E: the grant is REAL now. `on = null` makes it a
+                // `GameState.floatingGrant` held by the storyteller, which
+                // `Identity.derivedGrants` renders at the ability's own night
+                // position; the empty id means "the character just picked".
+                NightEffect.GrantAbility(
+                    abilityId = "",
+                    sourceId = PLAGUE_DOCTOR,
+                    on = null,
+                    floatingHolder = GrantHolder.STORYTELLER,
+                ),
                 NightEffect.QueuePrompt(
                     at = BriefingSlot.NOW,
                     kind = PromptKind.DECIDE,
                     sourceId = PLAGUE_DOCTOR,
-                    title = "Record the Minion ability you now hold as a storyteller grant, " +
-                        "so it wakes at that character's own night position.",
+                    title = "You now hold that Minion ability. It wakes at that character's " +
+                        "own night position. Tell nobody, ever.",
                 ),
             ),
         )

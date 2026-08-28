@@ -488,7 +488,7 @@ private fun lilMonstaExecution(
     executedId: Long?,
 ): List<ExecutionConsequence> {
     val executed = executedId?.let { state.player(it) } ?: return emptyList()
-    if (!holdsLilMonsta(executed)) return emptyList()
+    if (!holdsLilMonsta(state, executed)) return emptyList()
     return buildList {
         add(
             ExecutionConsequence(
@@ -623,8 +623,8 @@ private fun lleech() = CharacterRule(
         // The host died while a Mastermind lives and it was an execution: the
         // Lleech lives, but loses its ability (jinx).
         DeathTrigger(
-            gate = { state, event, holder -> hostChainFires(state, event, holder) && mastermindJinx(state, event) },
-            produce = { state, _, holder ->
+            gate = { state, _, event, holder -> hostChainFires(state, event, holder) && mastermindJinx(state, event) },
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     prompts = listOf(
                         obligation(
@@ -656,8 +656,8 @@ private fun lleech() = CharacterRule(
         ),
         // The ordinary chain: the host is dead, so the Lleech dies and good wins.
         DeathTrigger(
-            gate = { state, event, holder -> hostChainFires(state, event, holder) && !mastermindJinx(state, event) },
-            produce = { state, event, holder ->
+            gate = { state, _, event, holder -> hostChainFires(state, event, holder) && !mastermindJinx(state, event) },
+            produce = { state, _, event, holder ->
                 val host = state.player(event.playerId)?.name ?: "the host"
                 TriggerResult(
                     prompts = listOf(
@@ -674,11 +674,11 @@ private fun lleech() = CharacterRule(
         ),
         // An impaired Lleech has no life-link at all: it simply survives.
         DeathTrigger(
-            gate = { state, event, holder ->
+            gate = { state, _, event, holder ->
                 isThisLleech(holder) && holder.alive && event.playerId == hostOf(state) &&
                     impairedNow(state, holder.id)
             },
-            produce = { state, _, holder ->
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     prompts = listOf(
                         obligation(
@@ -885,9 +885,10 @@ private fun riotConversion(ctx: NightContext): NightAction {
             NightEffect.BecomeCharacter(
                 on = Ref.Target,
                 characterId = "riot",
+                // The Riot's own text makes them evil: this is one of the few
+                // rows where the side is named rather than preserved (lead D67).
                 evil = true,
-                // FOLLOWUPS(WP2): no `ChangeReason.RIOT` exists yet.
-                reason = ChangeReason.STORYTELLER,
+                reason = ChangeReason.RIOT,
             ),
         ),
     )
@@ -1193,8 +1194,9 @@ private fun hasToken(state: GameState, player: Player, sourceId: String, label: 
         }
 }
 
-private fun holdsLilMonsta(player: Player): Boolean =
-    player.reminders.any { Tokens.key(it) == Tokens.key("lilmonsta", "Is The Demon") }
+/** Both spellings count: a hand-placed token and the effect the pipeline places. */
+private fun holdsLilMonsta(state: GameState, player: Player): Boolean =
+    hasToken(state, player, "lilmonsta", "Is The Demon")
 
 /** How many "Good Player Executed" marks the Leviathan already has. */
 private fun goodExecutedMarks(state: GameState): Int {

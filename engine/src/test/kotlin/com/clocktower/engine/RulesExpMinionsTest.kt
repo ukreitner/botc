@@ -136,6 +136,26 @@ class RulesExpMinionsTest {
             "the granted token is pre-filled, never a picker: ${row.cards.map { it.label }}",
         )
         assertTrue(row.cards.any { "SELECTED YOU" in it.label })
+
+        // W7E closes the P0: the grant is DERIVED from the setup decision, so the
+        // Demon really wakes at the granted character's own night position, and
+        // it works through poison ("even if drunk or poisoned").
+        val demon = assertNotNull(state.player(1L))
+        val granted = Identity.actingRoles(state, lookup, demon).single { it.sourceId == "boffin" }
+        assertEquals("chambermaid", granted.abilityId)
+        assertTrue(granted.worksWhileImpaired)
+        assertNotNull(step(state, "chambermaid"), "the granted ability is on the sheet")
+
+        // With no Boffin seated the grant does not exist, whatever the decision says.
+        val noBoffin = Decisions.set(
+            night("poisoner", "imp", "chef", "empath", "mayor"),
+            Decisions.BOFFIN_GRANT,
+            "chambermaid",
+        )
+        assertTrue(
+            Identity.actingRoles(noBoffin, lookup, assertNotNull(noBoffin.player(1L)))
+                .none { it.sourceId == "boffin" },
+        )
     }
 
     @Test
@@ -302,6 +322,21 @@ class RulesExpMinionsTest {
         assertTrue(holds(state, 2L, "harpy", "Mad"), "the 1st player goes mad")
         assertTrue(holds(state, 4L, "harpy", "2nd"), "the 2nd player is the accused")
         assertFalse(holds(state, 4L, "harpy", "Mad"))
+        // W7E: `PlaceToken.linkedPlayerId` binds the pair on the BOARD, so the
+        // grimoire shows who is mad about whom without reading the prompt text.
+        assertEquals(
+            4L,
+            assertNotNull(
+                Status.effectsOn(state, lookup, 2L).firstOrNull { it.kind == EffectKind.MAD },
+            ).linkedPlayerId,
+        )
+        assertEquals(
+            2L,
+            assertNotNull(
+                Status.effectsOn(state, lookup, 4L)
+                    .firstOrNull { Tokens.key(it.sourceCharacterId, it.label) == Tokens.key("harpy", "2nd") },
+            ).linkedPlayerId,
+        )
 
         val due = assertNotNull(
             Prompts.due(state, BriefingSlot.DAY_START).firstOrNull { it.sourceId == "harpy" },
@@ -382,18 +417,27 @@ class RulesExpMinionsTest {
     }
 
     @Test
-    fun `Given a healthy Mezepheles and a marked player, When they turn evil, Then the alignment change is queued`() {
+    fun `Given a healthy Mezepheles and a marked player, When they turn evil, Then they really do`() {
         var state = night("mezepheles", "imp", "chef", "empath", "mayor")
         state = next(next(state))
         state = token(state, 3L, "mezepheles", "Turns Evil")
+        val was = assertNotNull(state.player(3L)).characterId
         state = run(state, "mezepheles", NightInput(yes = true))
 
-        val prompt = assertNotNull(
-            state.prompts.firstOrNull { it.sourceId == "mezepheles" && !it.resolved },
+        // W7E: `NightEffect.SetAlignment` writes the side and NOTHING else — the
+        // seat keeps its character and its ability, which is what the card says.
+        val turned = assertNotNull(state.player(3L))
+        assertTrue(turned.isEvil(lookup), "they play for evil now")
+        assertEquals(Alignment.EVIL, turned.alignment)
+        assertEquals(was, turned.characterId, "they keep their character")
+        assertTrue(
+            state.identityLog.none { it.playerId == 3L },
+            "an alignment flip is not a character change",
         )
-        assertEquals(3L, prompt.subjectPlayerId)
-        assertTrue("EVIL" in prompt.title, prompt.title)
-        assertTrue("keep their character" in prompt.title, prompt.title)
+        assertTrue(
+            state.ledger.any { it.kind == LedgerKind.RULING && it.actorId == 3L },
+            "the flip is on the record",
+        )
         assertTrue(Memory.isSpent(state, "mezepheles", state.seat("mezepheles")))
     }
 
@@ -625,13 +669,19 @@ class RulesExpMinionsTest {
         val wizard = state.seat("wizard")
         assertIs<StepGate.Fire>(assertNotNull(step(state, "wizard")).gate)
 
-        state = run(state, "wizard", NightInput(yes = false))
+        // W7E: three outcomes, not two — "no wish" and "you declined it" are
+        // different things and neither spends.
+        val options = assertIs<Options>(assertNotNull(step(state, "wizard")).action).options
+        assertEquals(listOf("none", "declined", "granted"), options.map { it.id })
+
+        state = run(state, "wizard", NightInput(optionId = "declined"))
+        assertFalse(Memory.isSpent(state, "wizard", wizard), "a declined wish costs nothing")
         state = next(next(state))
         assertIs<StepGate.Fire>(
             assertNotNull(step(state, "wizard")).gate,
         )
 
-        state = run(state, "wizard", NightInput(yes = true))
+        state = run(state, "wizard", NightInput(optionId = "granted"))
         assertTrue(Memory.isSpent(state, "wizard", wizard))
         assertTrue(
             state.prompts.any { it.sourceId == "wizard" && "price" in it.title },
@@ -657,6 +707,24 @@ class RulesExpMinionsTest {
 
         state = next(next(state))
         assertNotNull(step(state, "wraith"), "and every other night too")
+    }
+
+    @Test
+    fun `Given a Wraith and a Chambermaid, Then the Wraith's eye-opening never counts`() {
+        // Lead D66, confirmed: the Wraith opens its eyes for OTHER people's
+        // abilities, so a Chambermaid who points at it counts nothing.
+        var state = night("wraith", "imp", "chambermaid", "empath", "mayor")
+        val wraith = state.seat("wraith")
+        state = run(state, "wraith", NightInput())
+        assertEquals(
+            0,
+            NightPlan.wokeCount(state, lookup, listOf(wraith)),
+            "INFORMED wakes never count for the Chambermaid (lead D13/D66)",
+        )
+        assertTrue(
+            state.ledger.any { it.kind == LedgerKind.WOKE && it.actorId == wraith && !it.genuine },
+            "the wake is still recorded, just not as their own ability",
+        )
     }
 
     // ==================================================================

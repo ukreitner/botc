@@ -221,7 +221,14 @@ data class NightPlan(
                 }
                 val slotRoles = bySlot[slot].orEmpty()
                 if (slotRoles.isEmpty()) {
-                    if (slot in state.fabledIds) steps += fabledStep(ctx, slot, at)
+                    if (slot in state.fabledIds) {
+                        steps += seatlessStep(ctx, slot, at, ctx.fabledHolders(slot), WakeCount.NONE)
+                    } else if (slot in ctx.seatless) {
+                        // In play, but the bag seated nobody: a Lil' Monsta game
+                        // has no Demon seat at all (lead D18). One group row, no
+                        // holder — the registry row does the waking.
+                        steps += seatlessStep(ctx, slot, at, emptyList(), WakeCount.ACT)
+                    }
                     continue
                 }
                 val rule = CharacterRules.of(slotRoles.first().abilityId, lookup(slotRoles.first().abilityId))
@@ -313,6 +320,7 @@ data class NightPlan(
             }
             if (choiceAllowed && action != null) {
                 next = applyAction(next, lookup, action, input, targets, scope)
+                next = fireOnChosen(next, state, lookup, step, targets)
             }
             next = applyEffects(next, lookup, pending, scope)
 
@@ -324,6 +332,56 @@ data class NightPlan(
             next = discharge(next, step)
             next = toggleDone(next, step.key.token, forceDone = true)
             return Effects.reconcile(next, lookup)
+        }
+
+        /**
+         * Runs `CharacterRule.onChosen` for every seat this step just picked
+         * (W7I) — the reactive half of the registry the Goon needed.
+         *
+         * The effects are applied with the CHOSEN seat as the source, so a row
+         * writes `Ref.Source` for itself and `Ref.Target` for whoever chose it.
+         * The chooser's own effects have already landed: the Goon's drunkenness
+         * arrives after the choice it is reacting to, which is the order the
+         * table plays it in.
+         */
+        private fun fireOnChosen(
+            state: GameState,
+            before: GameState,
+            lookup: (String) -> Character?,
+            step: NightStep,
+            targets: List<Long>,
+        ): GameState {
+            var next = state
+            for (targetId in targets) {
+                val chosen = next.player(targetId) ?: continue
+                val id = chosen.characterId?.let(Character::normalizeId) ?: continue
+                val hook = CharacterRules.all[id]?.onChosen ?: continue
+                val effects = hook(
+                    ChosenContext(
+                        state = next,
+                        before = before,
+                        lookup = lookup,
+                        night = next.cycle,
+                        holder = chosen,
+                        chooser = step.holderId?.let { next.player(it) },
+                        chooserAbilityId = step.abilityId,
+                    ),
+                )
+                if (effects.isEmpty()) continue
+                next = applyEffects(
+                    next,
+                    lookup,
+                    effects,
+                    EffectScope(
+                        sourceId = chosen.id,
+                        sourceCharacterId = id,
+                        targets = listOfNotNull(step.holderId),
+                        characterIds = emptyList(),
+                        current = step.holderId,
+                    ),
+                )
+            }
+            return next
         }
 
         fun toggleDone(state: GameState, token: String): GameState = toggleDone(state, token, false)
@@ -442,6 +500,23 @@ data class NightPlan(
 
             val bluffs: List<BluffRequirement> by lazy { Bluffs.requirements(state, lookup) }
 
+            /** In play, but the bag seated nobody — a Lil' Monsta game (lead D18). */
+            val seatless: Set<String> by lazy { Setup.seatlessInPlayIds(state).toSet() }
+
+            /**
+             * Every character on THIS GAME'S SCRIPT. A jinx applies because it is
+             * on the script, not because it was dealt (lead D19, the Djinn rule).
+             */
+            val scriptIds: Set<String> by lazy {
+                state.script.characterIds.map(Character::normalizeId).toSet()
+            }
+
+            /** The seats an in-play Fabled points at, if it points at any. */
+            fun fabledHolders(slot: String): List<Long> = state.fabled
+                .firstOrNull { Character.normalizeId(it.id) == slot }
+                ?.playerIds
+                .orEmpty()
+
             /** Seats whose character changed tonight — the Pit-Hag's victim, an heir. */
             val changedTonight: List<IdentityRecord> = state.identityLog
                 .filter { it.cycle == state.cycle && it.atNight }
@@ -502,7 +577,16 @@ data class NightPlan(
             val style = if (firstNightRules) WakeStyle.FIRST_NIGHT else WakeStyle.OTHER_NIGHT
             val character = ctx.lookup(role.abilityId)
             val rule = CharacterRules.of(role.abilityId, character)
-            val nightRule = rule.nightRule(firstNightRules)
+            // OTHER nights only: every D19 jinx action is an "each night*"
+            // ability, and `jinxRules` has one entry per jinxed character with no
+            // place to say "first night". A first-night jinx would have to be a
+            // separate map, and none of the official 131 needs one.
+            val jinxed = if (firstNightRules) {
+                emptyList()
+            } else {
+                rule.jinxRules.keys.filter { Character.normalizeId(it) in ctx.scriptIds }.sorted()
+            }
+            val nightRule = jinxOver(rule.nightRule(firstNightRules), rule, jinxed)
             val holder = ctx.holder(role)
             val nightCtx = ctx.nightContext(role, holder, firstNightRules)
             val gate = when {
@@ -519,6 +603,15 @@ data class NightPlan(
                 if (variant == StepVariant.FIRST) add("first night, again")
                 if (ctx.changedTonight.any { it.playerId == holder?.id }) add("new character")
                 if (role.alwaysFalse) add("nothing they do has any effect")
+                for (other in jinxed) {
+                    add("jinx: ${ctx.lookup(other)?.name ?: other} is on the script")
+                }
+                // W7G: `CharacterRule.demonKillUncertain` had no consumer, so the
+                // panel never actually asked. It is the wiki declining to rule
+                // whether a Sage / Grandmother / Choirboy fires on this kill.
+                if (rule.demonKillUncertain && gate !is StepGate.Skip) {
+                    add("the wiki does not rule whether this counts as a Demon kill — you decide")
+                }
             }
             return NightStep(
                 key = StepKey(role.abilityId, holder?.id, variant),
@@ -529,12 +622,19 @@ data class NightPlan(
                     holder?.let { append(" — ").append(it.name) }
                     sourceName?.let { append(" (via the ").append(it).append(")") }
                 },
-                detail = detailFor(character, firstNightRules),
+                detail = withEvidence(
+                    detailFor(character, firstNightRules),
+                    nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                ),
                 sourceId = role.sourceId,
                 holderIds = group,
                 style = style,
                 gate = gate,
-                banner = bannerFor(ctx, role, holder, gate),
+                // The planner's own banner (impaired, silenced, dead-but-acts)
+                // always wins: a row must never hide the reason its ability will
+                // not work tonight behind the registry's evidence quote.
+                banner = bannerFor(ctx, role, holder, gate)
+                    .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
                 prompt = nightRule?.prompt.orEmpty()
                     .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() },
                 action = action,
@@ -543,6 +643,58 @@ data class NightPlan(
                 promptId = promptId,
                 wakeCounts = nightRule?.wakeCounts ?: WakeCount.ACT,
             )
+        }
+
+        /**
+         * Applies every `CharacterRule.jinxRules` entry whose character is on the
+         * script (lead D19) over tonight's rule.
+         *
+         * A jinx row OVERRIDES only what it declares: the King's Leviathan jinx
+         * sets nothing but a gate, and must keep the King's own prompt. Two rows
+         * can apply at once (a Leviathan script with both a Farmer and a Sage),
+         * so the prompts are joined rather than one silently winning.
+         */
+        private fun jinxOver(
+            base: NightRule?,
+            rule: CharacterRule,
+            jinxed: List<String>,
+        ): NightRule? {
+            if (jinxed.isEmpty()) return base
+            val rules = jinxed.mapNotNull { rule.jinxRules[it] }
+            if (rules.isEmpty()) return base
+            return NightRule(
+                // Every jinx row declares its own gate; the strictest wins.
+                gate = Gates.all(*rules.map { it.gate }.toTypedArray()),
+                action = { ctx ->
+                    rules.firstNotNullOfOrNull { it.action(ctx) } ?: base?.action?.invoke(ctx)
+                },
+                pending = { ctx ->
+                    base?.pending?.invoke(ctx).orEmpty() + rules.flatMap { it.pending(ctx) }
+                },
+                prompt = rules.map { it.prompt }.filter { it.isNotEmpty() }
+                    .joinToString(" ")
+                    .ifEmpty { base?.prompt.orEmpty() },
+                banner = { ctx ->
+                    rules.map { it.banner(ctx) }.firstOrNull { it.isNotEmpty() }
+                        ?: base?.banner?.invoke(ctx).orEmpty()
+                },
+                detail = { ctx ->
+                    rules.map { it.detail(ctx) }.filter { it.isNotEmpty() }.joinToString(" ")
+                        .ifEmpty { base?.detail?.invoke(ctx).orEmpty() }
+                },
+                cards = { ctx ->
+                    rules.flatMap { it.cards(ctx) }.ifEmpty { base?.cards?.invoke(ctx).orEmpty() }
+                },
+                infoId = rules.firstNotNullOfOrNull { it.infoId } ?: base?.infoId,
+                wakeCounts = rules.first().wakeCounts,
+            )
+        }
+
+        /** The character's own night reminder, plus whatever evidence the row quotes. */
+        private fun withEvidence(detail: String, evidence: String): String = when {
+            evidence.isEmpty() -> detail
+            detail.isEmpty() -> evidence
+            else -> "$detail $evidence"
         }
 
         private fun detailFor(character: Character?, firstNight: Boolean): String {
@@ -575,9 +727,13 @@ data class NightPlan(
             return ""
         }
 
-        /** A supported information step still gets its picker when no rule declares one. */
+        /**
+         * A supported information step still gets its picker when no rule
+         * declares one. `infoId = ""` suppresses it outright (W7H); `null` — the
+         * default — falls back to the ability's own id.
+         */
         private fun infoAction(abilityId: String, nightRule: NightRule?): NightAction? {
-            val infoId = nightRule?.infoId.orEmpty().ifEmpty { abilityId }
+            val infoId = nightRule?.infoId ?: abilityId
             if (!InfoCalc.supports(infoId)) return null
             val needed = InfoCalc.targetsNeeded(infoId)
             return ShowInfo(
@@ -598,58 +754,130 @@ data class NightPlan(
             role: ActingRole,
             nightRule: NightRule?,
         ): List<CardOffer> {
-            val infoId = nightRule?.infoId.orEmpty().ifEmpty { role.abilityId }
+            val infoId = nightRule?.infoId ?: role.abilityId
             if (!InfoCalc.supports(infoId) || InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
             val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, role.playerId) ?: return emptyList()
-            return cardsFor(result)
+            return cardsFor(ctx.state, result)
         }
 
         /** Turns a typed answer into show-card offers; lies are labelled as lies. */
-        fun cardsFor(result: InfoResult): List<CardOffer> = buildList {
-            cardFor(result.answer)?.let { add(CardOffer("SHOW: ${labelFor(result.answer)}", it, true)) }
+        /**
+         * Turns a typed answer into show-card offers; lies are labelled as lies.
+         *
+         * W7G: `Answer.Players` and a multi-character answer produce real cards
+         * now — `ShowCardSpec.PointCard` and `MultiTokenCard`. [state] is what
+         * resolves the names and the seat numbers the card prints, so the engine
+         * decides WHAT to show and the renderer only decides how it looks.
+         */
+        fun cardsFor(state: GameState, result: InfoResult): List<CardOffer> = buildList {
+            cardFor(state, result.answer)
+                ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer)}", it, true)) }
             for (alternative in result.alternatives) {
-                val card = cardFor(alternative) ?: continue
-                add(CardOffer("LIE · SHOW ${labelFor(alternative)}", card, false))
+                val card = cardFor(state, alternative) ?: continue
+                add(CardOffer("LIE · SHOW ${labelFor(state, alternative)}", card, false))
             }
         }
 
-        private fun labelFor(answer: Answer): String = when (answer) {
+        private fun labelFor(state: GameState, answer: Answer): String = when (answer) {
             is Answer.Count -> answer.n.toString()
             is Answer.YesNoAnswer -> if (answer.yes) "YES" else "NO"
             is Answer.Characters -> answer.ids.joinToString().uppercase()
-            is Answer.Players -> "THEM"
+            is Answer.Players -> answer.ids
+                .mapNotNull { state.player(it)?.name }
+                .joinToString()
+                .ifEmpty { "THEM" }
             is Answer.Message -> answer.text.take(24).uppercase()
         }
 
-        private fun cardFor(answer: Answer): ShowCardSpec? = when (answer) {
+        private fun cardFor(state: GameState, answer: Answer): ShowCardSpec? = when (answer) {
             is Answer.Count -> ShowCardSpec.NumberCard(answer.n)
             is Answer.YesNoAnswer -> ShowCardSpec.Message(if (answer.yes) "YES" else "NO")
-            is Answer.Characters -> answer.ids.firstOrNull()
-                ?.let { ShowCardSpec.CharacterCard("THIS CHARACTER", it) }
-            // A "point at these players" card is WP8's PointCard; nothing to
-            // pre-fill until it exists.
-            is Answer.Players -> null
+            is Answer.Characters -> when {
+                answer.ids.isEmpty() -> null
+                answer.ids.size == 1 ->
+                    ShowCardSpec.CharacterCard("THIS CHARACTER", answer.ids.first())
+                else -> ShowCardSpec.MultiTokenCard("THESE CHARACTERS", answer.ids)
+            }
+
+            is Answer.Players -> pointCard(state, answer)
             is Answer.Message -> ShowCardSpec.Message(answer.text)
         }
 
-        /** An in-play Fabled with a night-order slot but no seat of its own. */
-        private fun fabledStep(ctx: PlanContext, slot: String, at: Double): List<NightStep> {
+        /** "Point at these players", with the seat numbers the player checks. */
+        private fun pointCard(state: GameState, answer: Answer.Players): ShowCardSpec? {
+            if (answer.ids.isEmpty()) return null
+            val seats = answer.ids.mapNotNull { id ->
+                val index = state.seats.indexOfFirst { it.id == id }
+                if (index < 0) null else (index + 1) to state.player(id)
+            }
+            if (seats.isEmpty()) return null
+            return ShowCardSpec.PointCard(
+                prefix = ShowCardSpec.pointPrefix(answer.characterId != null, seats.size),
+                playerNames = seats.mapNotNull { it.second?.name },
+                seatNumbers = seats.map { it.first },
+                characterId = answer.characterId,
+            )
+        }
+
+        /**
+         * A character that is in play with a night-order slot but no seat of its
+         * own: an in-play Fabled, and a `groupStep` character the bag never
+         * seated (`Setup.seatlessInPlayIds` — lead D18/D59).
+         *
+         * The registry row is honoured in full — gate, action, prompt, cards,
+         * `infoId`, `wakeCounts` — exactly as for a seated row. The only
+         * difference is that `holder` is null, so a gate like `Gates.aliveHolder`
+         * fires by construction and a board-reading gate (the Duchess's "3
+         * visitors are marked", the Toymaker's "the attack could end the game")
+         * decides instead.
+         */
+        private fun seatlessStep(
+            ctx: PlanContext,
+            slot: String,
+            at: Double,
+            holderIds: List<Long>,
+            wakeDefault: WakeCount,
+        ): List<NightStep> {
             val character = ctx.lookup(slot) ?: return emptyList()
-            val entry = ctx.state.fabled.firstOrNull { Character.normalizeId(it.id) == slot }
+            val rule = CharacterRules.of(slot, character)
+            val nightRule = rule.nightRule(ctx.isFirstNight)
+            val nightCtx = ctx.nightContext(role = null, holder = null, firstNightRules = ctx.isFirstNight)
+            val gate = nightRule?.gate?.gate(ctx.wakeContext(null, null))
+                ?: StepGate.Skip("no ability on this night")
+            val action = nightRule?.action?.invoke(nightCtx)
+                ?: infoAction(slot, nightRule)
             return listOf(
                 NightStep(
                     key = StepKey(slot),
                     slotId = slot,
                     order = at,
                     title = character.name,
-                    detail = detailFor(character, ctx.isFirstNight),
-                    holderIds = entry?.playerIds.orEmpty(),
+                    detail = withEvidence(
+                        detailFor(character, ctx.isFirstNight),
+                        nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                    ),
+                    holderIds = holderIds,
                     style = ctx.style,
-                    gate = StepGate.Fire,
-                    prompt = NightGuide.forStep(slot, ctx.style)?.instructions.orEmpty(),
-                    wakeCounts = WakeCount.NONE,
+                    gate = gate,
+                    banner = (gate as? StepGate.Reduced)?.reason.orEmpty()
+                        .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
+                    prompt = nightRule?.prompt.orEmpty()
+                        .ifEmpty { NightGuide.forStep(slot, ctx.style)?.instructions.orEmpty() },
+                    action = action,
+                    cards = nightRule?.cards?.invoke(nightCtx).orEmpty() +
+                        seatlessInfoCards(ctx, nightRule),
+                    wakeCounts = nightRule?.wakeCounts ?: wakeDefault,
                 ),
             )
+        }
+
+        /** Pre-filled cards for a seatless information step (the Duchess). */
+        private fun seatlessInfoCards(ctx: PlanContext, nightRule: NightRule?): List<CardOffer> {
+            val infoId = nightRule?.infoId.orEmpty()
+            if (infoId.isEmpty() || !InfoCalc.supports(infoId)) return emptyList()
+            if (InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
+            val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, null) ?: return emptyList()
+            return cardsFor(ctx.state, result)
         }
 
         /** A bluff set the holder of this row receives themselves (Lunatic, Summoner). */
@@ -762,8 +990,16 @@ data class NightPlan(
         private fun insertions(ctx: PlanContext, base: List<NightStep>): List<NightStep> {
             val out = mutableListOf<NightStep>()
             val taken = base.map { it.key.token }.toMutableSet()
+            // A group step is ONE row for every holder, and its key names only the
+            // first of them. Without this, converting three Minions to the Riot on
+            // night 3 produced the group row plus one duplicate per convert.
+            val grouped = base
+                .filter { CharacterRules.of(it.abilityId, ctx.lookup(it.abilityId)).groupStep }
+                .map { it.abilityId }
+                .toSet()
             for (prompt in Prompts.forTonight(ctx.state)) {
                 val step = promptStep(ctx, prompt, taken) ?: continue
+                if (step.abilityId in grouped) continue
                 out += step
                 taken += step.key.token
             }
@@ -771,12 +1007,53 @@ data class NightPlan(
                 val holder = ctx.state.player(record.playerId) ?: continue
                 if (record.reason == ChangeReason.FARMER) continue // no first-night info
                 for (role in Identity.actingRoles(ctx.state, ctx.lookup, holder)) {
+                    if (role.abilityId in grouped) continue
                     val step = createdStep(ctx, role, record, taken) ?: continue
                     out += step
                     taken += step.key.token
                 }
             }
+            for (step in actsTwiceSteps(ctx, base, taken)) {
+                out += step
+                taken += step.key.token
+            }
             return out
+        }
+
+        /**
+         * A seat whose ability works TWICE tonight gets a second row (W7I).
+         *
+         * `StepVariant.AGAIN` existed from WP2 and nothing emitted it but a
+         * `Prompt`. The trigger is a live `EffectKind.ACTS_TWICE` — the Barista's
+         * token — so the planner never names a character; the second row sits
+         * immediately after the first rather than at the end of the sheet,
+         * because it is the same wake happening twice.
+         */
+        private fun actsTwiceSteps(
+            ctx: PlanContext,
+            base: List<NightStep>,
+            taken: Set<String>,
+        ): List<NightStep> {
+            val doubled = ctx.state.seats
+                .filter {
+                    Status.live(ctx.state, ctx.lookup, it.id, EffectKind.ACTS_TWICE).isNotEmpty()
+                }
+                .map { it.id }
+                .toSet()
+            if (doubled.isEmpty()) return emptyList()
+            return base.mapNotNull { row ->
+                if (row.holderId !in doubled) return@mapNotNull null
+                if (row.key.variant != StepVariant.NORMAL) return@mapNotNull null
+                // Nothing to run twice: a skipped row, or a marker with no action.
+                if (row.gate is StepGate.Skip || row.action == null) return@mapNotNull null
+                val key = row.key.copy(variant = StepVariant.AGAIN)
+                if (key.token in taken) return@mapNotNull null
+                row.copy(
+                    key = key,
+                    order = row.order + 0.5,
+                    badges = row.badges + "acts twice — this is the second run",
+                )
+            }
         }
 
         /**
@@ -986,6 +1263,17 @@ data class NightPlan(
                         targetId !in Memory.everChosen(state, step.abilityId, holderId)
                     TargetConstraint.NEIGHBOUR_OF_SOURCE ->
                         holderId == null || targetId in state.seatNeighbours(holderId).map { it.id }
+                    // A Zombuul's first death REGISTERS dead while the seat is
+                    // still in the game, so this is stricter than ALIVE.
+                    TargetConstraint.NOT_REGISTERS_DEAD -> target.alive
+                    TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT -> {
+                        val last = Memory.lastChoice(state, step.abilityId, holderId)
+                            ?.targetIds
+                            ?.mapNotNull { state.player(it)?.characterId?.let(lookup)?.team }
+                            ?.toSet()
+                            .orEmpty()
+                        team == null || team !in last
+                    }
                 }
             }
         }
@@ -1016,14 +1304,28 @@ data class NightPlan(
                     }
                 }
 
+                // A head-shake is a real answer: it runs `onNone` and never
+                // `onResolve`, which would otherwise fire with nothing picked.
                 is ChooseCharacter -> {
                     scope.current = targets.firstOrNull()
-                    next = applyEffects(next, lookup, action.onResolve, scope)
+                    val none = input.none || input.characterIds.isEmpty()
+                    next = applyEffects(
+                        next,
+                        lookup,
+                        if (none) action.onNone else action.onResolve,
+                        scope,
+                    )
                 }
 
                 is ChoosePlayerAndCharacter -> {
                     scope.current = targets.firstOrNull()
-                    next = applyEffects(next, lookup, action.onResolve, scope)
+                    val none = input.none || input.characterIds.isEmpty() || targets.isEmpty()
+                    next = applyEffects(
+                        next,
+                        lookup,
+                        if (none) action.onNone else action.onResolve,
+                        scope,
+                    )
                 }
 
                 is YesNo -> {
@@ -1040,6 +1342,19 @@ data class NightPlan(
                     for (stage in action.stages) {
                         next = applyAction(next, lookup, stage, input, targets, scope)
                     }
+                }
+
+                is Options -> {
+                    scope.current = targets.firstOrNull()
+                    // An unrecognised id applies `onNone`, never a branch picked
+                    // by position: the storyteller's tap is the only authority.
+                    val chosen = action.options.firstOrNull { it.id == input.optionId }
+                    next = applyEffects(
+                        next,
+                        lookup,
+                        chosen?.effects ?: action.onNone,
+                        scope,
+                    )
                 }
 
                 is ShowInfo -> Unit
@@ -1072,6 +1387,11 @@ data class NightPlan(
                     val kind = effect.kind
                         ?: rule?.effect
                         ?: if (rule?.impairs == true) EffectKind.POISONED else EffectKind.MARKER
+                    // An empty payload falls back to the character picked on this
+                    // step, so a Cerenovus's Mad token names what it is mad about.
+                    val payload = effect.characterId?.ifEmpty { scope.characterIds.firstOrNull() }
+                    val linked = effect.linkedPlayerId
+                        ?.let { seats(next, lookup, it, scope).firstOrNull() }
                     for (target in seats(next, lookup, effect.on, scope)) {
                         next = Effects.place(
                             state = next,
@@ -1081,7 +1401,13 @@ data class NightPlan(
                             sourcePlayerId = scope.sourceId,
                             until = rule?.until ?: effect.until,
                             label = effect.label,
-                            endsWithSource = rule?.endsWithSource ?: true,
+                            note = effect.note,
+                            characterId = payload,
+                            linkedPlayerId = linked,
+                            endsWithSource = effect.endsWithSource
+                                ?: rule?.endsWithSource
+                                ?: true,
+                            suppression = effect.suppression,
                         ).state
                     }
                 }
@@ -1100,21 +1426,37 @@ data class NightPlan(
                 }
 
                 is NightEffect.Attack -> {
-                    // A deferred death resolves an attack made on an EARLIER night,
-                    // so a suppression placed TONIGHT must not veto it (wiki: an
-                    // Exorcised Pukka's standing victim still dies). Attribution
-                    // stays on the character; only the seat is dropped, and only
-                    // when it would otherwise cancel its own past attack.
-                    val silencedNow = effect.deferred && scope.sourceId != null &&
-                        Status.live(next, lookup, scope.sourceId, EffectKind.DEMON_CANNOT_KILL)
-                            .isNotEmpty()
+                    // A deferred death resolves an attack made on an EARLIER
+                    // night, and whether tonight's suppression reaches it depends
+                    // on WHICH suppression it is (lead D68):
+                    //
+                    //  - SILENCED (Exorcist): "the Pukka does not wake to attack
+                    //    tonight, but a player still dies because of the Pukka's
+                    //    attack during the previous night" — the source seat is
+                    //    dropped from the cause so the funnel does not veto its
+                    //    own past attack. Attribution stays on the character.
+                    //  - NO_KILL_TONIGHT (Lycanthrope Faux Paw, Princess,
+                    //    Toymaker's final night): "the Demon doesn't kill
+                    //    tonight" — the seat is KEPT, so `Deaths` blocks it.
+                    val suppressions = scope.sourceId
+                        ?.let { Status.live(next, lookup, it, EffectKind.DEMON_CANNOT_KILL) }
+                        .orEmpty()
+                    val stopsDeferred =
+                        suppressions.any { it.suppression == KillSuppression.NO_KILL_TONIGHT }
+                    val silencedNow =
+                        effect.deferred && suppressions.isNotEmpty() && !stopsDeferred
+                    // W7G: `CharacterRule.killCause` is the safety net. Every row
+                    // that means something other than a Demon kill should say so
+                    // on the effect, but `Attack.cause` defaults to DEMON_KILL, so
+                    // a row that forgot would have miscounted every protection.
+                    val cause = declaredKillCause(scope.sourceCharacterId, effect.cause)
                     for (target in seats(next, lookup, effect.on, scope)) {
                         next = Deaths.attempt(
                             state = next,
                             lookup = lookup,
                             targetId = target,
                             cause = KillCause(
-                                cause = effect.cause,
+                                cause = cause,
                                 sourceCharacterId = scope.sourceCharacterId,
                                 sourcePlayerId = if (silencedNow) null else scope.sourceId,
                                 ignoresProtection = !effect.respectProtection,
@@ -1128,19 +1470,26 @@ data class NightPlan(
                         next = Deaths.resurrect(next, lookup, target)
                     }
 
-                is NightEffect.BecomeCharacter ->
-                    for (target in seats(next, lookup, effect.on, scope)) {
-                        next = Identity.changeCharacter(
-                            state = next,
-                            lookup = lookup,
-                            playerId = target,
-                            newCharacterId = effect.characterId.ifEmpty {
-                                scope.characterIds.firstOrNull()
-                            },
-                            reason = effect.reason,
-                            newEvil = effect.evil,
-                        )
+                is NightEffect.BecomeCharacter -> {
+                    // An empty id means "the character picked on this step". With
+                    // no pick to fall back on the effect does NOTHING: passing
+                    // null through would clear the seat's character, which is not
+                    // a rule any character has.
+                    val newId = effect.characterId.ifEmpty { scope.characterIds.firstOrNull() }
+                    if (!newId.isNullOrBlank()) {
+                        for (target in seats(next, lookup, effect.on, scope)) {
+                            next = Identity.changeCharacter(
+                                state = next,
+                                lookup = lookup,
+                                playerId = target,
+                                newCharacterId = newId,
+                                reason = effect.reason,
+                                // Null keeps the seat's alignment (lead D67).
+                                newEvil = effect.evil,
+                            )
+                        }
                     }
+                }
 
                 is NightEffect.SwapCharacters -> {
                     val a = seats(next, lookup, effect.a, scope).firstOrNull()
@@ -1228,8 +1577,138 @@ data class NightPlan(
                             genuine = false,
                         )
                     }
+
+                is NightEffect.SetAlignment -> {
+                    val side = if (effect.evil) Alignment.EVIL else Alignment.GOOD
+                    for (target in seats(next, lookup, effect.on, scope)) {
+                        val seat = next.player(target) ?: continue
+                        if (seat.isEvil(lookup) == effect.evil && seat.alignment == side) continue
+                        next = next
+                            .updatePlayer(target) {
+                                it.copy(alignment = side, legacyAlignmentFlipped = false)
+                            }
+                        next = Ledger.ruling(
+                            state = next,
+                            sourceId = scope.sourceCharacterId.orEmpty(),
+                            playerId = target,
+                            text = effect.note.ifEmpty {
+                                "${seat.name} now plays for ${if (effect.evil) "evil" else "good"}."
+                            },
+                        )
+                    }
+                }
+
+                is NightEffect.GrantAbility -> {
+                    val abilityId = effect.abilityId.ifEmpty { scope.characterIds.firstOrNull() }
+                        ?.let(Character::normalizeId)
+                        .orEmpty()
+                    if (abilityId.isNotEmpty()) {
+                        val on = effect.on
+                        if (on == null) {
+                            val floating = FloatingGrant(
+                                abilityId = abilityId,
+                                sourceId = effect.sourceId,
+                                holder = effect.floatingHolder,
+                                worksWhileImpaired = effect.worksWhileImpaired,
+                            )
+                            if (floating !in next.floatingGrants) {
+                                next = next.copy(floatingGrants = next.floatingGrants + floating)
+                            }
+                        } else {
+                            val grant = AbilityGrant(
+                                abilityId = abilityId,
+                                sourceId = effect.sourceId,
+                                mode = effect.mode,
+                                slotId = effect.slotId,
+                                worksWhileImpaired = effect.worksWhileImpaired,
+                                cycle = next.cycle,
+                            )
+                            for (target in seats(next, lookup, on, scope)) {
+                                next = next.updatePlayer(target) { seat ->
+                                    // One grant per (ability, source): re-running a
+                                    // step must not stack two copies of the same gift.
+                                    val kept = seat.grants.filterNot {
+                                        Character.normalizeId(it.sourceId) ==
+                                            Character.normalizeId(effect.sourceId) &&
+                                            Character.normalizeId(it.abilityId) == abilityId
+                                    }
+                                    seat.copy(grants = kept + grant)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is NightEffect.When -> {
+                    val matched = seats(next, lookup, effect.on, scope)
+                        .partition { holds(next, lookup, effect.predicate, it, scope) }
+                    // The branch runs per seat, with `current` pointing at it, so
+                    // `Ref.Target` inside a branch means "this seat".
+                    val before = scope.current
+                    for (seat in matched.first) {
+                        scope.current = seat
+                        next = applyEffects(next, lookup, effect.then, scope)
+                    }
+                    for (seat in matched.second) {
+                        scope.current = seat
+                        next = applyEffects(next, lookup, effect.otherwise, scope)
+                    }
+                    scope.current = before
+                }
+
+                is NightEffect.MarkConsumed -> next = Ledger.resolve(next, effect.ledgerId)
             }
             return next
+        }
+
+        /**
+         * The cause an attack from [sourceCharacterId] carries.
+         *
+         * `NightEffect.Attack.cause` defaults to `DEMON_KILL` and every row that
+         * means otherwise passes its own; this fills in for one that did not,
+         * from the registry's `killCause`. It never overrides an explicit
+         * non-default cause, and it never invents one for a Demon.
+         */
+        private fun declaredKillCause(
+            sourceCharacterId: String?,
+            declaredOnEffect: DeathCause,
+        ): DeathCause {
+            if (declaredOnEffect != DeathCause.DEMON_KILL) return declaredOnEffect
+            val fromRegistry = sourceCharacterId
+                ?.let { CharacterRules.all[Character.normalizeId(it)]?.killCause }
+                ?: return declaredOnEffect
+            // STORYTELLER is the schema's default, not a declaration.
+            return if (fromRegistry == DeathCause.STORYTELLER) declaredOnEffect else fromRegistry
+        }
+
+        /** Answers one [SeatPredicate] about one seat, right now. */
+        private fun holds(
+            state: GameState,
+            lookup: (String) -> Character?,
+            predicate: SeatPredicate,
+            seatId: Long,
+            scope: EffectScope,
+        ): Boolean {
+            val seat = state.player(seatId) ?: return false
+            val team = seat.characterId?.let(lookup)?.team
+            return when (predicate) {
+                SeatPredicate.IS_TOWNSFOLK -> team == Team.TOWNSFOLK
+                SeatPredicate.IS_OUTSIDER -> team == Team.OUTSIDER
+                SeatPredicate.IS_MINION -> team == Team.MINION
+                SeatPredicate.IS_DEMON -> team == Team.DEMON
+                SeatPredicate.IS_GOOD -> !seat.isEvil(lookup)
+                SeatPredicate.IS_EVIL -> seat.isEvil(lookup)
+                SeatPredicate.IS_ALIVE -> seat.alive
+                SeatPredicate.IS_DEAD -> !seat.alive
+                SeatPredicate.REGISTERS_MINION ->
+                    Team.MINION in Registration.registersAs(state, lookup, seat)
+                SeatPredicate.REGISTERS_DEMON ->
+                    Team.DEMON in Registration.registersAs(state, lookup, seat)
+                SeatPredicate.REGISTERS_EVIL -> Registration.registersEvil(state, lookup, seat)
+                SeatPredicate.HAS_ABILITY -> Status.hasAbility(state, lookup, seatId)
+                SeatPredicate.IS_IMPAIRED -> Status.isImpaired(state, lookup, seatId)
+                SeatPredicate.IS_SOURCE -> seatId == scope.sourceId
+            }
         }
 
         /** Which seats one [Ref] addresses right now. */
@@ -1409,12 +1888,39 @@ object Gates {
     /** Alive, or dead with an ability that still works. Otherwise skipped. */
     val aliveHolder: WakePredicate = WakePredicate { ctx ->
         val holder = ctx.holder ?: return@WakePredicate StepGate.Fire
+        val taken = abilityTakenAway(ctx, holder)
         when {
+            // An ability that has been TAKEN AWAY is not an impairment: a
+            // preached Minion has nothing left to wake for. Drunkenness and
+            // poison are different — those seats still wake and are lied to.
+            taken != null -> StepGate.Skip("their ability was taken away by the $taken")
             holder.alive -> StepGate.Fire
             ctx.role != null && Status.roleWorks(ctx.state, ctx.lookup, ctx.role) ->
                 StepGate.Fire
             else -> StepGate.Skip("dead — no ability")
         }
+    }
+
+    /**
+     * The name of the character that removed this seat's ability outright, or
+     * null (W7G).
+     *
+     * Only a FOREIGN `NO_ABILITY` counts. The Drunk, the Marionette and the
+     * Lunatic carry one sourced by their own character, and they must still
+     * wake for the ability they believe they have — that is the whole point of
+     * `ActingRole.alwaysFalse`.
+     */
+    private fun abilityTakenAway(ctx: WakeContext, holder: Player): String? {
+        if (ctx.role?.alwaysFalse == true) return null
+        val own = holder.characterId?.let(Character::normalizeId)
+        val acting = ctx.role?.abilityId?.let(Character::normalizeId)
+        val taken = Status.live(ctx.state, ctx.lookup, holder.id, EffectKind.NO_ABILITY)
+            .firstOrNull {
+                val source = Character.normalizeId(it.sourceCharacterId)
+                source.isNotEmpty() && source != own && source != acting
+            }
+            ?: return null
+        return ctx.lookup(taken.sourceCharacterId)?.name ?: taken.sourceCharacterId
     }
 
     /** Death is not a reason to skip this one (Ravenkeeper, Sage, Farmer, Barber…). */

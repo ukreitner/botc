@@ -128,6 +128,9 @@ fun ShowCardSpec.asCard(): ShowCard = when (this) {
     is ShowCardSpec.AlignmentCard -> ShowCard.AlignmentCard(evil)
     is ShowCardSpec.BluffsCard -> ShowCard.BluffsCard(characterIds)
     is ShowCardSpec.SheetCard -> ShowCard.SheetCard(characterIds)
+    is ShowCardSpec.PointCard ->
+        ShowCard.PointCard(prefix, playerNames, seatNumbers, characterId)
+    is ShowCardSpec.MultiTokenCard -> ShowCard.MultiTokenCard(prefix, characterIds)
 }
 
 /** What this card said, in one line, for the ledger ("Ben was shown: 1"). */

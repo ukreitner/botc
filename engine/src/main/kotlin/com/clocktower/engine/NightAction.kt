@@ -34,6 +34,8 @@ data class ChooseCharacter(
     val pool: CharacterPool,
     val allowNone: Boolean = true,
     val onResolve: List<NightEffect> = emptyList(),
+    /** The head-shake: "they pointed at nothing". Never runs [onResolve]. */
+    val onNone: List<NightEffect> = emptyList(),
 ) : NightAction
 
 /** Pit-Hag, Summoner, Cerenovus, Engineer, Kazali. */
@@ -45,6 +47,8 @@ data class ChoosePlayerAndCharacter(
     val pool: CharacterPool,
     val requireNotInPlay: Boolean = false,
     val onResolve: List<NightEffect> = emptyList(),
+    /** The head-shake: "they pointed at nothing". Never runs [onResolve]. */
+    val onNone: List<NightEffect> = emptyList(),
 ) : NightAction
 
 /** Organ Grinder, Po head-shake, Professor pass. */
@@ -75,6 +79,32 @@ data class Sequence(
     val stages: List<NightAction>,
 ) : NightAction
 
+/** One branch of an [Options] step. */
+@Serializable
+data class ActionOption(
+    /** Stable id, recorded in `NightInput.optionId`. */
+    val id: String,
+    val label: String,
+    val detail: String = "",
+    val effects: List<NightEffect> = emptyList(),
+)
+
+/**
+ * An N-way choice: the Wizard's wish, the Al-Hadikhia's three independent
+ * live/die answers. [YesNo] is the two-way case and stays as it is; this is
+ * what a rule with three or more mutually exclusive outcomes needs.
+ *
+ * The chosen branch arrives as `NightInput.optionId`; an unrecognised id (or
+ * none at all) applies [onNone], never a branch picked by position.
+ */
+@Serializable
+data class Options(
+    override val sourceId: String,
+    override val prompt: String,
+    val options: List<ActionOption>,
+    val onNone: List<NightEffect> = emptyList(),
+) : NightAction
+
 /** Who may be picked. */
 @Serializable
 enum class TargetConstraint {
@@ -88,6 +118,47 @@ enum class TargetConstraint {
     /** Reads `Memory.everChosen` — "cannot learn the same evil player twice". */
     NOT_CHOSEN_BEFORE,
     NEIGHBOUR_OF_SOURCE,
+
+    /**
+     * Alive by the RULES, not merely un-shrouded: a Zombuul on its first death
+     * is stored dead and REGISTERS dead, so a Devil's Advocate may not pick it
+     * even though the seat is still in the game.
+     */
+    NOT_REGISTERS_DEAD,
+
+    /**
+     * "…of a different character TYPE to last night" — the Balloonist. Reads the
+     * ledger, so it survives the token sweep exactly as
+     * [DIFFERENT_FROM_LAST_NIGHT] does.
+     */
+    DIFFERENT_TYPE_FROM_LAST_NIGHT,
+}
+
+/**
+ * A yes/no question about one seat, asked at the moment an effect is applied.
+ *
+ * Deliberately a closed, serializable vocabulary rather than a lambda: a
+ * [NightEffect] is data, and `NightStep` is `@Serializable`. Anything outside
+ * this vocabulary belongs in the registry lambda that BUILDS the effect list —
+ * a rule holding `NightContext` can already see the whole grimoire.
+ */
+@Serializable
+enum class SeatPredicate {
+    IS_TOWNSFOLK, IS_OUTSIDER, IS_MINION, IS_DEMON,
+    IS_GOOD, IS_EVIL,
+    IS_ALIVE, IS_DEAD,
+
+    /** Registration, not the true team: a Recluse ruled evil answers yes (lead D32). */
+    REGISTERS_MINION, REGISTERS_DEMON, REGISTERS_EVIL,
+
+    /** The seat's own ability works right now. */
+    HAS_ABILITY,
+
+    /** The seat is drunk, poisoned or has no ability. */
+    IS_IMPAIRED,
+
+    /** This seat is the one holding the step (Barber's self-swap whitelist). */
+    IS_SOURCE,
 }
 
 @Serializable
@@ -136,6 +207,25 @@ sealed interface NightEffect {
         val on: Ref,
         val kind: EffectKind? = null,
         val until: Until = Until.FOREVER,
+        /**
+         * Character payload: the Cerenovus's mad character, the Pixie's believed
+         * one, the team a Faux Paw registers as. `Effects.place` has always
+         * carried it; before wave 7 no night effect could supply it, so a
+         * Cerenovus's Mad token lost the character it was mad about.
+         */
+        val characterId: String? = null,
+        /** Seat payload: the Harpy's 2nd, the Grandmother's grandchild. */
+        val linkedPlayerId: Ref? = null,
+        /** The token outlives the source seat's ability (Sweetheart, Puzzlemaster). */
+        val endsWithSource: Boolean? = null,
+        /** Storyteller-visible explanation, shown on tap. */
+        val note: String = "",
+        /**
+         * `DEMON_CANNOT_KILL` only: how far the suppression reaches (lead D68).
+         * The Exorcist SILENCES and a deferred kill still lands; the
+         * Lycanthrope, the Princess and the Toymaker's final night stop it.
+         */
+        val suppression: KillSuppression = KillSuppression.SILENCED,
     ) : NightEffect
 
     @Serializable
@@ -160,11 +250,25 @@ sealed interface NightEffect {
     @Serializable
     data class Resurrect(val on: Ref) : NightEffect
 
+    /**
+     * One seat becomes a different character.
+     *
+     * An empty [characterId] means "the character the storyteller picked on this
+     * step" ([NightInput.characterIds]). It NEVER means "no character": with no
+     * pick to fall back on the effect does nothing rather than wiping the seat.
+     */
     @Serializable
     data class BecomeCharacter(
         val on: Ref,
         val characterId: String,
-        val evil: Boolean,
+        /**
+         * Null = keep the seat's current alignment (lead D67). This is the
+         * default for every rule whose text does not say otherwise: a Pit-Hag's
+         * victim, a Cacklejack's, an Engineer's rebuild, a Hatter's swap. Set it
+         * only where the character's own text names the new side — a Kazali's
+         * created Minion, a Fang Gu's jump, a Riot conversion.
+         */
+        val evil: Boolean? = null,
         val reason: ChangeReason,
     ) : NightEffect
 
@@ -196,4 +300,63 @@ sealed interface NightEffect {
 
     @Serializable
     data class ShowCardTo(val on: Ref, val card: String) : NightEffect
+
+    /**
+     * Changes which side a seat plays for, and nothing else — the Ogre's copy,
+     * the Mezepheles's word, a Cult Leader joining their neighbour.
+     *
+     * NOT a character change: writing one through [BecomeCharacter] appended a
+     * bogus `IdentityRecord` ("new character") and re-ran the seat's first
+     * night. This writes `Player.alignment` and one ledger RULING.
+     */
+    @Serializable
+    data class SetAlignment(val on: Ref, val evil: Boolean, val note: String = "") : NightEffect
+
+    /**
+     * Gives a seat a second (or replacement) ability — the Philosopher's chosen
+     * good character, the Apprentice's, the Plague Doctor's gift to the
+     * storyteller.
+     *
+     * An empty [abilityId] means "the character picked on this step", exactly as
+     * for [BecomeCharacter]; with no pick to fall back on the effect is inert.
+     * [on] = null makes it a `GameState.floatingGrant` instead of a seat grant.
+     */
+    @Serializable
+    data class GrantAbility(
+        val abilityId: String,
+        val sourceId: String,
+        val on: Ref? = Ref.Target,
+        val mode: GrantMode = GrantMode.ADD,
+        /** Night-order slot to wake at; null = the granted ability's own slot. */
+        val slotId: String? = null,
+        val worksWhileImpaired: Boolean = false,
+        /** Only when [on] is null: who ends up exercising the floating grant. */
+        val floatingHolder: GrantHolder = GrantHolder.STORYTELLER,
+    ) : NightEffect
+
+    /**
+     * Applies [then] to the seats [on] addresses that answer [predicate] yes, and
+     * [otherwise] to the rest.
+     *
+     * This is the one thing the WP7 registry agents asked for most: the Snake
+     * Charmer only acts on a Demon, the Fang Gu jumps instead of killing an
+     * Outsider, the Vigormortis preserves a MINION and poisons a neighbour, the
+     * Professor only resurrects a Townsfolk. Every one of those was a prompt
+     * that changed nothing.
+     */
+    @Serializable
+    data class When(
+        val predicate: SeatPredicate,
+        val on: Ref = Ref.Target,
+        val then: List<NightEffect> = emptyList(),
+        val otherwise: List<NightEffect> = emptyList(),
+    ) : NightEffect
+
+    /**
+     * Marks a ledger entry resolved — a Gossip statement the night step has just
+     * acted on, a Moonchild's public choice. Without it a consumed record is
+     * offered again the next night.
+     */
+    @Serializable
+    data class MarkConsumed(val ledgerId: Long) : NightEffect
 }

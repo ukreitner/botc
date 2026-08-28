@@ -630,4 +630,55 @@ class BriefingsTest {
             "once said, it is off the card",
         )
     }
+
+    // ==================================================================
+    // W7G — `CharacterRule.day.briefing` has a consumer
+    // ==================================================================
+
+    @Test
+    fun `a Fabled's reference note reaches the day-start card`() {
+        // The Djinn is pure prose: no token, no hook, one STANDING_FACT line.
+        // Before wave 7 `day.briefing` had no consumer at all, so every Fabled
+        // reference note was written and never shown.
+        var state = newGame(tb, listOf("Ana", "Bo", "Cai", "Dee", "Eve"))
+        for ((name, id) in listOf(
+            "Ana" to "imp", "Bo" to "poisoner", "Cai" to "chef",
+            "Dee" to "empath", "Eve" to "mayor",
+        )) {
+            state = assign(state, name, id)
+        }
+        state = GameActions.setFabled(state, listOf("djinn"))
+        val withDjinn = day(state)
+        assertTrue(
+            Briefings.at(withDjinn, lookup, BriefingSlot.DAY_START)
+                .of(BriefingKind.STANDING_FACT)
+                .any { it.sourceId == "djinn" },
+            "the Djinn's rule must be on the day card",
+        )
+
+        // Out of play, nothing.
+        val without = day(GameActions.setFabled(state, emptyList()))
+        assertTrue(
+            Briefings.at(without, lookup, BriefingSlot.DAY_START)
+                .of(BriefingKind.STANDING_FACT)
+                .none { it.sourceId == "djinn" },
+        )
+    }
+
+    @Test
+    fun `a seated character's day briefing reaches the day-start card`() {
+        var state = newGame(tb, listOf("Ana", "Bo", "Cai", "Dee", "Eve", "Fay"))
+        for ((name, id) in listOf(
+            "Ana" to "imp", "Bo" to "poisoner", "Cai" to "chef",
+            "Dee" to "empath", "Eve" to "mayor",
+        )) {
+            state = assign(state, name, id)
+        }
+        state = Seats.assignCharacter(state, seat(state, "Fay"), "beggar", isTraveller = true)
+        val items = Briefings.at(day(state), lookup, BriefingSlot.DAY_START).items
+        assertTrue(
+            items.any { it.sourceId == "beggar" && "vote token" in it.text },
+            "the Beggar's day-start line: ${items.map { it.sourceId }}",
+        )
+    }
 }

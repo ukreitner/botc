@@ -53,7 +53,9 @@ class InfoCalcTypedTest {
     fun `every supported id can generate a lie`() {
         val missing = mutableListOf<String>()
         for (id in InfoCalc.supportedIds) {
-            val state = wellStockedGame(id)
+            // A step-scoped alias ("kingdemon") is not a character the bag can
+            // hold; seat the character it belongs to.
+            val state = wellStockedGame(if (id == "kingdemon") "king" else id)
             val targets = when (InfoCalc.targetsNeeded(id)) {
                 0 -> emptyList()
                 1 -> listOf(1L)

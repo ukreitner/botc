@@ -35,18 +35,52 @@ data class CharacterRule(
      * opposite: one row per acting role.
      */
     val groupStep: Boolean = false,
-    /** This ability fires even though the holder is dead (Ravenkeeper, Sage, Farmer, Barber…). */
+    /**
+     * This ability fires even though the holder is dead (Ravenkeeper, Sage,
+     * Farmer, Barber…).
+     *
+     * DECLARATIVE. What actually enforces it is the row's own `gate` —
+     * `Gates.actsWhileDead`, or a narrower one like `Gates.diedTonight()`. The
+     * flag says so in one place a reader can grep, and it is not inferred from
+     * the gate because the two are not the same statement: a Ravenkeeper acts
+     * ONLY on the night it dies.
+     */
     val actsWhileDead: Boolean = false,
     /** The ability itself survives death (Recluse, Spy, Heretic, Zealot, Politician…). */
     val keepsAbilityWhenDead: Boolean = false,
-    /** The DeathCause this character's kills carry. */
+    /**
+     * The DeathCause this character's kills carry.
+     *
+     * `NightEffect.Attack.cause` wins when it says something other than the
+     * default `DEMON_KILL`; this fills in for a row that did not, so a Gossip's
+     * or a Gunslinger's kill can never be counted as a Demon's by accident
+     * (`NightPlan.declaredKillCause`, W7G).
+     */
     val killCause: DeathCause = DeathCause.STORYTELLER,
-    /** The wiki does not rule whether these count as Demon kills — the panel asks. */
+    /**
+     * The wiki does not rule whether these count as Demon kills — the panel
+     * asks. Rendered as a badge on every non-skipped step of this character
+     * (W7G), so the storyteller sees the question before they tap.
+     */
     val demonKillUncertain: Boolean = false,
 
     // ---- night ----
     val firstNight: NightRule? = null,
     val otherNight: NightRule? = null,
+
+    /**
+     * Fires when ANOTHER ability chooses this seat (W7I).
+     *
+     * The Goon is the whole reason it exists: "each night, the 1st player to
+     * choose you with their ability is drunk until dusk, and you become their
+     * alignment". Nothing else in the schema is reactive — every other hook is
+     * something this character does on its own row — so before wave 7 the Goon
+     * had no behaviour at all.
+     *
+     * The effects are applied with the CHOSEN seat as the source: `Ref.Source` is
+     * this rule's holder and `Ref.Target` is whoever chose them.
+     */
+    val onChosen: ((ChosenContext) -> List<NightEffect>)? = null,
 
     // ---- standing / tokens / death ----
     val standing: StandingRule? = null,
@@ -62,8 +96,17 @@ data class CharacterRule(
     /** Bag override, computed against the base distribution for the player count. */
     val bagShape: ((base: Distribution, playerCount: Int) -> BagShape?)? = null,
     /**
-     * Jinx-gated extra behaviour. Key = the other character's id; the rule applies
-     * only when that character is on the script (lead D19).
+     * Jinx-gated extra behaviour. Key = the other character's id; the rule
+     * applies only when that character is on the SCRIPT — not because it was
+     * dealt (lead D19, the Djinn rule).
+     *
+     * A jinx row overrides only what it declares, so the King's Leviathan jinx
+     * can change nothing but its gate and keep the King's own prompt. Several
+     * can apply at once (a Leviathan script with a Farmer AND a Sage): the gates
+     * combine worst-of and the prompts are joined.
+     *
+     * OTHER nights only. Every jinx action the official set defines is an "each
+     * night*" ability, and there is no place here to say "first night".
      */
     val jinxRules: Map<String, NightRule> = emptyMap(),
 ) {
@@ -89,10 +132,34 @@ data class NightRule(
     val pending: (NightContext) -> List<NightEffect> = { emptyList() },
     /** Imperative, storyteller voice, at most two lines. */
     val prompt: String = "",
+    /**
+     * The one derived fact worth ember, ABOVE the instructions: the Gossip's
+     * recorded statement, the Devil's Advocate's last pick, the Shabaloth's
+     * regurgitation candidates.
+     *
+     * Returning "" leaves the planner's own banner in place (impairment, a
+     * silenced Demon, "dead — this ability fires anyway"), which always wins:
+     * a row must never hide the reason its ability will not work behind a quote.
+     */
+    val banner: (NightContext) -> String = { "" },
+    /**
+     * Extra evidence appended to the step's detail line, under the character's
+     * own night reminder. Same contract as [banner]: "" changes nothing.
+     */
+    val detail: (NightContext) -> String = { "" },
     /** Pre-filled cards this step offers — never a search box for an answer we know. */
     val cards: (NightContext) -> List<CardOffer> = { emptyList() },
-    /** InfoCalc key. "" = this step computes no information. */
-    val infoId: String = "",
+    /**
+     * InfoCalc key.
+     *
+     *  - `null` (the default) — use the ability's own id, so a character with a
+     *    calculator gets its picker and its pre-filled cards for free;
+     *  - `""` — this step computes NO information. The planner offers no
+     *    `ShowInfo` fallback and no cards. Use it for a genuinely free-text
+     *    answer the engine cannot compute (W7H);
+     *  - anything else — that calculator, at that step (`king.demon`).
+     */
+    val infoId: String? = null,
     /**
      * Does waking for this step count for the Chambermaid? (lead D13)
      * ACT = yes; INFORMED = woken but not for their own ability (Minion info,
@@ -126,10 +193,25 @@ data class DayAbility(
 /**
  * Fires when someone dies. [gate] must include `Status.hasAbility(holder)` unless
  * the character's text says "even if dead" (lead D35).
+ *
+ * `lookup` was added in wave 7: without it a row could not ask a team question
+ * or a status question, so the Scarlet Woman read stored effects directly and
+ * the Imp's heir check was "anyone else alive" rather than "a Minion is alive".
+ * For a Fabled, `holder` is [CharacterRules.GRIMOIRE_HOLDER] — there is no seat.
  */
 data class DeathTrigger(
-    val gate: (state: GameState, event: DeathEvent, holder: Player) -> Boolean,
-    val produce: (state: GameState, event: DeathEvent, holder: Player) -> TriggerResult,
+    val gate: (
+        state: GameState,
+        lookup: (String) -> Character?,
+        event: DeathEvent,
+        holder: Player,
+    ) -> Boolean,
+    val produce: (
+        state: GameState,
+        lookup: (String) -> Character?,
+        event: DeathEvent,
+        holder: Player,
+    ) -> TriggerResult,
 )
 
 data class TriggerResult(
@@ -150,20 +232,62 @@ object CharacterRules {
     }
 
     /**
-     * The rule for [id]: a WP7 registry row, else the WP7 stopgap below, else one
-     * derived from `characters.json` so homebrew and not-yet-written characters
-     * still get a working step.
+     * The rule for [id]: a WP7 registry row, else one derived from
+     * `characters.json` so homebrew and not-yet-written characters still get a
+     * working step.
+     *
+     * The WP2 stopgap map that used to sit between the two is gone (lead D64):
+     * every one of its five rows — ravenkeeper, zombuul, godfather, pukka,
+     * chambermaid — is now a real registry row.
      */
     fun of(id: String, character: Character?): CharacterRule {
         val key = Character.normalizeId(id)
         all[key]?.let { return it }
-        STOPGAP[key]?.let { return it }
         return generic(key, character)
     }
 
     val standingRules: List<StandingRule> get() = all.values.mapNotNull { it.standing }
 
     val tokenRules: List<TokenRule> get() = all.values.flatMap { it.tokens }
+
+    // ------------------------------------------------------------------
+    // Fabled — registry rows with no seat (WP7 wave 7)
+    // ------------------------------------------------------------------
+
+    /**
+     * Seat id of [GRIMOIRE_HOLDER]. Distinct from
+     * [GameState.STORYTELLER_SEAT_ID] (-1), which is a real nominee.
+     */
+    const val GRIMOIRE_SEAT_ID: Long = -2L
+
+    /**
+     * The stand-in "seat" a Fabled's registry row is handed.
+     *
+     * A Fabled holds no seat — it lives in [GameState.fabled] and its rules act
+     * on the grimoire as a whole — but `onDeath`, `day.onNomination`,
+     * `day.onExecution`, `day.briefing` and `standing` are all written against a
+     * holder. Fabled rows never read it (they read `state.fabled`); this value
+     * exists so the engine can walk them with the same loop that walks seated
+     * rows.
+     *
+     * `leftGame = true` keeps it out of `state.seats` and `state.player(id)`
+     * returns null for it, so a row that reached for it fails visibly rather
+     * than corrupting a real seat.
+     */
+    val GRIMOIRE_HOLDER: Player = Player(
+        id = GRIMOIRE_SEAT_ID,
+        name = "the grimoire",
+        leftGame = true,
+    )
+
+    /**
+     * The registry rows of every Fabled in play, in the order the storyteller
+     * added them. Fabled have no seat, so every engine loop that walks
+     * `state.seats` looking for rows must walk this too (WP7-FAB's load-bearing
+     * follow-up).
+     */
+    fun fabledRows(state: GameState): List<CharacterRule> =
+        state.fabled.mapNotNull { all[Character.normalizeId(it.id)] }
 
     // ------------------------------------------------------------------
     // Generic fallback — no character id, only `characters.json` data
@@ -185,145 +309,11 @@ object CharacterRules {
                 prompt = "",
                 infoId = if (InfoCalc.supports(key)) key else "",
             )
-            CharacterRule(
-                id = key,
-                firstNight = rule,
-                otherNight = rule,
-                keepsAbilityWhenDead = key in StatusQuery.KEEPS_ABILITY_WHEN_DEAD,
-            )
+            // A character the registry does not know keeps nothing in the
+            // grave: the WP1 stopgap id set is gone (lead D64) and every real
+            // row declares `keepsAbilityWhenDead` for itself.
+            CharacterRule(id = key, firstNight = rule, otherNight = rule)
         }
-
-    // ------------------------------------------------------------------
-    // WP7 STOPGAP — delete each row as its edition's registry file lands
-    // ------------------------------------------------------------------
-
-    /**
-     * The handful of rows the WP2 acceptance criteria are stated in terms of,
-     * so the night engine can be tested before WP7a–i exist. [all] wins over
-     * this map, so a real registry row replaces its stopgap silently.
-     *
-     * Same shape as WP1's `StatusQuery.KEEPS_ABILITY_WHEN_DEAD` id set, and it
-     * goes the same way: **the merger deletes a row here when WP7 lands it**.
-     */
-    private val STOPGAP: Map<String, CharacterRule> by lazy {
-        listOf(
-            // Only on the night they die (night-engine §2, digest tb-townsfolk).
-            CharacterRule(
-                id = "ravenkeeper",
-                actsWhileDead = true,
-                firstNight = ravenkeeper(),
-                otherNight = ravenkeeper(),
-            ),
-            // "If no-one died today, the Zombuul attacks" — the reverse gate.
-            CharacterRule(
-                id = "zombuul",
-                actsWhileDead = true,
-                killCause = DeathCause.DEMON_KILL,
-                otherNight = NightRule(
-                    gate = Gates.all(Gates.someoneDiedToday(expected = false), Gates.notExorcised),
-                    prompt = "Wake the Zombuul. They point at a player.",
-                    action = { attack("zombuul") },
-                ),
-            ),
-            // "If an Outsider died today, the Godfather kills" — the Conditional gate.
-            CharacterRule(
-                id = "godfather",
-                killCause = DeathCause.EVIL_ABILITY,
-                otherNight = NightRule(
-                    gate = Gates.someoneDiedToday(expected = true, team = Team.OUTSIDER),
-                    prompt = "Wake the Godfather. They point at a player.",
-                    action = { attack("godfather", DeathCause.EVIL_ABILITY) },
-                    infoId = "godfather",
-                ),
-                firstNight = NightRule(infoId = "godfather", wakeCounts = WakeCount.ACT),
-            ),
-            // Poison tonight, kill the standing victim at the NEXT wake (lead D4).
-            CharacterRule(
-                id = "pukka",
-                killCause = DeathCause.DEMON_KILL,
-                firstNight = pukka(),
-                otherNight = pukka(),
-            ),
-            // "You do not wake with fewer than 2 other alive players."
-            CharacterRule(
-                id = "chambermaid",
-                firstNight = chambermaid(),
-                otherNight = chambermaid(),
-            ),
-        ).associateBy { Character.normalizeId(it.id) }
-    }
-
-    private fun ravenkeeper() = NightRule(
-        gate = Gates.diedTonight(),
-        prompt = "Wake them. They point at a player; show that player's character token.",
-        action = { ShowInfo("ravenkeeper", "WHO DID THEY CHOOSE?", targetsNeeded = 1) },
-        infoId = "ravenkeeper",
-    )
-
-    private fun chambermaid() = NightRule(
-        gate = Gates.minAlive(2),
-        prompt = "Wake them. They point at two players; show how many woke tonight.",
-        action = { ShowInfo("chambermaid", "WHICH TWO DID THEY CHOOSE?", targetsNeeded = 2) },
-        infoId = "chambermaid",
-    )
-
-    private fun pukka() = NightRule(
-        gate = Gates.notExorcised,
-        prompt = "Wake the Pukka. They point at a player — that player is poisoned.",
-        action = {
-            ChoosePlayers(
-                sourceId = "pukka",
-                prompt = "WHO DID THEY CHOOSE?",
-                min = 1,
-                max = 1,
-                constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED),
-                sort = TargetSort.ALIVE_FIRST,
-                allowNone = true,
-                noneLabel = "They chose nobody",
-                perTarget = listOf(
-                    NightEffect.PlaceToken(
-                        sourceId = "pukka",
-                        label = "Poisoned",
-                        on = Ref.Target,
-                        kind = EffectKind.POISONED,
-                        until = Until.ON_SOURCE_STEP,
-                    ),
-                ),
-            )
-        },
-        // The player poisoned on a previous night dies now — and dies POISONED,
-        // then becomes healthy whether or not the death was prevented (lead D4).
-        pending = { ctx ->
-            val key = Tokens.key("pukka", "Poisoned")
-            ctx.state.seats
-                .filter { seat ->
-                    Status.effectsOn(ctx.state, ctx.lookup, seat.id)
-                        .any { Tokens.key(it.sourceCharacterId, it.label) == key }
-                }
-                .flatMap { victim ->
-                    listOf(
-                        NightEffect.Attack(
-                            on = Ref.Seat(victim.id),
-                            cause = DeathCause.DEMON_KILL,
-                            deferred = true,
-                        ),
-                        NightEffect.RemoveToken("pukka", "Poisoned", Ref.Seat(victim.id)),
-                    )
-                }
-        },
-    )
-
-    private fun attack(sourceId: String, cause: DeathCause = DeathCause.DEMON_KILL) = ChoosePlayers(
-        sourceId = sourceId,
-        prompt = "WHO DID THEY CHOOSE?",
-        min = 1,
-        max = 1,
-        constraints = listOf(TargetConstraint.ALIVE),
-        sort = TargetSort.ALIVE_FIRST,
-        allowNone = true,
-        noneLabel = "No kill (impaired, protected, or storyteller's choice)",
-        perTarget = listOf(NightEffect.Attack(Ref.Target, cause)),
-    )
 }
 
 // ---- the contexts a registry lambda receives (all read-only) ----
@@ -341,6 +331,29 @@ class NightContext(
     val diedToday: Set<Long>,
     val executedToday: ExecutionRecord?,
     val resurrectedTonight: Set<Long>,
+)
+
+/** Everything a [CharacterRule.onChosen] lambda may look at. */
+class ChosenContext(
+    /** The board AFTER the choosing ability's own effects landed. */
+    val state: GameState,
+    /**
+     * The board as it was AT THE MOMENT OF THE CHOICE, before the chooser's
+     * effects landed.
+     *
+     * The Goon needs exactly this: a Poisoner who poisons the Goon still wakes
+     * the Goon's ability, because the Goon was sober when they were chosen.
+     * Asking [state] would let the Poisoner cancel the reaction to itself.
+     */
+    val before: GameState,
+    val lookup: (String) -> Character?,
+    val night: Int,
+    /** The seat that was chosen — this rule's holder. */
+    val holder: Player,
+    /** The seat whose ability chose them. Null for a seatless or group step. */
+    val chooser: Player?,
+    /** The ability that did the choosing: "monk", "poisoner", "fortuneteller". */
+    val chooserAbilityId: String,
 )
 
 class NominationContext(
@@ -396,6 +409,9 @@ internal object NightInfo {
 
     private const val MARIONETTE = "marionette"
     private const val LUNATIC = "lunatic"
+    private const val MAGICIAN = "magician"
+    private const val VIZIER = "vizier"
+    private const val LEGION = "legion"
 
     /** Night-order slots this builder owns outright. */
     fun owns(slot: String): Boolean = slot in NightMarkers.all || slot == MARIONETTE
@@ -435,12 +451,22 @@ internal object NightInfo {
         if (minions.isEmpty()) return emptyList()
         // A Poppy Grower keeps the evil team apart until they die.
         val poppy = poppyGrowerActive(ctx)
+        // W7I: "Minions think you are a Demon" — the Magician is shown to the
+        // Minions ALONGSIDE the real Demon, and they are not told which is which.
+        val magicians = if (magicianWorks(ctx)) seatsOf(ctx, MAGICIAN) else emptyList()
+        val shown = (demons + magicians).sortedBy { seatIndex(ctx, it) }
         val detail = buildString {
             append("Wake all Minions")
             if (minions.isNotEmpty()) append(" (${minions.joinToString { it.name }})")
             append(". They see each other, then point out the Demon")
-            if (demons.isNotEmpty()) append(" (${demons.joinToString { it.name }})")
+            if (shown.isNotEmpty()) append(" (${shown.joinToString { it.name }})")
             append(".")
+            if (magicians.isNotEmpty()) {
+                append(
+                    " A MAGICIAN is in play: point out the Magician too, in seat order, and " +
+                        "say nothing about which is which. The Minions are not told there are two.",
+                )
+            }
             if (demons.isEmpty()) {
                 append(" There is no Demon seat yet — they see each other only.")
             }
@@ -471,15 +497,38 @@ internal object NightInfo {
         val marionettes = seatsOf(ctx, MARIONETTE)
         val lunatics = seatsOf(ctx, LUNATIC)
         val bluffs = ctx.state.demonBluffIds.mapNotNull { ctx.lookup(it)?.name }
+        // W7I, the Magician's three clauses:
+        //  - "The Demon thinks you are a Minion": the Magician is pointed out
+        //    with the Minions, interleaved in seat order, not appended;
+        //  - the Marionette clause is SUPPRESSED — the Demon must not be able to
+        //    subtract the Marionette from the list and find the Magician;
+        //  - the Vizier jinx: a Vizier knows who the Demon is, so the Magician
+        //    fools nobody and the row says so instead of pretending.
+        val magic = magicianWorks(ctx)
+        val magicians = if (magic) seatsOf(ctx, MAGICIAN) else emptyList()
+        val vizier = magic && seatsOf(ctx, VIZIER).isNotEmpty()
+        val pointOut = (minions + magicians).sortedBy { seatIndex(ctx, it) }
+        // "You register as both a Minion and a Demon": a Legion game has no
+        // separate Minion list to show, so the row says what it really is.
+        val legion = seatsOf(ctx, LEGION)
         val detail = buildString {
             append("Wake the Demon")
             if (demons.isNotEmpty()) append(" (${demons.joinToString { it.name }})")
             if (bluffsOnly) {
                 append(". A Poppy Grower is in play: show the bluffs ONLY — no Minions")
+            } else if (legion.isNotEmpty()) {
+                append(". LEGION: almost every player is Legion and they all know it. ")
+                append("Point out every Legion (${legion.joinToString { it.name }}) — ")
+                append("there are no Minions to show separately")
             } else {
                 append(". Point out the Minions")
-                if (minions.isNotEmpty()) append(" (${minions.joinToString { it.name }})")
-                if (marionettes.isNotEmpty()) {
+                if (pointOut.isNotEmpty()) append(" (${pointOut.joinToString { it.name }})")
+                if (magicians.isNotEmpty()) {
+                    append(
+                        ". A MAGICIAN is in play: they are in that list, in seat order, and the " +
+                            "Demon is NOT told which. Do not point out the Marionette",
+                    )
+                } else if (marionettes.isNotEmpty()) {
                     append(". Point out the Marionette")
                     append(" (${marionettes.joinToString { it.name }})")
                 }
@@ -491,6 +540,12 @@ internal object NightInfo {
                 append(" — no bluffs chosen yet! Pick them from the menu")
             }
             append(".")
+            if (vizier) {
+                append(
+                    " JINX: a Vizier is in play and knows who the Demon is, so the Magician's " +
+                        "confusion fools nobody — the Vizier may say so out loud.",
+                )
+            }
             if (lunatics.isNotEmpty()) {
                 append(
                     " Also show the Demon who the LUNATIC is " +
@@ -566,6 +621,19 @@ internal object NightInfo {
 
     private fun seatsOf(ctx: MarkerContext, id: String): List<Player> =
         ctx.state.seats.filter { Character.normalizeId(it.characterId.orEmpty()) == id }
+
+    private fun seatIndex(ctx: MarkerContext, p: Player): Int =
+        ctx.state.seats.indexOfFirst { it.id == p.id }
+
+    /**
+     * True when a Magician is in play with a WORKING ability (W7I).
+     *
+     * A drunk or poisoned Magician confuses nobody: the Demon sees the real
+     * Minions and the Minions see the real Demon, which is exactly the shape a
+     * content transform has to be able to turn off.
+     */
+    private fun magicianWorks(ctx: MarkerContext): Boolean =
+        seatsOf(ctx, MAGICIAN).any { Status.hasAbility(ctx.state, ctx.lookup, it.id) }
 
     private fun demonSeats(ctx: MarkerContext): List<Player> =
         ctx.state.seats.filter { it.characterId?.let(ctx.lookup)?.team == Team.DEMON }

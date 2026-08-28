@@ -1,5 +1,6 @@
 package com.clocktower.engine.rules
 
+import com.clocktower.engine.ActionOption
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.CardOffer
 import com.clocktower.engine.Character
@@ -26,6 +27,7 @@ import com.clocktower.engine.NightContext
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
+import com.clocktower.engine.Options
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
@@ -95,10 +97,12 @@ internal val EXP_MINION_RULES: List<CharacterRule> = listOf(
  * "The Demon (even if drunk or poisoned) has a not-in-play good character's
  * ability. You both know which."
  *
- * The grant itself is `FloatingGrant(holder = ALIVE_DEMON, worksWhileImpaired)`,
- * which `Identity.derivedGrants` already renders — but nothing in the engine
- * *creates* it from `decisions["boffin.grant"]`, and no `NightEffect` can. Filed
- * to WP2/WP4; until then this row wakes both seats and pre-fills both cards.
+ * W7E closes this row's P0. `Identity.derivedGrants` now DERIVES
+ * `FloatingGrant(holder = ALIVE_DEMON, worksWhileImpaired = true)` straight from
+ * `decisions["boffin.grant"]` while a Boffin seat exists, so the Demon really
+ * wakes at the granted character's own night position. Nothing is stored twice:
+ * the setup decision is the whole record. This row wakes both seats and
+ * pre-fills both cards.
  */
 private fun boffin() = CharacterRule(
     id = "boffin",
@@ -145,8 +149,8 @@ private fun boffin() = CharacterRule(
     // The Boffin dies: the Demon loses the granted ability from now on.
     onDeath = listOf(
         DeathTrigger(
-            gate = { _, event, holder -> event.playerId == holder.id },
-            produce = { state, _, holder ->
+            gate = { _, _, event, holder -> event.playerId == holder.id },
+            produce = { state, _, _, holder ->
                 val grant = grantOf(state)
                 TriggerResult(
                     prompts = listOf(
@@ -437,12 +441,17 @@ private fun harpy(): CharacterRule {
                         on = Ref.TargetN(0),
                         kind = EffectKind.MAD,
                         until = Until.DUSK,
+                        // W7E: the Mad token points back at the ACCUSED, so the
+                        // pair survives on the board and not only in the prompt
+                        // text — which is what tomorrow's madness ruling reads.
+                        linkedPlayerId = Ref.TargetN(1),
                     ),
                     NightEffect.PlaceToken(
                         sourceId = "harpy",
                         label = "2nd",
                         on = Ref.TargetN(1),
                         until = Until.DUSK,
+                        linkedPlayerId = Ref.TargetN(0),
                     ),
                     // The madness binds TOMORROW, so the decision is a day obligation.
                     NightEffect.QueuePrompt(
@@ -600,14 +609,16 @@ private fun mezepheles() = CharacterRule(
                 yesLabel = if (impaired) "$name turns evil anyway" else "$name turns evil",
                 noLabel = "The Mezepheles' ability is not working — they stay good",
                 onYes = listOfNotNull(
+                    // W7E: the flip is REAL now. `SetAlignment` writes the side
+                    // and nothing else — the seat keeps its character and its
+                    // ability, which is exactly what the card says and what a
+                    // `BecomeCharacter` could never express.
                     victim?.let {
-                        NightEffect.QueuePrompt(
-                            at = BriefingSlot.NOW,
-                            kind = PromptKind.PLACE_EFFECT,
-                            sourceId = "mezepheles",
+                        NightEffect.SetAlignment(
                             on = Ref.Seat(it.id),
-                            title = "Turn ${it.name} EVIL — they keep their character and their " +
-                                "ability, only their alignment changes.",
+                            evil = true,
+                            note = "Mezepheles: ${it.name} said the secret word and now plays " +
+                                "for evil. They keep their character and their ability.",
                         )
                     },
                     victim?.let {
@@ -970,14 +981,14 @@ private fun widow(): CharacterRule {
         ),
         onDeath = listOf(
             DeathTrigger(
-                gate = { state, event, holder ->
+                gate = { state, _, event, holder ->
                     event.playerId == holder.id &&
                         state.players.any { seat ->
                             seat.id != holder.id &&
                                 hasTokenRaw(state, seat.id, "widow", "Poisoned")
                         }
                 },
-                produce = { state, _, holder ->
+                produce = { state, _, _, holder ->
                     val victim = state.players.firstOrNull {
                         it.id != holder.id && hasTokenRaw(state, it.id, "widow", "Poisoned")
                     }
@@ -1021,25 +1032,45 @@ private fun wizard(): CharacterRule {
             "prompt them to wish again another night. A granted wish is the whole ability: " +
             "record what they asked for, its price and the public clue, and mark any ongoing " +
             "effect with a '?' token carrying your own note.",
+        // W7E: three genuinely different outcomes, so a three-way [Options]
+        // rather than a yes/no that had to fold "they did not wish" and "you
+        // declined the wish" into one button. Only a GRANTED wish spends.
         action = {
-            YesNo(
+            Options(
                 sourceId = "wizard",
-                prompt = "WAS A WISH GRANTED?",
-                yesLabel = "Wish GRANTED — record it",
-                noLabel = "No wish, or the wish was declined — they may wish again",
-                onYes = listOf(
-                    NightEffect.MarkSpent("wizard"),
-                    NightEffect.QueuePrompt(
-                        at = BriefingSlot.NOW,
-                        kind = PromptKind.DECIDE,
-                        sourceId = "wizard",
-                        title = "Record the Wizard's wish: what they asked for, its price, and " +
-                            "the clue for the good team. Place a '?' token on anything it " +
-                            "changes and write the effect on the token.",
+                prompt = "WHAT HAPPENED TO THE WISH?",
+                options = listOf(
+                    ActionOption(
+                        id = "none",
+                        label = "They did not wish tonight",
+                        detail = "Nothing is spent. Do not show a card.",
                     ),
-                    NightEffect.ShowCardTo(Ref.Source, "YOUR WISH IS GRANTED."),
+                    ActionOption(
+                        id = "declined",
+                        label = "You DECLINED the wish — they may wish again",
+                        detail = "Nothing is spent.",
+                        effects = listOf(
+                            NightEffect.ShowCardTo(Ref.Source, "YOUR WISH IS DECLINED. Wish again?"),
+                        ),
+                    ),
+                    ActionOption(
+                        id = "granted",
+                        label = "Wish GRANTED — record it",
+                        detail = "The whole ability is spent.",
+                        effects = listOf(
+                            NightEffect.MarkSpent("wizard"),
+                            NightEffect.QueuePrompt(
+                                at = BriefingSlot.NOW,
+                                kind = PromptKind.DECIDE,
+                                sourceId = "wizard",
+                                title = "Record the Wizard's wish: what they asked for, its " +
+                                    "price, and the clue for the good team. Place a '?' token " +
+                                    "on anything it changes and write the effect on the token.",
+                            ),
+                            NightEffect.ShowCardTo(Ref.Source, "YOUR WISH IS GRANTED."),
+                        ),
+                    ),
                 ),
-                onNo = emptyList(),
             )
         },
         cards = {

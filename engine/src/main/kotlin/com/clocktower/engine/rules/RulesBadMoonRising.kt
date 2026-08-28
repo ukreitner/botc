@@ -2,6 +2,7 @@ package com.clocktower.engine.rules
 
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.Character
+import com.clocktower.engine.ChosenContext
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChooseCharacter
@@ -423,6 +424,24 @@ private fun gossip() = CharacterRule(
         wakeCounts = WakeCount.NONE,
         prompt = "The Gossip's statement was true. Choose a player who is not protected " +
             "from dying tonight; if everyone is protected, nobody dies.",
+        // W7C: the step QUOTES the statement, so the Gossip is never asked
+        // "what did you say?" again (friction F52, invariant I3).
+        banner = { ctx ->
+            gossipStatement(ctx.state)?.text?.takeIf { it.isNotBlank() }
+                ?.let { "Yesterday's statement: \u201C" + it + "\u201D" }
+                .orEmpty()
+        },
+        detail = { ctx ->
+            val entry = gossipStatement(ctx.state)
+            if (entry == null || entry.text.isBlank()) {
+                ""
+            } else {
+                val speaker = entry.actorId?.let { ctx.state.player(it)?.name }
+                "Said on day " + entry.cycle +
+                    (speaker?.let { " by " + it } ?: "") +
+                    ": \u201C" + entry.text + "\u201D"
+            }
+        },
         action = { ctx ->
             ChoosePlayers(
                 sourceId = "gossip",
@@ -439,6 +458,15 @@ private fun gossip() = CharacterRule(
                 perTarget = listOf(
                     NightEffect.Attack(on = Ref.Target, cause = DeathCause.GOOD_ABILITY),
                     NightEffect.PlaceToken("gossip", "Dead", Ref.Target),
+                ),
+                // W7E: the statement is CONSUMED once it has been acted on, so
+                // yesterday's gossip is never offered again on a later night.
+                // `gossipStatement` already filters on `resolvedCycle == null`.
+                onResolve = listOfNotNull(
+                    gossipStatement(ctx.state)?.let { NightEffect.MarkConsumed(it.id) },
+                ),
+                onNone = listOfNotNull(
+                    gossipStatement(ctx.state)?.let { NightEffect.MarkConsumed(it.id) },
                 ),
             )
         },
@@ -581,7 +609,67 @@ private fun fool() = CharacterRule(id = "fool")
  * (`LedgerEntry.byStoryteller == false`). The engine has no hook for that yet;
  * see this package's report (WP2 follow-up). The token itself is correct today.
  */
-private fun goon() = CharacterRule(id = "goon")
+private fun goon() = CharacterRule(
+    id = "goon",
+    tokens = listOf(TokenRule("goon", "Drunk", EffectKind.DRUNK, Until.DUSK, impairs = true)),
+    // W7I: the Goon is the ONE reactive character in the whole registry, and
+    // before `CharacterRule.onChosen` existed it had no behaviour at all — the
+    // row was a bare `CharacterRule(id = "goon")`.
+    //
+    // "The 1ST player to choose you": once a Drunk token is out tonight the
+    // Goon is spent for the night, so a second chooser does nothing. The
+    // storyteller's own picks count too (lead D1's `byStoryteller`), which is
+    // why the trigger is the CHOICE and not the waking.
+    onChosen = { ctx ->
+        val chooser = ctx.chooser
+        when {
+            chooser == null -> emptyList()
+            chooser.id == ctx.holder.id -> emptyList()
+            // Judged AT THE MOMENT OF THE CHOICE: a Poisoner who poisons the
+            // Goon still triggers it, because the Goon was sober when chosen.
+            !Status.hasAbility(ctx.before, ctx.lookup, ctx.holder.id) -> emptyList()
+            goonAlreadyTriggered(ctx) -> emptyList()
+            else -> listOf(
+                NightEffect.PlaceToken(
+                    sourceId = "goon",
+                    label = "Drunk",
+                    on = Ref.Target,
+                    kind = EffectKind.DRUNK,
+                    until = Until.DUSK,
+                    note = "Goon (${ctx.holder.name}): the first player to choose them tonight.",
+                ),
+                // "You become their alignment." The Goon keeps its character and
+                // its team; only the side moves (lead D67's shape, W7E's effect).
+                NightEffect.SetAlignment(
+                    on = Ref.Source,
+                    evil = chooser.isEvil(ctx.lookup),
+                    note = "Goon: ${ctx.holder.name} takes ${chooser.name}'s alignment.",
+                ),
+                NightEffect.QueuePrompt(
+                    at = BriefingSlot.NOW,
+                    kind = PromptKind.INFO,
+                    sourceId = "goon",
+                    on = Ref.Target,
+                    title = "Goon: ${chooser.name} is drunk until dusk, and " +
+                        "${ctx.holder.name} is now " +
+                        (if (chooser.isEvil(ctx.lookup)) "EVIL" else "GOOD") +
+                        ". Neither is told; their choice tonight was made BEFORE the " +
+                        "drunkenness, so rule on it yourself.",
+                ),
+            )
+        }
+    },
+)
+
+/** The Goon's drunkenness is once a NIGHT: the first chooser, and only them. */
+private fun goonAlreadyTriggered(ctx: ChosenContext): Boolean {
+    val key = Tokens.key("goon", "Drunk")
+    return ctx.state.effects.any {
+        Tokens.key(it.sourceCharacterId, it.label) == key &&
+            it.createdCycle == ctx.night &&
+            it.createdAtNight
+    }
+}
 
 /**
  * "You think you are a Demon, but you are not. The Demon knows who you are & who
@@ -713,12 +801,12 @@ private fun moonchild() = CharacterRule(
     // death) or immediately (a day death), and chooses publicly, right then.
     onDeath = listOf(
         DeathTrigger(
-            gate = { state, event, holder ->
+            gate = { state, _, event, holder ->
                 event.playerId == holder.id &&
                     !event.registeredOnly &&
                     moonchildChoice(state, holder.id) == null
             },
-            produce = { _, event, holder ->
+            produce = { _, _, event, holder ->
                 TriggerResult(
                     prompts = listOf(
                         Prompt(
@@ -816,11 +904,13 @@ private fun devilsAdvocate(): CharacterRule {
         gate = Gates.aliveHolder,
         prompt = "The Devil's Advocate points at a living player, DIFFERENT from last " +
             "night. If that player is executed tomorrow, they do not die.",
+        // W7C: the picker excludes last night's choice; the banner says who.
+        banner = { ctx ->
+            val last = devilsAdvocateLastPick(ctx)
+            if (last.isEmpty()) "" else "Chosen last night: " + last.joinToString() + " — not again tonight."
+        },
         action = { ctx ->
-            val last = Memory.lastChoice(ctx.state, "devilsadvocate", ctx.holder?.id)
-                ?.targetIds
-                ?.mapNotNull { ctx.state.player(it)?.name }
-                .orEmpty()
+            val last = devilsAdvocateLastPick(ctx)
             ChoosePlayers(
                 sourceId = "devilsadvocate",
                 prompt = if (last.isEmpty()) {
@@ -834,6 +924,10 @@ private fun devilsAdvocate(): CharacterRule {
                     TargetConstraint.ALIVE,
                     TargetConstraint.SELF_ALLOWED,
                     TargetConstraint.DIFFERENT_FROM_LAST_NIGHT,
+                    // W7E: "an ALIVE player". A Zombuul's first death is stored
+                    // dead and REGISTERS dead while the seat is still in the
+                    // game, and `ALIVE` alone lets `isTrulyAlive` back in.
+                    TargetConstraint.NOT_REGISTERS_DEAD,
                 ),
                 sort = TargetSort.ALIVE_FIRST,
                 allowNone = true,
@@ -1039,6 +1133,16 @@ private fun shabaloth() = CharacterRule(
         prompt = "First settle the regurgitation, then the Shabaloth points at two players, " +
             "one at a time. Dead players are legal targets — that is how tomorrow's " +
             "regurgitation is set up.",
+        // W7C: the candidates are on the row, not only inside the pending prompt.
+        banner = { ctx ->
+            val candidates = regurgitationCandidates(ctx)
+            if (candidates.isEmpty()) {
+                ""
+            } else {
+                "May regurgitate: " + candidates.joinToString { it.name } +
+                    " — decide BEFORE tonight's two picks."
+            }
+        },
         action = { ctx ->
             if (isPlacebo(ctx)) {
                 placeboAction(ctx, "shabaloth", max = 2)
@@ -1273,6 +1377,13 @@ private fun regurgitationCandidates(ctx: NightContext): List<Player> =
  * Recorded by the Day tab whether or not a Gossip is in play (invariant I3), so
  * the speaker is not required to be the Gossip's own seat.
  */
+/** The names the Devil's Advocate chose on their previous wake, from the ledger. */
+private fun devilsAdvocateLastPick(ctx: NightContext): List<String> =
+    Memory.lastChoice(ctx.state, "devilsadvocate", ctx.holder?.id)
+        ?.targetIds
+        ?.mapNotNull { ctx.state.player(it)?.name }
+        .orEmpty()
+
 private fun gossipStatement(state: GameState): LedgerEntry? =
     Memory.statementsOn(state, day = state.cycle - 1, sourceId = "gossip")
         .lastOrNull { it.resolvedCycle == null }

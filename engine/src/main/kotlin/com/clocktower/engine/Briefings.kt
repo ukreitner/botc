@@ -401,7 +401,33 @@ object Briefings {
             addAll(clocks(state, lookup, "day:$day"))
             addAll(collectList(state))
             addAll(prompts(state, BriefingSlot.DAY_START))
+            addAll(registryBriefings(state, lookup, BriefingSlot.DAY_START))
         }
+
+    /**
+     * `CharacterRule.day.briefing` for every in-play character and every in-play
+     * Fabled (W7G).
+     *
+     * The slot had no consumer at all before wave 7, so every Fabled reference
+     * note — the whole point of a Djinn, a Knaves or a Pope row — and the
+     * Traveller day-start lines were declared and never rendered. A Fabled row
+     * is called with [CharacterRules.GRIMOIRE_HOLDER]: it holds no seat.
+     */
+    private fun registryBriefings(
+        state: GameState,
+        lookup: (String) -> Character?,
+        slot: BriefingSlot,
+    ): List<BriefingItem> = buildList {
+        for (seat in state.seats) {
+            val id = seat.characterId?.let(Character::normalizeId) ?: continue
+            val hook = CharacterRules.all[id]?.day?.briefing ?: continue
+            addAll(hook(BriefingContext(state, lookup, slot, seat)))
+        }
+        for (rule in CharacterRules.fabledRows(state)) {
+            val hook = rule.day?.briefing ?: continue
+            addAll(hook(BriefingContext(state, lookup, slot, CharacterRules.GRIMOIRE_HOLDER)))
+        }
+    }
 
     /** Leviathan / Riot day counters, the Mayor's three and the Vortox's demand. */
     private fun clocks(

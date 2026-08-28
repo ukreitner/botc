@@ -459,9 +459,15 @@ class RulesExpOutsidersTest {
             state.player(ogre)!!.team(lookup),
             "the team never changes — only the alignment can",
         )
+        // W7E: the flip is REAL. `NightEffect.When(REGISTERS_EVIL)` branches on the
+        // seat they just pointed at and `SetAlignment` writes the side, without
+        // inventing a character change.
+        assertTrue(state.player(ogre)!!.isEvil(lookup), "an evil friend makes an evil Ogre")
+        assertEquals(Alignment.EVIL, state.player(ogre)!!.alignment)
+        assertTrue(state.identityLog.none { it.playerId == ogre })
         val prompt = assertNotNull(
             state.prompts.firstOrNull { it.sourceId == "ogre" && it.kind == PromptKind.DECIDE },
-            "the storyteller is asked to set the alignment: ${state.prompts}",
+            "the storyteller may still overrule a misregistration: ${state.prompts}",
         )
         assertEquals(ogre, prompt.subjectPlayerId)
         // The choice is the memory the gate reads — it survives every token sweep.
@@ -523,7 +529,28 @@ class RulesExpOutsidersTest {
 
         val after = NightPlan.resolve(night, lookup, row.key, NightInput(characterIds = listOf("poisoner")))
         assertTrue(hasToken(after, pd, "plaguedoctor", "Storyteller Ability"))
+        // W7E: the grant is REAL — a `FloatingGrant` held by the storyteller, so
+        // the gained ability wakes at that character's own night position.
+        val floating = after.floatingGrants.single()
+        assertEquals("poisoner", floating.abilityId)
+        assertEquals("plaguedoctor", floating.sourceId)
+        assertEquals(GrantHolder.STORYTELLER, floating.holder)
         assertTrue(step(after, "plaguedoctor", pd)!!.gate is StepGate.Skip, "taken once only")
+    }
+
+    @Test
+    fun `given a good Ogre friend, the Ogre stays good and it is still recorded`() {
+        var state = game("imp", "poisoner", "ogre", "chef", "empath", "mayor", "monk", "soldier")
+        val ogre = 2L
+        val row = assertNotNull(step(state, "ogre", ogre))
+        state = NightPlan.resolve(state, lookup, row.key, NightInput(playerIds = listOf(3L)))
+
+        assertFalse(state.player(ogre)!!.isEvil(lookup), "a good friend leaves them good")
+        assertEquals(Alignment.GOOD, state.player(ogre)!!.alignment)
+        assertTrue(
+            state.ledger.any { it.kind == LedgerKind.RULING && it.actorId == ogre },
+            "the ruling is on the record either way",
+        )
     }
 
     @Test

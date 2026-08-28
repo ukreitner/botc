@@ -386,6 +386,11 @@ fun blockedBecause(option: SeatOption, constraints: List<TargetConstraint>): Str
                 if (option.chosenBefore) "chosen before" else null
             TargetConstraint.NEIGHBOUR_OF_SOURCE ->
                 if (option.neighbour) null else "not a neighbour"
+            // W7E added these two; the engine enforces them at resolve time and
+            // the screen only needs a word for the disclosure.
+            TargetConstraint.NOT_REGISTERS_DEAD -> if (option.alive) null else "registers dead"
+            TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT ->
+                if (option.chosenLastNight) "the same type as last night" else null
         }
         if (reason != null) return reason
     }

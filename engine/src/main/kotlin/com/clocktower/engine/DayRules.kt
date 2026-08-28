@@ -288,6 +288,10 @@ object DayRules {
     /**
      * Registry rows first (WP7), then the built-in table of ARCHITECTURE §2.8 for
      * every character the registry does not yet cover.
+     *
+     * Fabled hold no seat, so their rows are walked separately with
+     * [CharacterRules.GRIMOIRE_HOLDER] — the Big Wig's per-nominee madness would
+     * otherwise never fire.
      */
     private fun triggersFor(
         state: GameState,
@@ -300,6 +304,14 @@ object DayRules {
             val id = holder.characterId?.let(Character::normalizeId) ?: continue
             val hook = CharacterRules.all[id]?.day?.onNomination ?: continue
             fromRegistry += hook(NominationContext(state, lookup, nominatorId, nomineeId, holder))
+        }
+        for (rule in CharacterRules.fabledRows(state)) {
+            val hook = rule.day?.onNomination ?: continue
+            fromRegistry += hook(
+                NominationContext(
+                    state, lookup, nominatorId, nomineeId, CharacterRules.GRIMOIRE_HOLDER,
+                ),
+            )
         }
         val covered = fromRegistry.map { Character.normalizeId(it.sourceId) }.toSet()
         val builtIn = builtInTriggers(state, lookup, nominatorId, nomineeId)
@@ -744,11 +756,11 @@ object DayRules {
         val weights = mutableMapOf<Long, Int>()
         for (seat in state.seats) {
             var weight = 1
-            if (hasToken(state, seat.id, "bureaucrat", TOKEN_THREE_VOTES)) {
+            if (liveToken(state, lookup, seat.id, "bureaucrat", TOKEN_THREE_VOTES)) {
                 weight = 3
                 reasons += "${seat.name}'s vote counts 3 times (Bureaucrat)."
             }
-            if (hasToken(state, seat.id, "thief", TOKEN_NEGATIVE_VOTE)) {
+            if (liveToken(state, lookup, seat.id, "thief", TOKEN_NEGATIVE_VOTE)) {
                 weight = -1
                 reasons += "${seat.name}'s vote counts negatively (Thief)."
             }
@@ -836,10 +848,13 @@ object DayRules {
     /** Zealot seats that must have a hand up (5+ alive). */
     fun mustVote(state: GameState, lookup: (String) -> Character?): List<Long> {
         if (state.aliveCountWithTravellers < 5) return emptyList()
+        // W7G: an IMPAIRED Zealot is still obliged. "If 5 or more players are
+        // alive, you must vote" is not an ability that can be turned off — the
+        // player does not know they are drunk, and a drunk Zealot who abstains
+        // is a leak. Death ends it; poison does not.
         return state.alivePlayers
-            .filter {
-                it.characterId?.let(Character::normalizeId) == "zealot" &&
-                    Status.hasAbility(state, lookup, it.id)
+            .filter { seat ->
+                Identity.actingRoles(state, lookup, seat).any { it.abilityId == "zealot" }
             }
             .map { it.id }
     }
@@ -980,6 +995,15 @@ object DayRules {
      * free token or as an effect-backed one. Always compared through
      * [Tokens.key]; never by `==` and never by substring (lead D5).
      */
+    /**
+     * True when the token `(sourceId, label)` is PHYSICALLY on this seat —
+     * a storyteller reminder or a stored effect, suspended ones excluded.
+     *
+     * Deliberately NOT a rules question. A Vigormortis's `Has Ability` marker
+     * has to stay findable at the exact moment the Vigormortis dies, so the
+     * teardown can name the seats it is coming off. Use [liveToken] when the
+     * question is "does this token still DO anything".
+     */
     internal fun hasToken(state: GameState, playerId: Long, sourceId: String, label: String): Boolean {
         val key = Tokens.key(sourceId, label)
         val player = state.player(playerId) ?: return false
@@ -989,6 +1013,29 @@ object DayRules {
                 !it.suspended &&
                 Tokens.key(it.sourceCharacterId, it.label) == key
         }
+    }
+
+    /**
+     * True when the token `(sourceId, label)` is on this seat AND in force (W7G).
+     *
+     * The vote weights are the case that needs it: a Bureaucrat's "3 Votes" and
+     * a Thief's "Negative Vote" end with their source, so killing or poisoning
+     * the Bureaucrat takes the weight with it — which reading `state.effects`
+     * raw could never see. A hand-placed reminder has no source to lose and
+     * always counts.
+     */
+    internal fun liveToken(
+        state: GameState,
+        lookup: (String) -> Character?,
+        playerId: Long,
+        sourceId: String,
+        label: String,
+    ): Boolean {
+        val key = Tokens.key(sourceId, label)
+        val player = state.player(playerId) ?: return false
+        if (player.reminders.any { Tokens.key(it) == key }) return true
+        return Status.live(state, lookup, playerId)
+            .any { Tokens.key(it.sourceCharacterId, it.label) == key }
     }
 
     /** The seat holding [characterId], alive or dead. Null when nobody does. */
@@ -1008,5 +1055,80 @@ object DayRules {
             it.characterId?.let(Character::normalizeId) == id &&
                 Status.hasAbility(state, lookup, it.id)
         }
+    }
+}
+
+/** One row of the Day tab's abilities strip, resolved for a concrete seat. */
+data class OfferedDayAbility(
+    val ability: DayAbility,
+    /** The seat that would use it. Null for a Fabled — the grimoire holds it. */
+    val holderId: Long?,
+    /** "Sarah", or the Fabled's own name. */
+    val holderName: String,
+    val sourceId: String,
+    /** False = draw it greyed with [reason], never remove it (lead D37). */
+    val available: Boolean,
+    val reason: String = "",
+)
+
+/**
+ * The Day tab's abilities strip, from `CharacterRule.day.ability` (W7G).
+ *
+ * The slot had no consumer at all before wave 7: the Slayer's shot, the Artist's
+ * question, the Gossip's statement, the Damsel's guess and the Gangster's kill
+ * were all declared and no screen could find them.
+ *
+ * Every offer is RETURNED, available or not, so the strip can grey a spent
+ * ability with its reason rather than silently dropping it (lead D37).
+ */
+object DayAbilities {
+
+    fun forState(state: GameState, lookup: (String) -> Character?): List<OfferedDayAbility> =
+        buildList {
+            for (seat in state.seats) {
+                val id = seat.characterId?.let(Character::normalizeId) ?: continue
+                val ability = CharacterRules.all[id]?.day?.ability ?: continue
+                val ok = ability.available(state, lookup, seat)
+                add(
+                    OfferedDayAbility(
+                        ability = ability,
+                        holderId = seat.id,
+                        holderName = seat.name,
+                        sourceId = id,
+                        available = ok,
+                        reason = if (ok) "" else unavailableReason(state, lookup, seat),
+                    ),
+                )
+            }
+            for (rule in CharacterRules.fabledRows(state)) {
+                val ability = rule.day?.ability ?: continue
+                add(
+                    OfferedDayAbility(
+                        ability = ability,
+                        holderId = null,
+                        holderName = lookup(rule.id)?.name ?: rule.id,
+                        sourceId = Character.normalizeId(rule.id),
+                        available = ability.available(
+                            state,
+                            lookup,
+                            CharacterRules.GRIMOIRE_HOLDER,
+                        ),
+                    ),
+                )
+            }
+        }
+
+    /** Only ones the storyteller can actually tap right now. */
+    fun availableIn(state: GameState, lookup: (String) -> Character?): List<OfferedDayAbility> =
+        forState(state, lookup).filter { it.available }
+
+    private fun unavailableReason(
+        state: GameState,
+        lookup: (String) -> Character?,
+        seat: Player,
+    ): String = when {
+        !seat.alive -> "${seat.name} is dead."
+        !Status.hasAbility(state, lookup, seat.id) -> "${seat.name}'s ability is not working."
+        else -> "Already used."
     }
 }

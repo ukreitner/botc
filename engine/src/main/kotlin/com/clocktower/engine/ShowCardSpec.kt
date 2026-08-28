@@ -40,4 +40,35 @@ sealed interface ShowCardSpec {
      */
     @Serializable
     data class SheetCard(val characterIds: List<String>) : ShowCardSpec
+
+    /**
+     * "Point at these players" — the Empath's neighbours, the Sage's two, the
+     * Cult Leader's. WP8 built the renderer for it; W7G lets the ENGINE offer
+     * one, so an `Answer.Players` no longer falls through to no card at all.
+     *
+     * [seatNumbers] are 1-based positions round the circle: the storyteller
+     * holds the card up and points, and the numbers are what the player checks.
+     */
+    @Serializable
+    data class PointCard(
+        val prefix: String,
+        val playerNames: List<String>,
+        val seatNumbers: List<Int>,
+        /** Optional token shown between the prefix and the names. */
+        val characterId: String? = null,
+    ) : ShowCardSpec
+
+    /** Two or more tokens at once — the Dreamer's pair, the Godfather's Outsiders. */
+    @Serializable
+    data class MultiTokenCard(val prefix: String, val characterIds: List<String>) : ShowCardSpec
+
+    companion object {
+        /** The line above the names on a [PointCard]. */
+        fun pointPrefix(withCharacter: Boolean, names: Int): String = when {
+            withCharacter && names > 1 -> "ONE OF THESE PLAYERS IS THE"
+            withCharacter -> "THIS PLAYER IS THE"
+            names > 1 -> "THESE PLAYERS"
+            else -> "THIS PLAYER"
+        }
+    }
 }

@@ -568,12 +568,20 @@ private fun becameTheDemon(): WakePredicate = WakePredicate { ctx ->
  * Scarlet Woman's ability working?" is answered from the stored effects alone.
  * That covers poison and drunkenness; it cannot see a standing rule.
  */
-private fun scarletWomanCatches(state: GameState, event: DeathEvent, holder: Player): Boolean {
+private fun scarletWomanCatches(
+    state: GameState,
+    lookup: (String) -> Character?,
+    event: DeathEvent,
+    holder: Player,
+): Boolean {
     if (event.teamAtDeath != Team.DEMON) return false
     if (event.playerId == holder.id) return false
     if (event.registeredOnly) return false
     if (!holder.alive) return false
-    if (impairedByToken(state, holder.id)) return false
+    // W7E: the whole status model, not the raw effect list. Before `DeathTrigger`
+    // was given a lookup this could only see stored tokens, so a Scarlet Woman
+    // drunked by a standing rule (No Dashii, Xaan, an Innkeeper) still promoted.
+    if (!Status.hasAbility(state, lookup, holder.id)) return false
     if (carries(state, holder.id, "scarletwoman", "Is The Demon")) return false
     val deadWasResident = state.player(event.playerId)?.isTraveller == false
     val aliveBefore = state.aliveCountResidents + if (deadWasResident) 1 else 0
@@ -582,6 +590,7 @@ private fun scarletWomanCatches(state: GameState, event: DeathEvent, holder: Pla
 
 private fun scarletWomanPromotion(
     state: GameState,
+    @Suppress("UNUSED_PARAMETER") lookup: (String) -> Character?,
     event: DeathEvent,
     holder: Player,
 ): TriggerResult {
@@ -629,13 +638,29 @@ private fun scarletWomanPromotion(
  * left": the trigger has no character lookup to read a team with (filed for
  * WP2), and the storyteller picks the heir from the prompt either way.
  */
-private fun impKilledItself(state: GameState, event: DeathEvent, holder: Player): Boolean {
+private fun impKilledItself(
+    state: GameState,
+    lookup: (String) -> Character?,
+    event: DeathEvent,
+    holder: Player,
+): Boolean {
     if (event.playerId != holder.id) return false
     if (event.killerPlayerId != holder.id) return false
-    return state.seats.any { it.id != holder.id && it.alive && !it.isTraveller }
+    // "A Minion becomes the Imp" — W7E: an heir is a MINION, not merely somebody
+    // else alive. With no living Minion the star pass has nowhere to go.
+    return state.seats.any {
+        it.id != holder.id && it.alive && !it.isTraveller &&
+            it.characterId?.let(lookup)?.team == Team.MINION
+    }
 }
 
-private fun impStarPass(state: GameState, event: DeathEvent, holder: Player): TriggerResult =
+@Suppress("UNUSED_PARAMETER")
+private fun impStarPass(
+    state: GameState,
+    lookup: (String) -> Character?,
+    event: DeathEvent,
+    holder: Player,
+): TriggerResult =
     TriggerResult(
         prompts = listOf(
             Prompt(

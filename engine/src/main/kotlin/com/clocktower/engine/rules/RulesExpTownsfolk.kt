@@ -1,5 +1,6 @@
 package com.clocktower.engine.rules
 
+import com.clocktower.engine.ActionOption
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.CardOffer
 import com.clocktower.engine.ChangeReason
@@ -7,6 +8,7 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChooseCharacter
+import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.DayAbility
 import com.clocktower.engine.DayRule
@@ -15,20 +17,25 @@ import com.clocktower.engine.DeathEvent
 import com.clocktower.engine.DeathTrigger
 import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
+import com.clocktower.engine.Effects
 import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.KillSuppression
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Memory
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
+import com.clocktower.engine.Options
 import com.clocktower.engine.Phase
 import com.clocktower.engine.Player
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
+import com.clocktower.engine.RequirementKind
+import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.StandingRule
 import com.clocktower.engine.Status
@@ -97,14 +104,28 @@ internal val EXP_TOWNSFOLK_RULES: List<CharacterRule> = listOf(
 )
 
 /**
- * `InfoCalc` keys these rows name but the calculator does not implement yet.
- * Filed to WP2 as one batch; until then the step is a marker row with a prompt
- * and (where the answer is a token) a pre-filled card.
+ * The rows whose step computes NO information (W7H).
+ *
+ * `NightRule.infoId = ""` says so outright now: the planner offers no `ShowInfo`
+ * fallback and no cards, and the step is a marker row with a prompt. Before wave
+ * 7 the only way to suppress the fallback was to name an id `InfoCalc` did not
+ * support, which read as "a calculator we still owe" — and half of these are
+ * not owed at all.
+ *
+ * Three shapes, all genuinely uncomputable:
+ *  - nothing is learned: acrobat ("they learn nothing"), lycanthrope, princess,
+ *    poppygrower, engineer, huntsman, banshee (a PUBLIC announcement);
+ *  - a storyteller judgement: general (who is winning), highpriestess (who to
+ *    talk to), pixie (which Townsfolk they are mad about);
+ *  - a content transform of somebody else's step, not an answer: magician;
+ *  - free text by construction: amnesiac.
+ *
+ * The other seven of the old list got real calculators instead — choirboy,
+ * king.demon, nightwatchman, preacher, farmer, harlot, beggar.
  */
-internal val MISSING_INFO_IDS: List<String> = listOf(
-    "acrobat", "amnesiac", "banshee", "choirboy", "engineer", "farmer",
-    "general", "highpriestess", "huntsman", "king.demon", "lycanthrope",
-    "magician", "nightwatchman", "pixie", "poppygrower", "preacher", "princess",
+internal val SUPPRESSED_INFO_IDS: List<String> = listOf(
+    "acrobat", "amnesiac", "banshee", "engineer", "general", "highpriestess",
+    "huntsman", "lycanthrope", "magician", "pixie", "poppygrower", "princess",
 )
 
 // ---------------------------------------------------------------------------
@@ -126,7 +147,7 @@ private fun acrobat() = CharacterRule(
     otherNight = NightRule(
         gate = Gates.aliveHolder,
         prompt = "The Acrobat points at a player. They learn nothing — show them nothing.",
-        infoId = "acrobat",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "acrobat",
@@ -231,7 +252,7 @@ private fun amnesiac(): CharacterRule {
         gate = Gates.all(Gates.aliveHolder, amnesiacWakes()),
         prompt = "Run whatever the Amnesiac's invented ability needs. Mark each seat " +
             "involved with a '?' token and write what it means on the token.",
-        infoId = "amnesiac",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "amnesiac",
@@ -318,10 +339,9 @@ private fun atheist() = CharacterRule(
 /**
  * "Each night, you learn a player of a different character type than last night."
  *
- * SCHEMA GAP (WP2): `TargetConstraint` has `DIFFERENT_FROM_LAST_NIGHT` (same
- * *player*); this character needs a different registered *type*. Until
- * `DIFFERENT_TYPE_FROM_LAST_NIGHT` exists the constraint is stated in the
- * prompt and `Memory.typesSeen` backs the storyteller's own check.
+ * W7E: `TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT` reads the ledger, so it
+ * survives the token sweep exactly as `DIFFERENT_FROM_LAST_NIGHT` does — the old
+ * row could only state the constraint in the prompt and hope.
  */
 private fun balloonist(): CharacterRule {
     val rule = NightRule(
@@ -334,7 +354,11 @@ private fun balloonist(): CharacterRule {
                 prompt = "WHO DID THEY LEARN?",
                 min = 1,
                 max = 1,
-                constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED),
+                constraints = listOf(
+                    TargetConstraint.ANY_LIVING_STATE,
+                    TargetConstraint.SELF_ALLOWED,
+                    TargetConstraint.DIFFERENT_TYPE_FROM_LAST_NIGHT,
+                ),
                 sort = TargetSort.SEAT_ORDER,
                 // The token MOVES: the setup one is a hand-placed reminder, which
                 // `Effects.place` cannot displace on its own.
@@ -377,7 +401,7 @@ private fun banshee() = CharacterRule(
     otherNight = NightRule(
         gate = bansheeAwokeTonight(),
         prompt = "Announce publicly that the Banshee has died. Do not say who.",
-        infoId = "banshee",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
         cards = {
             listOf(
@@ -391,12 +415,12 @@ private fun banshee() = CharacterRule(
     ),
     onDeath = listOf(
         DeathTrigger(
-            gate = { _, event, holder ->
+            gate = { _, _, event, holder ->
                 event.playerId == holder.id &&
                     isDemonKill(event) &&
                     event.abilityImpairedAtDeath != true
             },
-            produce = { state, _, holder ->
+            produce = { state, _, _, holder ->
                 TriggerResult(
                     prompts = listOf(
                         Prompt(
@@ -583,25 +607,59 @@ private fun kingKilledByDemon(): WakePredicate = WakePredicate { ctx ->
 /**
  * "Each night, you become the alignment of an alive neighbor."
  *
- * SCHEMA GAP (WP2): there is no `NightEffect` that sets an alignment —
- * `BecomeCharacter` is the only identity effect and it strips the seat's
- * tokens, clears `shownCharacterId` and writes an `IdentityRecord`, which would
- * make the planner insert a bogus "new character" row every single night. The
- * storyteller therefore applies the flip from the seat sheet; the answer is
- * recorded here so tomorrow's "did it change?" question is answerable.
- * `InfoCalc.cultleader` supplies the neighbours and their alignments.
+ * W7E: `NightEffect.SetAlignment` writes the side and nothing else. Before it
+ * existed the only identity effect was `BecomeCharacter`, which strips the
+ * seat's tokens, clears `shownCharacterId` and writes an `IdentityRecord` — so
+ * the planner would have inserted a bogus "new character" row every night, and
+ * the row had to ask the storyteller to do it by hand instead.
+ *
+ * Which side is still the storyteller's call whenever the neighbours disagree,
+ * so this is a three-way [Options] rather than a computed flip:
+ * `InfoCalc.cultleader` supplies the neighbours and their alignments, and "no
+ * change" is the answer that does not wake anybody.
  */
 private fun cultLeader(): CharacterRule {
     val rule = NightRule(
         gate = Gates.aliveHolder,
         prompt = "Both alive neighbours the same alignment? The change is FORCED. " +
             "Wake them ONLY if the alignment actually changed, then show the thumb.",
+        infoId = "cultleader",
         action = {
-            YesNo(
+            Options(
                 sourceId = "cultleader",
-                prompt = "DOES THE CULT LEADER CHANGE ALIGNMENT TONIGHT?",
-                yesLabel = "Yes — set their alignment on the seat sheet, then wake them",
-                noLabel = "No change — do not wake them",
+                prompt = "WHICH ALIGNMENT DOES THE CULT LEADER TAKE TONIGHT?",
+                options = listOf(
+                    ActionOption(
+                        id = "none",
+                        label = "No change — do not wake them",
+                    ),
+                    ActionOption(
+                        id = "evil",
+                        label = "They join the evil neighbour",
+                        detail = "Wake them and show a thumbs-down.",
+                        effects = listOf(
+                            NightEffect.SetAlignment(
+                                on = Ref.Source,
+                                evil = true,
+                                note = "Cult Leader: joined an evil neighbour.",
+                            ),
+                            NightEffect.ShowCardTo(Ref.Source, "YOU ARE — evil (thumbs down)"),
+                        ),
+                    ),
+                    ActionOption(
+                        id = "good",
+                        label = "They join the good neighbour",
+                        detail = "Wake them and show a thumbs-up.",
+                        effects = listOf(
+                            NightEffect.SetAlignment(
+                                on = Ref.Source,
+                                evil = false,
+                                note = "Cult Leader: joined a good neighbour.",
+                            ),
+                            NightEffect.ShowCardTo(Ref.Source, "YOU ARE — good (thumbs up)"),
+                        ),
+                    ),
+                ),
             )
         },
     )
@@ -627,12 +685,16 @@ private fun cultLeader(): CharacterRule {
 /**
  * "Once per game, at night, choose which Minions or which Demon is in play."
  *
- * SCHEMA GAP (WP2): no `NightAction` can carry "these three seats become those
- * three characters" — `ChoosePlayerAndCharacter` is one pair and offers no
- * decline path, and `BecomeCharacter` with an empty character id wipes the seat.
- * The row therefore records WHICH seats are being rebuilt and spends the
- * ability; the storyteller assigns each new character from the seat sheet,
- * which already clears the old character's tokens (`Identity.changeCharacter`).
+ * The rebuild is SEVERAL seats and several characters at once, which no single
+ * `NightAction` carries: `ChoosePlayerAndCharacter` is one pair. The row
+ * therefore records WHICH seats are being rebuilt and spends the ability; the
+ * storyteller assigns each new character from the seat sheet, which already
+ * clears the old character's tokens (`Identity.changeCharacter`) and — since
+ * lead D67 — keeps the seat's alignment by default.
+ *
+ * W7D closed the dangerous half of this gap: `BecomeCharacter` with an empty
+ * character id and nothing picked used to WIPE the seat. It is now inert. An
+ * N-pair action for the multi-seat rebuild is still owed (wave 7b).
  */
 private fun engineer(): CharacterRule {
     val rule = NightRule(
@@ -640,7 +702,7 @@ private fun engineer(): CharacterRule {
         prompt = "The Engineer may choose which Minions OR which Demon is in play. " +
             "Change each seat from the seat sheet, then wake the changed players one " +
             "at a time and show the 'You are' token and their new character.",
-        infoId = "engineer",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "engineer",
@@ -752,7 +814,7 @@ private fun general(): CharacterRule {
         gate = Gates.aliveHolder,
         prompt = "Show the General a thumb signal: up for good winning, down for evil " +
             "winning, to the side for neither.",
-        infoId = "general",
+        infoId = "",
         cards = {
             listOf(
                 CardOffer("SHOW: GOOD IS WINNING", ShowCardSpec.Message("GOOD", "GOOD IS WINNING"), true),
@@ -774,7 +836,7 @@ private fun highPriestess(): CharacterRule {
         gate = Gates.aliveHolder,
         prompt = "Point at the player they should talk to most. Alive or dead, good or " +
             "evil, Travellers included — do not filter. A repeat is a deliberate signal.",
-        infoId = "highpriestess",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "highpriestess",
@@ -810,7 +872,7 @@ private fun huntsman(): CharacterRule {
         prompt = "The Huntsman may guess a living player. If they chose the Damsel, " +
             "change that seat to a not-in-play Townsfolk and show them their new token. " +
             "The Huntsman learns nothing either way.",
-        infoId = "huntsman",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "huntsman",
@@ -917,14 +979,11 @@ private fun knight() = CharacterRule(
  * than by hiding a button (lead D36) — the Demon still wakes, still chooses, and
  * must never learn it failed.
  *
- * OPEN, FOR THE LEAD: the wiki's Lycanthrope example is a Pukka's DEFERRED kill
- * failing, but lead D63 makes `NightEffect.Attack(deferred = true)` drop the
- * silenced source seat so a standing Pukka victim dies anyway. D63 is written
- * for the Exorcist ("does not wake to attack tonight"); the Lycanthrope's clause
- * is "the Demon doesn't kill tonight". `Attack.deferred` carries no record of
- * WHICH suppression is present, so `NightPlan.applyEffect` cannot tell the two
- * apart. Filed to WP2 with a suggested fix: give the suppression a scope
- * (`exorcised` vs `noKillTonight`) rather than keying off `deferred`.
+ * SETTLED (lead D68, the scope this row asked for): the suppression carries a
+ * [KillSuppression], so `NightPlan.applyEffect` can tell the two apart. An
+ * Exorcised Demon is SILENCED and its standing Pukka victim still dies (D63);
+ * the Lycanthrope's "the Demon doesn't kill tonight" is NO_KILL_TONIGHT and
+ * stops that deferred kill too, which is the wiki's own worked example.
  *
  * The Faux Paw misregistration is a [StandingRule] (lead D58) so it lapses the
  * moment the Lycanthrope dies or is impaired, with no extra code.
@@ -937,7 +996,7 @@ private fun lycanthrope() = CharacterRule(
         prompt = "The Lycanthrope points at an alive player. If that player is good they " +
             "die, and NO ONE dies to the Demon tonight — the Demon still wakes and still " +
             "chooses. Monk and Soldier do not protect against this.",
-        infoId = "lycanthrope",
+        infoId = "",
         action = { ctx ->
             val demonSeats = ctx.state.seats
                 .filter { it.characterId?.let(ctx.lookup)?.team == Team.DEMON }
@@ -975,6 +1034,11 @@ private fun lycanthrope() = CharacterRule(
                         on = Ref.Seat(demon.id),
                         kind = EffectKind.DEMON_CANNOT_KILL,
                         until = Until.DAWN,
+                        // Lead D68 settles the question this row filed: "the Demon
+                        // doesn't kill tonight" reaches a DEFERRED kill too, which
+                        // is exactly the wiki's worked Pukka example. The Exorcist's
+                        // SILENCED scope does not.
+                        suppression = KillSuppression.NO_KILL_TONIGHT,
                     )
                 },
             )
@@ -1001,6 +1065,25 @@ private fun lycanthrope() = CharacterRule(
                 )
             }
     },
+    // W7G: "One good player registers as evil" is a SETUP fact — the token goes
+    // down before the first night, and the standing rule above reads it. The
+    // slot had no consumer until wave 7, so this row was owed and never written.
+    setup = listOf(
+        SetupRequirement(
+            id = "lycanthrope.fauxpaw",
+            characterId = "lycanthrope",
+            kind = RequirementKind.REMINDER,
+            title = "Lycanthrope: mark one good player Faux Paw",
+            prompt = "Choose ONE good player and mark them FAUX PAW. They register as evil to " +
+                "every ability that asks, but they still win with good and are never told.",
+            problem = "Mark a good player Faux Paw before the first night",
+            satisfied = { state, _ ->
+                val key = Tokens.key("lycanthrope", "Faux Paw")
+                state.seats.none { it.characterId?.let(Character::normalizeId) == "lycanthrope" } ||
+                    state.seats.any { seat -> seat.reminders.any { Tokens.key(it) == key } }
+            },
+        ),
+    ),
 )
 
 // ---------------------------------------------------------------------------
@@ -1029,7 +1112,7 @@ private fun magician() = CharacterRule(
         prompt = "The Magician does not wake. During Minion info, point at the Magician " +
             "AND the Demon without saying which is which. During Demon info, point at " +
             "the Magician among the Minions.",
-        infoId = "magician",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
     ),
 )
@@ -1099,7 +1182,7 @@ private fun pixie() = CharacterRule(
         gate = Gates.aliveHolder,
         prompt = "Show the Pixie an in-play Townsfolk token. They must be mad that they " +
             "are it. Mark the Pixie Mad and note which character.",
-        infoId = "pixie",
+        infoId = "",
         action = {
             ChooseCharacter(
                 sourceId = "pixie",
@@ -1113,6 +1196,10 @@ private fun pixie() = CharacterRule(
                         on = Ref.Source,
                         kind = EffectKind.MAD,
                         until = Until.FOREVER,
+                        // W7E: the token NAMES the character they are mad about,
+                        // which is the whole ability — the death trigger below
+                        // reads it back. It used to live only in the ledger.
+                        characterId = "",
                     ),
                 ),
             )
@@ -1120,14 +1207,14 @@ private fun pixie() = CharacterRule(
     ),
     onDeath = listOf(
         DeathTrigger(
-            gate = { state, event, holder ->
+            gate = { state, _, event, holder ->
                 val mad = pixieMadCharacter(state, holder)
                 mad != null &&
                     Character.normalizeId(event.characterIdAtDeath.orEmpty()) == mad &&
                     event.playerId != holder.id &&
                     !holdsToken(holder, "pixie", "Has Ability")
             },
-            produce = { state, event, holder ->
+            produce = { state, _, event, holder ->
                 val mad = pixieMadCharacter(state, holder).orEmpty()
                 TriggerResult(
                     prompts = listOf(
@@ -1185,7 +1272,7 @@ private fun poppyGrower() = CharacterRule(
         prompt = "Minion info and Demon info do NOT run tonight. Wake the Demon, show " +
             "'These characters are not in play' and 3 not-in-play good tokens. The " +
             "Minions learn nothing — do not wake them.",
-        infoId = "poppygrower",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
     ),
     otherNight = NightRule(
@@ -1193,7 +1280,7 @@ private fun poppyGrower() = CharacterRule(
         prompt = "1) Wake all Minions together (never the Marionette). Show 'This is the " +
             "Demon' and point at the Demon. Sleep. 2) Wake the Demon, show 'These are " +
             "your Minions' and point at the Minions (and the Marionette).",
-        infoId = "poppygrower",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
         // Nothing is chosen here, so the record is written by the always-run half:
         // `Evil Wakes` marks that the reveal happened on this seat.
@@ -1318,7 +1405,7 @@ private fun princess() = CharacterRule(
         gate = princessBlockActive(),
         prompt = "PRINCESS: wake the Demon and let them choose as normal, but NOBODY dies " +
             "to the Demon's kill tonight. Every other Demon effect still happens.",
-        infoId = "princess",
+        infoId = "",
         wakeCounts = WakeCount.NONE,
     ),
     day = DayRule(
@@ -1357,10 +1444,28 @@ private fun princess() = CharacterRule(
                 listOf(
                     ExecutionConsequence(
                         sourceId = "princess",
-                        headline = "Princess: the Demon does not kill tonight. Place " +
-                            "\"Doesn't Kill\" on the Demon.",
+                        headline = "Princess: the Demon does not kill tonight.",
                         detail = "Impairment is judged AT NIGHT, when the Demon's step is " +
-                            "reached — not now.",
+                            "reached — not now. Confirming places \"Doesn't Kill\" on every " +
+                            "Demon seat for you.",
+                        // W7G: `ExecutionConsequence.apply` — the row DOES the
+                        // bookkeeping now instead of telling the storyteller to.
+                        apply = { state, _ ->
+                            state.seats
+                                .filter { it.characterId?.let(ctx.lookup)?.team == Team.DEMON }
+                                .fold(state) { acc, demon ->
+                                    Effects.place(
+                                        state = acc,
+                                        target = demon.id,
+                                        kind = EffectKind.DEMON_CANNOT_KILL,
+                                        sourceCharacterId = "princess",
+                                        sourcePlayerId = null,
+                                        until = Until.DAWN,
+                                        label = "Doesn't Kill",
+                                        note = "Princess: the Demon does not kill tonight.",
+                                    ).state
+                                }
+                        },
                     ),
                 )
             }

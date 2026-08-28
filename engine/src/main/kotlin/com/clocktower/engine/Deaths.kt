@@ -564,10 +564,15 @@ object Deaths {
     }
 
     /**
-     * Fires `CharacterRule.onDeath` for every seat that holds one (lead D35).
-     * [lookup] is unused today; it keeps the signature stable for the WP7 rows.
+     * Fires `CharacterRule.onDeath` for every seat that holds one, and for every
+     * Fabled in play (lead D35).
+     *
+     * A Fabled has no seat, so its rows are walked with
+     * [CharacterRules.GRIMOIRE_HOLDER] — the Angel's responsibility question and
+     * the Hindu's reincarnation are declared in `RulesFabled.kt` and were inert
+     * until this loop stopped being seats-only.
+     *
      */
-    @Suppress("UNUSED_PARAMETER")
     private fun fireDeathTriggers(
         state: GameState,
         lookup: (String) -> Character?,
@@ -575,12 +580,14 @@ object Deaths {
     ): Pair<GameState, List<Prompt>> {
         var next = state
         val queued = mutableListOf<Prompt>()
-        for (holder in state.players) {
-            val id = holder.characterId?.let(Character::normalizeId) ?: continue
-            val rule = CharacterRules.all[id] ?: continue
+        val rows = state.players.mapNotNull { holder ->
+            val id = holder.characterId?.let(Character::normalizeId) ?: return@mapNotNull null
+            CharacterRules.all[id]?.let { it to holder }
+        } + CharacterRules.fabledRows(state).map { it to CharacterRules.GRIMOIRE_HOLDER }
+        for ((rule, holder) in rows) {
             for (trigger in rule.onDeath) {
-                if (!trigger.gate(state, event, holder)) continue
-                val result = trigger.produce(state, event, holder)
+                if (!trigger.gate(state, lookup, event, holder)) continue
+                val result = trigger.produce(state, lookup, event, holder)
                 for (p in result.prompts) {
                     next = Prompts.queue(next, p.copy(causeEventId = event.id))
                     queued += next.prompts.last()

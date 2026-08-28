@@ -56,6 +56,16 @@ data class ExecutionConsequence(
     val options: List<TriggerOption> = emptyList(),
     /** The ability may not work (drunk/poisoned/dead/spent) — the ST decides anyway. */
     val impaired: Boolean = false,
+    /**
+     * What tapping this consequence actually DOES (W7G).
+     *
+     * Before wave 7 every row could only advise — the Princess's "Doesn't Kill"
+     * and the Cannibal's Lunch / Poisoned had to be placed by hand from the
+     * grimoire, which is exactly the bookkeeping the app exists to remove.
+     * [optionId] is the option the storyteller chose, or "" when the row had no
+     * options. The default changes nothing, so an advisory row stays advisory.
+     */
+    val apply: (state: GameState, optionId: String) -> GameState = { s, _ -> s },
 )
 
 /**
@@ -234,10 +244,43 @@ object Execution {
             val hook = CharacterRules.all[id]?.day?.onExecution ?: continue
             fromRegistry += hook(ExecutionContext(state, lookup, record, holder))
         }
+        // Fabled hold no seat: the Ventriloquist's "might not die" question and
+        // the Big Wig's rows are walked with the grimoire as their holder.
+        for (rule in CharacterRules.fabledRows(state)) {
+            val hook = rule.day?.onExecution ?: continue
+            fromRegistry += hook(
+                ExecutionContext(state, lookup, record, CharacterRules.GRIMOIRE_HOLDER),
+            )
+        }
         val covered = fromRegistry.map { Character.normalizeId(it.sourceId) }.toSet()
         return fromRegistry +
             builtInConsequences(state, lookup, record)
                 .filterNot { Character.normalizeId(it.sourceId) in covered }
+    }
+
+    /**
+     * Applies the consequence the storyteller confirmed (W7G).
+     *
+     * The rows are recomputed against [record] rather than passed in, so the
+     * screen only ever has to name the source and the option it chose — an
+     * `ExecutionConsequence` holds a lambda and is not a value the UI can carry
+     * back through a view model.
+     *
+     * A row with no `apply` returns the state unchanged, which is what an
+     * advisory row is.
+     */
+    fun applyConsequence(
+        state: GameState,
+        lookup: (String) -> Character?,
+        record: ExecutionRecord,
+        sourceId: String,
+        optionId: String = "",
+    ): GameState {
+        val id = Character.normalizeId(sourceId)
+        val row = consequences(state, lookup, record)
+            .firstOrNull { Character.normalizeId(it.sourceId) == id }
+            ?: return state
+        return Effects.reconcile(row.apply(state, optionId), lookup)
     }
 
     // ---- internals ----
@@ -560,15 +603,46 @@ object Execution {
         // Cannibal: the executed player's ability, and the poison if they were evil.
         DayRules.holderOfWithAbility(state, lookup, "cannibal")?.let { cannibal ->
             if (died != null && record.outcome == ExecutionOutcome.DIED) {
+                val evil = record.wasEvilAtExecution == true
                 add(
                     ExecutionConsequence(
                         sourceId = "cannibal",
                         headline = "${cannibal.name} (Cannibal) gains ${died.name}'s ability " +
-                            "tonight — place Lunch.",
-                        detail = if (record.wasEvilAtExecution == true) {
-                            "The executed player was evil: the Cannibal is poisoned instead."
+                            "tonight.",
+                        detail = if (evil) {
+                            "The executed player was evil: the Cannibal is poisoned instead. " +
+                                "Confirming places both marks."
                         } else {
-                            ""
+                            "Confirming places Lunch on ${died.name}."
+                        },
+                        // W7G: the row DOES the bookkeeping. `Identity` derives the
+                        // Cannibal's grant from the Lunch token, so placing it here
+                        // is what actually gives them the ability.
+                        apply = { s, _ ->
+                            var next = Effects.place(
+                                state = s,
+                                target = died.id,
+                                kind = EffectKind.MARKER,
+                                sourceCharacterId = "cannibal",
+                                sourcePlayerId = cannibal.id,
+                                until = Until.FOREVER,
+                                label = Identity.CANNIBAL_LUNCH,
+                                note = "Cannibal (${cannibal.name}) has this character's ability.",
+                            ).state
+                            if (evil) {
+                                next = Effects.place(
+                                    state = next,
+                                    target = cannibal.id,
+                                    kind = EffectKind.POISONED,
+                                    sourceCharacterId = "cannibal",
+                                    sourcePlayerId = null,
+                                    until = Until.EVENT,
+                                    label = "Poisoned",
+                                    note = "The Cannibal ate an evil player: poisoned until a " +
+                                        "good player dies by execution.",
+                                ).state
+                            }
+                            next
                         },
                     ),
                 )

@@ -5,6 +5,7 @@ import com.clocktower.engine.BriefingItem
 import com.clocktower.engine.BriefingKind
 import com.clocktower.engine.BriefingSeverity
 import com.clocktower.engine.BriefingSlot
+import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
@@ -22,6 +23,7 @@ import com.clocktower.engine.ExecutionContext
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.GrantMode
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Memory
 import com.clocktower.engine.NightContext
@@ -35,6 +37,8 @@ import com.clocktower.engine.Player
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.Registration
+import com.clocktower.engine.RequirementKind
+import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.StandingRule
 import com.clocktower.engine.StepGate
@@ -304,14 +308,15 @@ private fun apprentice(): CharacterRule = CharacterRule(
                         until = Until.FOREVER,
                     ),
                     NightEffect.ShowCardTo(on = Ref.Source, card = "YOU ARE"),
-                    NightEffect.QueuePrompt(
-                        at = BriefingSlot.NOW,
-                        kind = PromptKind.PLACE_EFFECT,
+                    // W7E: the grant is REAL now. ADD, not REPLACE: the Apprentice
+                    // has no ability of its own to displace, and `characterId`
+                    // stays "apprentice" so every ability still detects them as
+                    // the Apprentice, and they are still a Traveller.
+                    NightEffect.GrantAbility(
+                        abilityId = "",
                         sourceId = "apprentice",
                         on = Ref.Source,
-                        title = "Apprentice: give this seat the chosen ability as a REPLACE grant. " +
-                            "Leave characterId = apprentice — every ability still detects them as " +
-                            "the Apprentice, and they are still a Traveller.",
+                        mode = GrantMode.ADD,
                     ),
                 ),
             )
@@ -505,7 +510,9 @@ private fun barista(): CharacterRule = CharacterRule(
     otherNight = baristaNight(),
     tokens = listOf(
         TokenRule("barista", "Sober & Healthy", EffectKind.SOBER_HEALTHY, Until.DUSK),
-        TokenRule("barista", "Acts Twice", null, Until.DUSK),
+        // W7I: a typed effect, so `NightPlan` emits the second
+        // `StepVariant.AGAIN` row without ever naming the Barista.
+        TokenRule("barista", "Acts Twice", EffectKind.ACTS_TWICE, Until.DUSK),
         // The official stand-ins for a doubled character's own one-of-a-kind reminders.
         TokenRule("barista", "?", null, Until.DUSK, copies = 2),
     ),
@@ -684,6 +691,27 @@ private fun deviant(): CharacterRule = CharacterRule(
             )
         },
     ),
+    // W7G: the criterion is a table agreement, so the row is advisory (it never
+    // blocks "Begin night") but it must be ON the checklist — the Deviant needs
+    // to know what counts before the game starts.
+    setup = listOf(
+        SetupRequirement(
+            id = "deviant.criterion",
+            characterId = "deviant",
+            kind = RequirementKind.ACK,
+            title = "Deviant: agree what counts as funny",
+            prompt = "Agree with the Deviant what you will accept as funny — a joke, a pun, a " +
+                "voice, anything you two settle on. Be forgiving, and judge fresh every day.",
+            blocking = false,
+            satisfied = { state, _ ->
+                state.seats.none { it.characterId?.let(Character::normalizeId) == "deviant" } ||
+                    state.seats.any { seat ->
+                        seat.characterId?.let(Character::normalizeId) == "deviant" &&
+                            seat.notes.any { it.text.isNotBlank() }
+                    }
+            },
+        ),
+    ),
 )
 
 /**
@@ -751,10 +779,10 @@ private fun harlot(): CharacterRule = CharacterRule(
  * "Each day, choose a player: a different player changes character tonight."
  *
  * The day half marks one seat NOT ME; the night half hands a new character to
- * somebody else. `NightEffect.BecomeCharacter.evil` is a non-null `Boolean`, so
- * an alignment-preserving change is not expressible and the row must not guess
- * (a forced GOOD on a new Minion would silently corrupt every evil count).
- * The change is raised as a `DECIDE` obligation instead — see the report.
+ * somebody else. W7D / lead D67: `BecomeCharacter.evil` is nullable, so the
+ * change is REAL and the seat KEEPS its alignment — the row no longer has to
+ * guess (a forced GOOD on a new Minion would have corrupted every evil count).
+ * The storyteller may still overrule the side from the DECIDE prompt.
  */
 private fun cacklejack(): CharacterRule = CharacterRule(
     id = "cacklejack",
@@ -770,17 +798,23 @@ private fun cacklejack(): CharacterRule = CharacterRule(
                 pool = CharacterPool.SCRIPT,
                 requireNotInPlay = true,
                 onResolve = listOf(
+                    NightEffect.BecomeCharacter(
+                        on = Ref.Target,
+                        characterId = "",
+                        reason = ChangeReason.STORYTELLER,
+                    ),
                     NightEffect.ShowCardTo(on = Ref.Target, card = "YOU ARE"),
                     NightEffect.QueuePrompt(
                         at = BriefingSlot.NOW,
                         kind = PromptKind.DECIDE,
                         sourceId = "cacklejack",
                         on = Ref.Target,
-                        title = "Cacklejack: change this seat to the chosen character. Decide their " +
-                            "alignment — it follows the new character's team unless you rule " +
-                            "otherwise — and check they were not the seat marked Not Me.",
+                        title = "Cacklejack: this seat has changed and KEPT its alignment " +
+                            "(lead D67). Overrule the side here if the table played it the " +
+                            "other way, and check they were not the seat marked Not Me.",
                     ),
                 ),
+                onNone = listOf(NightEffect.RecordChoice()),
             )
         },
     ),
@@ -880,6 +914,23 @@ private fun gnome(): CharacterRule = CharacterRule(
         },
     ),
     tokens = listOf(TokenRule("gnome", "Amigo", null, Until.FOREVER)),
+    // W7G: `CharacterRule.setup` has a consumer now, so the row WP4 still owed
+    // lives here instead of being a note in a report.
+    setup = listOf(
+        SetupRequirement(
+            id = "gnome.amigo",
+            characterId = "gnome",
+            kind = RequirementKind.REMINDER,
+            title = "Gnome: mark their amigo",
+            prompt = "Choose a player and mark them AMIGO. Tell them privately that they are " +
+                "the Gnome's amigo. If anyone nominates them, the nominator dies.",
+            problem = "Mark the Gnome's amigo before the first night",
+            satisfied = { state, _ ->
+                state.seats.none { it.characterId?.let(Character::normalizeId) == "gnome" } ||
+                    state.seats.any { DayRules.hasToken(state, it.id, "gnome", "Amigo") }
+            },
+        ),
+    ),
 )
 
 private fun gnomeTrigger(ctx: NominationContext): NominationTrigger? {

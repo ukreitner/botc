@@ -665,6 +665,18 @@ object Setup {
         base: Distribution,
         playerCount: Int,
         state: GameState? = null,
+    ): BagShape? = CharacterRules.all[Character.normalizeId(characterId)]
+        ?.bagShape
+        // W7G: the registry row wins, so a WP7 file can own its own bag rule
+        // without editing this table (lead D61's "registry wins outright").
+        ?.invoke(base, playerCount)
+        ?: builtInBagShape(characterId, base, playerCount, state)
+
+    private fun builtInBagShape(
+        characterId: String,
+        base: Distribution,
+        playerCount: Int,
+        state: GameState?,
     ): BagShape? = when (Character.normalizeId(characterId)) {
         // "You choose which players are which Minions" — created on the first night.
         "kazali" -> BagShape(
