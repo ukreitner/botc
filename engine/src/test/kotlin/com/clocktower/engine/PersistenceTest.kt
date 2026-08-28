@@ -448,7 +448,8 @@ class PersistenceTest {
      * MAINTENANCE: a field added to `GameState` or `Player` belongs here and in
      * the assertions below. A round trip that silently ignores it proves
      * nothing about it. Every serialised element of both types is covered as of
-     * the D72 additions (`counters`, `nightImpaired`, `Player.voteTokens`).
+     * the D72 additions (`counters`, `nightImpaired`, `Player.voteTokens`) and
+     * `houseRules`.
      */
     private fun everyFieldPopulated(): GameState {
         val tb = data.builtInScripts().first { it.id == "tb" }
@@ -584,6 +585,7 @@ class PersistenceTest {
             // fixture impairs by hand, so the field is non-default either way.
             nightImpaired = state.nightImpaired + setOf(0L, 2L),
             finalDayCycle = 5,
+            houseRules = HouseRules(secretVotes = true),
             mastermindDayActive = true,
             storytellerNotes = "Bo is running the table. Watch the Butler.",
             dimLevel = 2,
@@ -662,6 +664,8 @@ class PersistenceTest {
         assertEquals(3, Counters.get(state, Counters.YAGGABABBLE_SAID))
         assertEquals(7, Counters.get(state, "homebrew.tally"))
         assertNotNull(state.finalDayCycle)
+        assertTrue(state.houseRules.secretVotes)
+        assertFalse(state.houseRules.none)
         assertTrue(state.nightStepsDone.isNotEmpty())
         assertTrue(state.nightImpaired.containsAll(setOf(0L, 2L)))
         assertNotNull(state.lastDawn)

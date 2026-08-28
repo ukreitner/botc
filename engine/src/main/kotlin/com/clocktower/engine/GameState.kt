@@ -173,6 +173,29 @@ data class FabledEntry(
     val config: Map<String, String> = emptyMap(),
 )
 
+/**
+ * Rules the table agreed on that no character puts in force (ux/day-screen §F).
+ *
+ * A house rule is never inferred and never silent: every field defaults to
+ * "off", the storyteller ticks it by hand, and the rule that reads it ORs it
+ * with the in-play condition rather than replacing it — a game with a sober
+ * Organ Grinder is still a secret-vote game whatever this says.
+ *
+ * New rules are added as defaulted fields here, so one field on [GameState]
+ * carries all of them and old saves keep loading.
+ */
+@Serializable
+data class HouseRules(
+    /**
+     * Eyes closed for every vote, without an Organ Grinder: the tally, the
+     * verdict and the block are hidden behind hold-to-peek all game.
+     */
+    val secretVotes: Boolean = false,
+) {
+    /** True while the table is playing entirely by the book. */
+    val none: Boolean get() = this == HouseRules()
+}
+
 @Serializable
 enum class Phase { SETUP, NIGHT, DAY }
 
@@ -222,6 +245,8 @@ data class GameState(
     val counters: Map<String, Int> = emptyMap(),
     /** Day the storyteller has declared final (Ferryman, Angel, Fiddler). */
     val finalDayCycle: Int? = null,
+    /** Rules the table agreed on that no character puts in force. See [HouseRules]. */
+    val houseRules: HouseRules = HouseRules(),
 
     // ---- night progress ----
     /** Holds [StepKey.token] values. Degrades to bare ability ids for simple steps. */

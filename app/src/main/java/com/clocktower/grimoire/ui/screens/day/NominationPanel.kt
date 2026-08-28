@@ -483,7 +483,7 @@ private fun VotePanel(
 
     if (view.secret) {
         Text(
-            "Eyes closed, everyone. (If asked: an Organ Grinder is in play.)",
+            view.secretLine,
             style = MaterialTheme.typography.bodyMedium,
             color = EmberRed,
         )

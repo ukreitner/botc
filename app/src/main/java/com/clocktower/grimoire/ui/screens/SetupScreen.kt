@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
 import com.clocktower.engine.Decisions
 import com.clocktower.engine.Distribution
+import com.clocktower.engine.HouseRules
 import com.clocktower.engine.Script
 import com.clocktower.engine.Setup
 import com.clocktower.engine.SetupRequirements
@@ -111,6 +112,10 @@ fun SetupScreen(
     var showImport by rememberSaveable { mutableStateOf(false) }
     var showPaste by rememberSaveable { mutableStateOf(false) }
     var allowDuplicates by rememberSaveable { mutableStateOf(false) }
+    // House rules the table agreed on. Saved one primitive per rule, because a
+    // rotation that lost them would change how the whole game votes.
+    var secretVotes by rememberSaveable { mutableStateOf(false) }
+    val houseRules = HouseRules(secretVotes = secretVotes)
     var seatlessAck by rememberSaveable { mutableStateOf(false) }
     var outsiderBranch by rememberSaveable { mutableStateOf<Int?>(null) }
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
@@ -444,24 +449,42 @@ fun SetupScreen(
                 )
             }
 
-            // ---- 4 FABLED -----------------------------------------------------
-            // A-14: it was called "FABLED & HOUSE RULES" and held no house
-            // rules — the only one ("allow duplicates") lives with the bag it
-            // changes, in card 3.
+            // ---- 4 FABLED & HOUSE RULES ---------------------------------------
+            // A-14: the card carried the name and none of the thing. The rules
+            // that bend the BAG stay with the bag in card 3; the rules that bend
+            // the GAME live here, and they are the ones the table agreed on
+            // before the first night (ux/day-screen §F).
             item("card-fabled") {
                 SetupCard(
                     index = 4,
-                    title = "FABLED",
-                    summary = if (fabledIds.isEmpty()) {
-                        "none"
-                    } else {
-                        fabledIds.mapNotNull { viewModel.gameData.character(it)?.name }
-                            .joinToString(", ")
+                    title = "FABLED & HOUSE RULES",
+                    summary = buildString {
+                        append(
+                            if (fabledIds.isEmpty()) {
+                                "no fabled"
+                            } else {
+                                fabledIds.mapNotNull { viewModel.gameData.character(it)?.name }
+                                    .joinToString(", ")
+                            },
+                        )
+                        val rules = houseRuleLabels(houseRules)
+                        append(" · ")
+                        append(if (rules.isEmpty()) "by the book" else rules.joinToString(", "))
                     },
                     done = true,
                     expanded = expanded == CARD_FABLED,
                     onToggle = { expanded = if (expanded == CARD_FABLED) -1 else CARD_FABLED },
                 ) {
+                    HouseRulesSection(
+                        rules = houseRules,
+                        onRules = { secretVotes = it.secretVotes },
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "FABLED",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = AgedGold,
+                    )
                     FabledPicker(
                         viewModel = viewModel,
                         activeIds = fabledIds,
@@ -516,6 +539,7 @@ fun SetupScreen(
                 val finalNames = names.mapIndexed { i, n -> n.ifBlank { "Player ${i + 1}" } }
                 viewModel.startGame(script!!, finalNames)
                 if (fabledIds.isNotEmpty()) viewModel.setFabled(fabledIds)
+                if (!houseRules.none) viewModel.setHouseRules(houseRules)
                 // Traveller seats first: dealing counts non-Travellers.
                 viewModel.game.value?.players?.forEachIndexed { index, seat ->
                     if (index in travellerSeats) viewModel.setTraveller(seat.id, true)
