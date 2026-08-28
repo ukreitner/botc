@@ -220,6 +220,12 @@ sealed interface NightEffect {
         val endsWithSource: Boolean? = null,
         /** Storyteller-visible explanation, shown on tap. */
         val note: String = "",
+        /**
+         * `DEMON_CANNOT_KILL` only: how far the suppression reaches (lead D68).
+         * The Exorcist SILENCES and a deferred kill still lands; the
+         * Lycanthrope, the Princess and the Toymaker's final night stop it.
+         */
+        val suppression: KillSuppression = KillSuppression.SILENCED,
     ) : NightEffect
 
     @Serializable

@@ -118,6 +118,28 @@ enum class Until {
     MANUAL,
 }
 
+/**
+ * How far a [EffectKind.DEMON_CANNOT_KILL] suppression reaches (lead D68).
+ *
+ * The two are NOT the same rule, and the wiki's own examples disagree about a
+ * DEFERRED kill — one a Demon set up on an earlier night, the Pukka's standing
+ * victim:
+ *
+ *  - the Exorcist SILENCES: *"the Pukka does not wake to attack tonight, but a
+ *    player still dies because of the Pukka's attack during the previous
+ *    night"* (lead D63);
+ *  - the Lycanthrope's clause is *"the Demon doesn't kill tonight"*, and the
+ *    wiki's worked example is exactly a deferred Pukka kill FAILING.
+ */
+@Serializable
+enum class KillSuppression {
+    /** The Demon makes no choice tonight. A kill set up earlier still lands. */
+    SILENCED,
+
+    /** Nobody dies by this Demon tonight — a kill set up earlier fails too. */
+    NO_KILL_TONIGHT,
+}
+
 /** The `untilEvent` strings the engine recognises. Never spell one inline. */
 object UntilEvents {
     /** Cannibal: poisoned until a good player dies by execution. */
@@ -164,6 +186,12 @@ data class Effect(
     val causeEventId: Long? = null,
     /** Storyteller override: keep the token, suppress the rule (the physical "turn it over"). */
     val suspended: Boolean = false,
+    /**
+     * Only meaningful on a [EffectKind.DEMON_CANNOT_KILL] effect: how far the
+     * suppression reaches (lead D68). Defaulted, so every save written before
+     * wave 7 loads as the Exorcist's scope, which is what those effects were.
+     */
+    val suppression: KillSuppression = KillSuppression.SILENCED,
     /**
      * True for a standing-rule effect: no physical token exists for it, and it is
      * re-derived from the board on every query rather than stored. The grimoire
@@ -320,6 +348,7 @@ internal class StatusQuery(
         if (expired(e) || e.suspended) return false
         if (!e.endsWithSource) return true
         val source = e.sourcePlayerId ?: return true
+        if (selfImpairment(e, source)) return true
         val key = e.id to e.targetId
         if (!inFlight.add(key)) {
             // A sustains B and B sustains A. Neither can be resolved first, so both
@@ -363,6 +392,7 @@ internal class StatusQuery(
         if (expired(e) || e.suspended) return false
         if (!e.endsWithSource) return true
         val source = e.sourcePlayerId ?: return true
+        if (selfImpairment(e, source)) return true
         val key = e.id to e.targetId
         if (!baseInFlight.add(key)) return true
         return try {
@@ -371,6 +401,27 @@ internal class StatusQuery(
             baseInFlight.remove(key)
         }
     }
+
+    /**
+     * A seat that impaired ITSELF stays impaired (lead D69, user-confirmed).
+     *
+     * The Innkeeper who taps their own seat second is the case: the drunkenness
+     * was placed while the ability still worked, so it stands — and because the
+     * Innkeeper is now impaired, BOTH `Safe` effects go inert tonight.
+     *
+     * Without this the recursion asks "is this seat's ability working?" in order
+     * to decide whether it is drunk, which is the same circle D55 resolves as
+     * "both active": the in-flight guard would drop the DRUNK, leaving the seat
+     * neither impaired NOR stripped of its protections — the one answer the wiki
+     * rules out. It is deliberately NOT a paradox: nothing is for the storyteller
+     * to settle, so no DECIDE prompt is raised.
+     *
+     * Narrow on purpose. Only impairing effects short-circuit; a self-sourced
+     * PROTECTION (the Sailor's innate `CANT_DIE`) must still ask, so a Sailor who
+     * drunked themselves stops protecting.
+     */
+    private fun selfImpairment(e: Effect, source: Long): Boolean =
+        e.kind in IMPAIRING && source == e.targetId
 
     private fun compute(
         playerId: Long,
@@ -770,6 +821,7 @@ internal object Standing {
                     note = r.note,
                     createdCycle = r.placedCycle.takeIf { it > 0 } ?: state.cycle,
                     createdAtNight = state.phase != Phase.DAY,
+                    suppression = rule.suppression,
                 )
             }
         }
@@ -871,6 +923,8 @@ object Effects {
         linkedPlayerId: Long? = null,
         endsWithSource: Boolean = true,
         causeEventId: Long? = null,
+        /** Null = take the scope the [TokenRule] declares, else SILENCED (lead D68). */
+        suppression: KillSuppression? = null,
     ): Placement {
         val rule = if (label.isEmpty()) null else Tokens.rule(sourceCharacterId, label)
         val id = state.nextEffectId
@@ -895,6 +949,7 @@ object Effects {
             createdCycle = state.cycle,
             createdAtNight = state.phase != Phase.DAY,
             causeEventId = causeEventId,
+            suppression = suppression ?: rule?.suppression ?: KillSuppression.SILENCED,
         )
 
         var live = state.effects

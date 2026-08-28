@@ -641,6 +641,13 @@ class RulesExpTownsfolkTest {
                 KillCause(DeathCause.EVIL_ABILITY, "poisoner", 2L),
             ) is KillOutcome.Dies,
         )
+        // Lead D68: the Lycanthrope's clause is NO_KILL_TONIGHT, not the
+        // Exorcist's SILENCED — the difference is whether a kill the Demon set up
+        // on an EARLIER night still lands.
+        assertEquals(
+            KillSuppression.NO_KILL_TONIGHT,
+            Status.live(state, lookup, 1L, EffectKind.DEMON_CANNOT_KILL).single().suppression,
+        )
     }
 
     @Test

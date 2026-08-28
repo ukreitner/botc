@@ -17,6 +17,7 @@ import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.FabledEntry
 import com.clocktower.engine.GameState
+import com.clocktower.engine.KillSuppression
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
@@ -872,6 +873,10 @@ private fun toymaker() = CharacterRule(
                                 on = Ref.Seat(demon.id),
                                 kind = EffectKind.DEMON_CANNOT_KILL,
                                 until = Until.DAWN,
+                                // "The Demon does not act tonight" — lead D68:
+                                // that reaches a kill set up on an earlier night
+                                // too, unlike an Exorcist's silencing.
+                                suppression = KillSuppression.NO_KILL_TONIGHT,
                             ),
                             // The obligation is spent by the forced night.
                             NightEffect.RemoveToken("toymaker", TOYMAKER_MARK, Ref.Seat(demon.id)),

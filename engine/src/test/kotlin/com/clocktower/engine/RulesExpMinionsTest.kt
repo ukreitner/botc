@@ -709,6 +709,24 @@ class RulesExpMinionsTest {
         assertNotNull(step(state, "wraith"), "and every other night too")
     }
 
+    @Test
+    fun `Given a Wraith and a Chambermaid, Then the Wraith's eye-opening never counts`() {
+        // Lead D66, confirmed: the Wraith opens its eyes for OTHER people's
+        // abilities, so a Chambermaid who points at it counts nothing.
+        var state = night("wraith", "imp", "chambermaid", "empath", "mayor")
+        val wraith = state.seat("wraith")
+        state = run(state, "wraith", NightInput())
+        assertEquals(
+            0,
+            NightPlan.wokeCount(state, lookup, listOf(wraith)),
+            "INFORMED wakes never count for the Chambermaid (lead D13/D66)",
+        )
+        assertTrue(
+            state.ledger.any { it.kind == LedgerKind.WOKE && it.actorId == wraith && !it.genuine },
+            "the wake is still recorded, just not as their own ability",
+        )
+    }
+
     // ==================================================================
     // Xaan
     // ==================================================================

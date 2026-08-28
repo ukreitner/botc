@@ -1210,6 +1210,7 @@ data class NightPlan(
                             endsWithSource = effect.endsWithSource
                                 ?: rule?.endsWithSource
                                 ?: true,
+                            suppression = effect.suppression,
                         ).state
                     }
                 }
@@ -1228,14 +1229,25 @@ data class NightPlan(
                 }
 
                 is NightEffect.Attack -> {
-                    // A deferred death resolves an attack made on an EARLIER night,
-                    // so a suppression placed TONIGHT must not veto it (wiki: an
-                    // Exorcised Pukka's standing victim still dies). Attribution
-                    // stays on the character; only the seat is dropped, and only
-                    // when it would otherwise cancel its own past attack.
-                    val silencedNow = effect.deferred && scope.sourceId != null &&
-                        Status.live(next, lookup, scope.sourceId, EffectKind.DEMON_CANNOT_KILL)
-                            .isNotEmpty()
+                    // A deferred death resolves an attack made on an EARLIER
+                    // night, and whether tonight's suppression reaches it depends
+                    // on WHICH suppression it is (lead D68):
+                    //
+                    //  - SILENCED (Exorcist): "the Pukka does not wake to attack
+                    //    tonight, but a player still dies because of the Pukka's
+                    //    attack during the previous night" — the source seat is
+                    //    dropped from the cause so the funnel does not veto its
+                    //    own past attack. Attribution stays on the character.
+                    //  - NO_KILL_TONIGHT (Lycanthrope Faux Paw, Princess,
+                    //    Toymaker's final night): "the Demon doesn't kill
+                    //    tonight" — the seat is KEPT, so `Deaths` blocks it.
+                    val suppressions = scope.sourceId
+                        ?.let { Status.live(next, lookup, it, EffectKind.DEMON_CANNOT_KILL) }
+                        .orEmpty()
+                    val stopsDeferred =
+                        suppressions.any { it.suppression == KillSuppression.NO_KILL_TONIGHT }
+                    val silencedNow =
+                        effect.deferred && suppressions.isNotEmpty() && !stopsDeferred
                     for (target in seats(next, lookup, effect.on, scope)) {
                         next = Deaths.attempt(
                             state = next,

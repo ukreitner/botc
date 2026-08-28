@@ -29,6 +29,12 @@ data class TokenRule(
     val exclusiveGroup: String = "",
     /** Lives in the centre of the grimoire, not on a seat. */
     val grimoireCentre: Boolean = false,
+    /**
+     * `DEMON_CANNOT_KILL` tokens only: how far the suppression reaches (lead
+     * D68). The Exorcist SILENCES and a deferred kill still lands; the Princess
+     * and the Lycanthrope stop it.
+     */
+    val suppression: KillSuppression = KillSuppression.SILENCED,
 ) {
     /** The canonical case-insensitive identity of this rule. */
     val key: String get() = Tokens.key(sourceId, label)
@@ -226,7 +232,15 @@ object Tokens {
 
         // ---- the Demon is silenced (lead D36 / D49) ----
         add(TokenRule("exorcist", "Chosen", EffectKind.DEMON_CANNOT_KILL, Until.DAWN, protects = true))
-        add(TokenRule("princess", "Doesn't Kill", EffectKind.DEMON_CANNOT_KILL, Until.DAWN, protects = true))
+        add(
+            TokenRule(
+                "princess", "Doesn't Kill", EffectKind.DEMON_CANNOT_KILL, Until.DAWN,
+                protects = true,
+                // "The Demon does not kill tonight" reaches a kill set up on an
+                // earlier night too — unlike an Exorcist's silencing (lead D68).
+                suppression = KillSuppression.NO_KILL_TONIGHT,
+            ),
+        )
         add(
             TokenRule(
                 "toymaker", "Final Night: No Attack", EffectKind.DEMON_CANNOT_KILL,

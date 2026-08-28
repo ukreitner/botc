@@ -265,6 +265,45 @@ class RulesBadMoonRisingTest {
         )
     }
 
+    @Test
+    fun `a NO_KILL_TONIGHT suppression stops the Pukka's standing victim too`() {
+        // Given the same standing Pukka victim…
+        var state = game("pukka", "exorcist", "gossip", "chambermaid", "professor", "fool")
+        val pukka = seat(state, "pukka")
+        val victim = seat(state, "gossip")
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(victim)))
+        state = nextNight(state)
+
+        // …but this time the suppression is a Princess's, not an Exorcist's.
+        // Lead D68: "the Demon doesn't kill tonight" reaches a DEFERRED kill,
+        // which the wiki's own Lycanthrope example spells out.
+        state = Effects.place(
+            state = state,
+            target = pukka,
+            kind = EffectKind.DEMON_CANNOT_KILL,
+            sourceCharacterId = "princess",
+            sourcePlayerId = null,
+            until = Until.DAWN,
+            label = "Doesn't Kill",
+        ).state
+        assertEquals(
+            KillSuppression.NO_KILL_TONIGHT,
+            Status.live(state, lookup, pukka, EffectKind.DEMON_CANNOT_KILL).single().suppression,
+            "the Princess's token declares the wider scope",
+        )
+
+        val silenced = require(state, "pukka")
+        state = NightPlan.resolve(state, lookup, silenced.key, NightInput(none = true))
+        assertTrue(
+            assertNotNull(state.player(victim)).alive,
+            "nobody dies to this Demon tonight, standing victim included",
+        )
+        assertTrue(
+            state.ledger.any { it.kind == LedgerKind.RULING && it.actorId == victim },
+            "and the prevented death is still recorded",
+        )
+    }
+
     // ==================================================================
     // User report 2 — the Devil's Advocate (lead D1/D3)
     // ==================================================================
@@ -574,17 +613,43 @@ class RulesBadMoonRisingTest {
 
         assertTrue(holds(state, innkeeper, "innkeeper", "Drunk"), "the Drunk token is on the Innkeeper")
         assertTrue(holds(state, other, "innkeeper", "Safe"), "and the other pick is still marked Safe")
-        // FOLLOWUP (WP1, filed by WP7-BMR): the wiki's self-protection trap says
-        // an Innkeeper who drunks THEMSELVES protects nobody. The effect is
-        // self-sustaining — `endsWithSource = true` with `sourcePlayerId = the
-        // Innkeeper` — and `StatusQuery.active`'s in-flight guard resolves that
-        // cycle by dropping the DRUNK, so today the Innkeeper is neither impaired
-        // nor stripped of their protections. This is a §2.3 recursion question,
-        // not a registry one; the row places the official tokens either way.
-        assertEquals(
-            Status.isImpaired(state, lookup, innkeeper),
-            Status.protections(state, lookup, other).isEmpty(),
-            "whatever §2.3 decides, the drunkenness and the protection must agree",
+
+        // Lead D69 (user-confirmed) settles the self-protection trap this test
+        // used to leave open: BOTH effects stand. The drunkenness was placed
+        // while the ability worked, so the Innkeeper IS drunk…
+        assertTrue(Status.isImpaired(state, lookup, innkeeper), "the Innkeeper is drunk")
+        // …and because their ability is now impaired, BOTH Safe effects are
+        // inert tonight — including the one on their own seat.
+        assertTrue(Status.protections(state, lookup, other).isEmpty(), "the other pick is not safe")
+        assertTrue(Status.protections(state, lookup, innkeeper).isEmpty(), "nor is the Innkeeper")
+        assertIs<KillOutcome.Dies>(
+            Deaths.killOutcome(
+                state,
+                lookup,
+                other,
+                KillCause(DeathCause.DEMON_KILL, "pukka", seat(state, "pukka")),
+            ),
+        )
+        // And it is not a paradox: nothing here is for the storyteller to settle.
+        assertTrue(Status.paradoxSeats(state, lookup).isEmpty(), "no DECIDE prompt is owed")
+    }
+
+    @Test
+    fun `an Innkeeper who drunks somebody else still protects both picks`() {
+        var state = game("innkeeper", "pukka", "sailor", "chambermaid", "fool", "gossip")
+        val first = seat(state, "chambermaid")
+        val second = seat(state, "fool")
+        state = state.copy(cycle = 2, nightStepsDone = emptySet())
+        state = resolve(state, "innkeeper", NightInput(playerIds = listOf(first, second)))
+
+        assertFalse(Status.isImpaired(state, lookup, seat(state, "innkeeper")))
+        assertIs<KillOutcome.Prevented>(
+            Deaths.killOutcome(
+                state,
+                lookup,
+                first,
+                KillCause(DeathCause.DEMON_KILL, "pukka", seat(state, "pukka")),
+            ),
         )
     }
 

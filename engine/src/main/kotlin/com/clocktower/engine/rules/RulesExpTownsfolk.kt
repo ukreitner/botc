@@ -21,6 +21,7 @@ import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Gates
+import com.clocktower.engine.KillSuppression
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Memory
 import com.clocktower.engine.NightEffect
@@ -961,14 +962,11 @@ private fun knight() = CharacterRule(
  * than by hiding a button (lead D36) — the Demon still wakes, still chooses, and
  * must never learn it failed.
  *
- * OPEN, FOR THE LEAD: the wiki's Lycanthrope example is a Pukka's DEFERRED kill
- * failing, but lead D63 makes `NightEffect.Attack(deferred = true)` drop the
- * silenced source seat so a standing Pukka victim dies anyway. D63 is written
- * for the Exorcist ("does not wake to attack tonight"); the Lycanthrope's clause
- * is "the Demon doesn't kill tonight". `Attack.deferred` carries no record of
- * WHICH suppression is present, so `NightPlan.applyEffect` cannot tell the two
- * apart. Filed to WP2 with a suggested fix: give the suppression a scope
- * (`exorcised` vs `noKillTonight`) rather than keying off `deferred`.
+ * SETTLED (lead D68, the scope this row asked for): the suppression carries a
+ * [KillSuppression], so `NightPlan.applyEffect` can tell the two apart. An
+ * Exorcised Demon is SILENCED and its standing Pukka victim still dies (D63);
+ * the Lycanthrope's "the Demon doesn't kill tonight" is NO_KILL_TONIGHT and
+ * stops that deferred kill too, which is the wiki's own worked example.
  *
  * The Faux Paw misregistration is a [StandingRule] (lead D58) so it lapses the
  * moment the Lycanthrope dies or is impaired, with no extra code.
@@ -1019,6 +1017,11 @@ private fun lycanthrope() = CharacterRule(
                         on = Ref.Seat(demon.id),
                         kind = EffectKind.DEMON_CANNOT_KILL,
                         until = Until.DAWN,
+                        // Lead D68 settles the question this row filed: "the Demon
+                        // doesn't kill tonight" reaches a DEFERRED kill too, which
+                        // is exactly the wiki's worked Pukka example. The Exorcist's
+                        // SILENCED scope does not.
+                        suppression = KillSuppression.NO_KILL_TONIGHT,
                     )
                 },
             )
