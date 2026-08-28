@@ -49,6 +49,7 @@ import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
+import com.clocktower.engine.Prompt
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -90,6 +91,12 @@ fun NightCard(
     onBack: () -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Questions the engine raised from this row and is still owed — the Imp's
+     * star pass. They are asked HERE, on the card, before the row is left
+     * (playtest B P0 #3); the sheet keeps the row open until they are answered.
+     */
+    prompts: List<Prompt> = emptyList(),
 ) {
     val key = step.key
     // Keyed on the CYCLE as well as the step: last night's two lit chips must
@@ -241,6 +248,19 @@ fun NightCard(
                     lineHeight = nightSp(24f).sp,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
+            }
+
+            // ---- 4b. the question the engine is still owed, before anything else ----
+            val owed = prompts.firstOrNull()
+            if (owed != null) {
+                NightPromptAsk(
+                    viewModel = viewModel,
+                    state = state,
+                    prompt = owed,
+                    onAnswer = { seatId -> viewModel.answerPromptWithPlayer(owed.id, seatId) },
+                    onDismiss = { viewModel.dismissPrompt(owed.id) },
+                )
+                return@Column
             }
 
             // ---- 5. a Conditional gate is answered before anything is offered ----
@@ -399,6 +419,79 @@ fun NightCard(
             },
         )
     }
+}
+
+/**
+ * A question the engine raised and is still owed, asked on the card that raised
+ * it — "Fay killed themselves: a Minion becomes the Imp".
+ *
+ * It knows no rule. [Prompt.targetIds] are the legal answers the engine worked
+ * out, [Prompt.becomesCharacterId] is what answering DOES, and
+ * `answerPromptWithPlayer` applies both in one state change. A prompt the
+ * storyteller rules does not apply is dismissed, and the row carries on.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NightPromptAsk(
+    viewModel: GameViewModel,
+    state: GameState,
+    prompt: Prompt,
+    onAnswer: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var picked by remember(prompt.id) { mutableStateOf<Long?>(null) }
+    val becomes = viewModel.characterById(prompt.becomesCharacterId)
+    val choices = remember(prompt.id, state.players) {
+        val offered = prompt.targetIds.mapNotNull { state.player(it) }
+        offered.ifEmpty { state.seats.filter { it.alive && it.id != prompt.subjectPlayerId } }
+    }
+
+    Text(
+        text = prompt.title,
+        fontSize = nightSp(18f).sp,
+        lineHeight = nightSp(24f).sp,
+        fontWeight = FontWeight.Bold,
+        color = EmberRed,
+    )
+    if (prompt.detail.isNotBlank()) {
+        Text(
+            text = prompt.detail,
+            fontSize = nightSp(16f).sp,
+            lineHeight = nightSp(21f).sp,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+    if (choices.isEmpty()) {
+        PrimaryButton(label = "DONE — NOTHING TO CHOOSE", onConfirm = onDismiss)
+        return
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        for (seat in choices) {
+            val index = state.seats.indexOfFirst { it.id == seat.id } + 1
+            val character = viewModel.characterById(seat.characterId)
+            NightChip(
+                label = "$index ${seat.name}" + character?.let { " · ${it.name}" }.orEmpty(),
+                tone = if (picked == seat.id) Tone.ACTIVE else Tone.NORMAL,
+                onClick = { picked = if (picked == seat.id) null else seat.id },
+            )
+        }
+    }
+    PrimaryButton(
+        label = promptPrimaryLabel(picked?.let { id -> state.player(id)?.name }, becomes?.name),
+        enabled = picked != null,
+        holdMillis = if (becomes == null) 0 else HOLD_CONFIRM_MILLIS,
+        onConfirm = { picked?.let(onAnswer) },
+    )
+    NightChip(
+        label = "this does not apply — put the question away",
+        tone = Tone.MUTED,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onDismiss,
+    )
 }
 
 /**

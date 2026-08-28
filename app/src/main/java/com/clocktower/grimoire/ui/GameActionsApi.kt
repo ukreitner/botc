@@ -375,6 +375,14 @@ interface GameActionsApi {
     /** Retires one obligation as done, keeping it for the log and undo. */
     fun resolvePrompt(promptId: Long) = update { Prompts.resolve(it, promptId) }
 
+    /**
+     * Answers a CHOOSE_PLAYER obligation with the seat the storyteller picked —
+     * the Imp's star-pass heir. One update: the character change the prompt
+     * names, the ledger row, and the obligation retired.
+     */
+    fun answerPromptWithPlayer(promptId: Long, playerId: Long) =
+        update { Prompts.answerWithPlayer(it, lookup, promptId, playerId) }
+
     /** Drops an obligation entirely — the storyteller ruled it never applied. */
     fun dismissPrompt(promptId: Long) = update { Prompts.dismiss(it, promptId) }
 

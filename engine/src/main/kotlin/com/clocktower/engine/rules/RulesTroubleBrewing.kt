@@ -1,6 +1,7 @@
 package com.clocktower.engine.rules
 
 import com.clocktower.engine.BriefingSlot
+import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChoosePlayers
@@ -648,13 +649,9 @@ private fun impKilledItself(
     if (event.killerPlayerId != holder.id) return false
     // "A Minion becomes the Imp" — W7E: an heir is a MINION, not merely somebody
     // else alive. With no living Minion the star pass has nowhere to go.
-    return state.seats.any {
-        it.id != holder.id && it.alive && !it.isTraveller &&
-            it.characterId?.let(lookup)?.team == Team.MINION
-    }
+    return livingMinions(state, lookup, holder).isNotEmpty()
 }
 
-@Suppress("UNUSED_PARAMETER")
 private fun impStarPass(
     state: GameState,
     lookup: (String) -> Character?,
@@ -669,13 +666,29 @@ private fun impStarPass(
                 kind = PromptKind.CHOOSE_PLAYER,
                 sourceId = "imp",
                 subjectPlayerId = holder.id,
+                // The legal heirs, so the screen can render the picker without
+                // knowing the rule (playtest B P0 #3: the prompt was generated
+                // and nothing ever asked the question).
+                targetIds = livingMinions(state, lookup, holder),
                 title = "${holder.name} killed themselves — a Minion becomes the Imp.",
                 detail = "Choose an alive Minion, change their character, then show them the " +
                     "'You are' card and the Imp token. They do not act again tonight.",
                 dueCycle = state.cycle,
+                becomesCharacterId = "imp",
+                becomesReason = ChangeReason.STAR_PASS,
             ),
         ),
     )
+
+/** Every seat that may inherit the Demon: alive, not a Traveller, a Minion. */
+private fun livingMinions(
+    state: GameState,
+    lookup: (String) -> Character?,
+    holder: Player,
+): List<Long> = state.seats.filter {
+    it.id != holder.id && it.alive && !it.isTraveller &&
+        it.characterId?.let(lookup)?.team == Team.MINION
+}.map { it.id }
 
 // =========================================================================
 // Day rows

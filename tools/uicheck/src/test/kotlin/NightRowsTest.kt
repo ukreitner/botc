@@ -42,6 +42,9 @@ import com.clocktower.grimoire.ui.screens.night.pointPrefix
 import com.clocktower.grimoire.ui.screens.night.primaryEnabled
 import com.clocktower.grimoire.ui.screens.night.primaryLabel
 import com.clocktower.grimoire.ui.screens.night.progress
+import com.clocktower.grimoire.ui.screens.night.promptBelongsTo
+import com.clocktower.grimoire.ui.screens.night.promptPrimaryLabel
+import com.clocktower.grimoire.ui.screens.night.promptedToken
 import com.clocktower.grimoire.ui.screens.night.rowMark
 import com.clocktower.grimoire.ui.screens.night.rowRight
 import com.clocktower.grimoire.ui.screens.night.rowTone
@@ -335,6 +338,37 @@ class NightRowsTest {
         assertEquals("", openRowKey(cycle = 2, token = null))
         assertNull(openRowToken("", cycle = 2))
         assertNull("a bare token is not a saved row", openRowToken("DAWN", cycle = 2))
+    }
+
+    // ---- a question the engine is still owed --------------------------------
+
+    private fun prompt(sourceId: String, becomes: String = "") = com.clocktower.engine.Prompt(
+        id = 7,
+        at = com.clocktower.engine.BriefingSlot.NOW,
+        kind = com.clocktower.engine.PromptKind.CHOOSE_PLAYER,
+        sourceId = sourceId,
+        title = "a Minion becomes the Demon.",
+        becomesCharacterId = becomes,
+    )
+
+    @Test
+    fun `an unanswered obligation holds its own row open`() {
+        val demon = step(ability = "demon")
+        val dawn = step(ability = "dawn")
+        val steps = listOf(demon, dawn)
+
+        assertEquals(demon.key.token, promptedToken(steps, listOf(prompt("demon"))))
+        assertNull(promptedToken(steps, emptyList()))
+        assertNull("another row's question does not pin this one", promptedToken(steps, listOf(prompt("monk"))))
+        assertTrue(promptBelongsTo(prompt("demon"), demon))
+        assertFalse(promptBelongsTo(prompt("demon"), dawn))
+    }
+
+    @Test
+    fun `the obligation's primary states what answering it does`() {
+        assertEquals("PICK ONE", promptPrimaryLabel(picked = null, becomes = "Imp"))
+        assertEquals("BEN BECOMES THE IMP", promptPrimaryLabel(picked = "Ben", becomes = "Imp"))
+        assertEquals("BEN — CONFIRM", promptPrimaryLabel(picked = "Ben", becomes = null))
     }
 
     // ---- the one picker ----------------------------------------------------

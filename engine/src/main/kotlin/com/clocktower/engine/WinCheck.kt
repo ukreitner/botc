@@ -282,6 +282,16 @@ object WinCheck {
             // A Summoner who has not created the Demon yet is not a dead Demon.
             val summonerPending = "summoner" in inPlayIds &&
                 players.none { it.characterId?.let(lookup)?.team == Team.DEMON }
+            // Nor is an unanswered star pass: the prompt names the Demon a
+            // living seat is about to become, so good has NOT won yet and the
+            // dialog must not offer the victory (playtest B P0 #3). Read from
+            // the prompt queue, so any script's pass behaves the same way.
+            val heirPending = state.prompts.any {
+                !it.resolved &&
+                    it.becomesCharacterId.isNotBlank() &&
+                    lookup(it.becomesCharacterId)?.team == Team.DEMON
+            }
+            if (heirPending) return null
             if (!summonerPending) {
                 val cautions = mutableListOf<String>()
                 if ("scarletwoman" in inPlayIds) {

@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -631,6 +632,50 @@ class RulesTroubleBrewingTest {
         assertEquals(PromptKind.CHOOSE_PLAYER, starPass.kind)
         // With five or more alive the Scarlet Woman catch fires too — she is the heir.
         assertTrue(state.prompts.any { it.sourceId == "scarletwoman" })
+
+        // The prompt carries its own answers, so a screen can render the heir
+        // picker without knowing the rule (playtest B P0 #3).
+        assertEquals(
+            listOf(1L, 2L),
+            starPass.targetIds,
+            "the legal heirs are the alive Minions: ${starPass.targetIds}",
+        )
+        assertEquals("imp", starPass.becomesCharacterId)
+        assertEquals(ChangeReason.STAR_PASS, starPass.becomesReason)
+    }
+
+    @Test
+    fun `answering the star pass makes the heir the Imp in one state change`() {
+        var state = atNight(game("imp", "poisoner", "chef", "empath", "monk", "mayor"), 2)
+        state = run(state, "imp", 0L)
+
+        val starPass = assertNotNull(state.prompts.firstOrNull { it.sourceId == "imp" && !it.resolved })
+        assertEquals(listOf(1L), starPass.targetIds, "the Poisoner is the only Minion")
+
+        val after = Prompts.answerWithPlayer(state, lookup, starPass.id, playerId = 1L)
+
+        assertEquals("imp", after.player(1L)?.characterId, "the Poisoner became the Imp")
+        assertTrue(after.player(1L)?.isEvil(lookup) == true)
+        assertTrue(after.prompts.first { it.id == starPass.id }.resolved, "and the question is retired")
+        assertTrue(
+            after.ledger.any { it.kind == LedgerKind.CHOICE && it.sourceId == "imp" && 1L in it.targetIds },
+            "the pass is on the record that survives the sweep",
+        )
+    }
+
+    @Test
+    fun `good has not won while the star pass is unanswered`() {
+        var state = atNight(game("imp", "poisoner", "chef", "empath", "monk", "mayor"), 2)
+        state = run(state, "imp", 0L)
+
+        assertNull(
+            WinCheck.check(state, lookup),
+            "the Imp's heir has not been chosen yet — the dialog must not offer good's victory",
+        )
+
+        val starPass = assertNotNull(state.prompts.firstOrNull { it.sourceId == "imp" && !it.resolved })
+        val after = Prompts.answerWithPlayer(state, lookup, starPass.id, playerId = 1L)
+        assertNull(WinCheck.check(after, lookup), "and once the heir is the Imp there is a living Demon")
     }
 
     @Test

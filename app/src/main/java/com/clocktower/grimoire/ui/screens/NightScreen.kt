@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameState
 import com.clocktower.engine.LedgerKind
@@ -56,6 +57,8 @@ import com.clocktower.grimoire.ui.screens.night.openRowKey
 import com.clocktower.grimoire.ui.screens.night.openRowToken
 import com.clocktower.grimoire.ui.screens.night.openingToken
 import com.clocktower.grimoire.ui.screens.night.progress
+import com.clocktower.grimoire.ui.screens.night.promptBelongsTo
+import com.clocktower.grimoire.ui.screens.night.promptedToken
 import com.clocktower.grimoire.ui.screens.night.rowViews
 import com.clocktower.grimoire.ui.screens.night.segmentTones
 import com.clocktower.grimoire.ui.theme.AgedGold
@@ -101,7 +104,13 @@ fun NightScreen(
     var pendingDawn by remember(state.cycle) { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    val active = plan.steps.firstOrNull { it.key.token == activeToken }
+    // A question the engine raised and is still owed (an Imp that killed itself
+    // owes a star pass) holds ITS row open until it is answered — ticking the
+    // row is not what answers it (playtest B P0 #3).
+    val owed = viewModel.promptsDue(state, BriefingSlot.NOW)
+    val pinned = promptedToken(plan.steps, owed)
+    val active = plan.steps.firstOrNull { it.key.token == pinned }
+        ?: plan.steps.firstOrNull { it.key.token == activeToken }
         ?: plan.steps.firstOrNull { it.key.token == openingToken(plan.steps, done) }
     val activeIndex = plan.steps.indexOfFirst { it.key.token == active?.key?.token }
 
@@ -190,6 +199,7 @@ fun NightScreen(
                             viewModel.markNightStepDone(step.key)
                             openRow = openRowKey(state.cycle, plan.steps.getOrNull(index + 1)?.key?.token)
                         },
+                        prompts = owed.filter { promptBelongsTo(it, step) },
                     )
                 } else {
                     NightRowLine(

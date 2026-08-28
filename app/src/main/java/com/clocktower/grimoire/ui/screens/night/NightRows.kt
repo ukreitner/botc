@@ -1,6 +1,7 @@
 package com.clocktower.grimoire.ui.screens.night
 
 import com.clocktower.engine.Answer
+import com.clocktower.engine.Character
 import com.clocktower.engine.ChooseCharacter
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
@@ -9,6 +10,7 @@ import com.clocktower.engine.NightAction
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
+import com.clocktower.engine.Prompt
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -209,6 +211,33 @@ fun rowViews(
 fun openingToken(steps: List<NightStep>, done: Set<String>): String? =
     steps.firstOrNull { it.required && it.key.token !in done }?.key?.token
         ?: steps.lastOrNull()?.key?.token
+
+/**
+ * True when [prompt] is the question this row still owes — the engine raised it
+ * from this row's ability (an Imp that killed itself owes a star pass).
+ */
+fun promptBelongsTo(prompt: Prompt, step: NightStep): Boolean =
+    Character.normalizeId(prompt.sourceId) == Character.normalizeId(step.abilityId)
+
+/**
+ * The row an unanswered obligation holds open.
+ *
+ * A `BriefingSlot.NOW` prompt is a question the storyteller must answer before
+ * moving on — "a Minion becomes the Imp" — and it is raised *by* resolving the
+ * row, so the row cannot simply be ticked and left (playtest B P0 #3).
+ */
+fun promptedToken(steps: List<NightStep>, prompts: List<Prompt>): String? =
+    steps.firstOrNull { step -> prompts.any { promptBelongsTo(it, step) } }?.key?.token
+
+/**
+ * The primary of an obligation: it states what answering it DOES, exactly like
+ * every other primary on the night sheet.
+ */
+fun promptPrimaryLabel(picked: String?, becomes: String?): String = when {
+    picked == null -> "PICK ONE"
+    becomes.isNullOrBlank() -> "${picked.uppercase()} — CONFIRM"
+    else -> "${picked.uppercase()} BECOMES THE ${becomes.uppercase()}"
+}
 
 /**
  * The open row, saved as `"<night>|<token>"`.
