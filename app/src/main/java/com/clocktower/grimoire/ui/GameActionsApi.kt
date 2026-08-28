@@ -375,6 +375,71 @@ interface GameActionsApi {
 
     // ---- WP8: night screen ----
 
+    /**
+     * The night screen's dim level: 0 = full, 1 = 55 %, 2 = 25 %.
+     *
+     * It lives in `GameState`, not in `rememberSaveable`, so the room stays dark
+     * across a tab switch, a process death and a reload of the PWA
+     * (ux/night-screen §H, defect #21).
+     */
+    fun setDimLevel(level: Int) = update { it.copy(dimLevel = level.coerceIn(0, 2)) }
+
+    /**
+     * Ticks one night row WITHOUT toggling it back off.
+     *
+     * [toggleNightStep] is the storyteller correcting themselves; this is the
+     * screen recording that a step is finished — after the shared `KillSheet`
+     * applied a death the row was about to apply, or after a deliberate skip.
+     */
+    fun markNightStepDone(key: StepKey) = update {
+        if (key.token in it.nightStepsDone) it else NightPlan.toggleDone(it, key.token)
+    }
+
+    /**
+     * Records a card that was actually held up to a player — true or false.
+     *
+     * This is the fact the log, the next night's step and the morning briefing
+     * all need and that the app used to keep only in the storyteller's head
+     * (ux/night-screen defect #10). A card with no single recipient (a sheet
+     * held out to the table) is recorded as a plain note.
+     */
+    fun recordShown(playerId: Long?, sourceId: String, shown: String, truthful: Boolean = true) =
+        update {
+            if (playerId == null) {
+                Ledger.note(it, "Shown: $shown")
+            } else {
+                Ledger.told(it, playerId, sourceId, shown, impaired = !truthful)
+            }
+        }
+
+    /**
+     * A Traveller joins mid-game: seat, character, alignment and the
+     * announcement in ONE update, so undo puts the table back in one step
+     * (grimoire-and-seats §10, lead D25/D62).
+     *
+     * Alignment is always explicit — a Traveller's team is a storyteller
+     * decision, never a consequence of the character.
+     */
+    fun joinTraveller(
+        name: String,
+        afterPlayerId: Long?,
+        characterId: String?,
+        evil: Boolean,
+        announce: String = "",
+    ) = update { state ->
+        val seated = Seats.addSeat(state, name, afterPlayerId)
+        // `Seats.addSeat` stamps the new seat with max(id) + 1, so the highest
+        // id in the new state IS the seat that was just added.
+        val id = seated.players.maxOfOrNull { it.id } ?: return@update state
+        val assigned = Seats.assignCharacter(seated, id, characterId, isTraveller = true)
+        val aligned = Seats.setAlignment(
+            assigned,
+            id,
+            if (evil) Alignment.EVIL else Alignment.GOOD,
+        )
+        if (announce.isBlank()) aligned else Ledger.announce(aligned, announce)
+    }
+
     // ---- WP9: day screen ----
 
     // ---- WP10: grimoire, seat sheet, kill sheet ----

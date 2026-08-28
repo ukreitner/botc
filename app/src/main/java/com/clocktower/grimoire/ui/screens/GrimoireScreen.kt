@@ -412,13 +412,13 @@ private fun CircleView(
         } else {
             // WP2 redirect: NightPlan.build replaces the deleted NightOrder.
             val steps = NightPlan.build(state, viewModel::characterById).steps
-            val acting = steps.filter { it.slotId !in NightMarkers.all && it.playerIds.isNotEmpty() }
+            val acting = steps.filter { it.slotId !in NightMarkers.all && it.wakes.isNotEmpty() }
             val slotIndex = acting.mapIndexed { index, step -> step.slotId to index + 1 }.toMap()
             val out = LinkedHashMap<Long, Int>()
             for (p in state.players) {
                 val roles = Identity.actingRoles(state, viewModel::characterById, p)
                 val n = roles.mapNotNull { slotIndex[it.slotId] ?: slotIndex[it.abilityId] }.minOrNull()
-                    ?: acting.firstOrNull { p.id in it.playerIds }?.let { slotIndex[it.slotId] }
+                    ?: acting.firstOrNull { p.id in it.wakes }?.let { slotIndex[it.slotId] }
                 if (n != null) out[p.id] = n
             }
             out

@@ -502,7 +502,7 @@ class GameActionsTest {
         val empathStep = assertNotNull(
             NightPlan.build(state, data::character).steps.find { it.slotId == "empath" },
         )
-        assertEquals(listOf(0L), empathStep.playerIds)
+        assertEquals(listOf(0L), empathStep.wakes)
         val result = assertNotNull(InfoCalc.compute(data, state, "empath", 0))
         assertTrue(result.caveats.any { "IS the Drunk" in it })
 
@@ -530,15 +530,15 @@ class GameActionsTest {
         state = GameActions.advancePhase(state)
 
         val first = NightPlan.build(state, data::character).steps
-        val minionInfo = assertNotNull(first.find { it.id == NightMarkers.MINION_INFO })
-        assertEquals(listOf(1L), minionInfo.playerIds)
+        val minionInfo = assertNotNull(first.find { it.slotId == NightMarkers.MINION_INFO })
+        assertEquals(listOf(1L), minionInfo.wakes)
         assertFalse("P3" in minionInfo.detail)
 
-        val demonInfo = assertNotNull(first.find { it.id == NightMarkers.DEMON_INFO })
+        val demonInfo = assertNotNull(first.find { it.slotId == NightMarkers.DEMON_INFO })
         assertTrue("Marionette (P3)" in demonInfo.detail)
 
-        val chefStep = assertNotNull(first.find { it.id == "chef" })
-        assertEquals(listOf(2L), chefStep.playerIds)
+        val chefStep = assertNotNull(first.find { it.slotId == "chef" })
+        assertEquals(listOf(2L), chefStep.wakes)
         val result = assertNotNull(InfoCalc.compute(data, state, "chef", 2))
         assertTrue(result.caveats.any { "IS the Marionette" in it })
     }
@@ -554,8 +554,8 @@ class GameActionsTest {
 
         val first = NightPlan.build(state, data::character).steps
         assertFalse(first.any { it.slotId == NightMarkers.DEMON_INFO })
-        val marionetteInfo = assertNotNull(first.find { it.id == "marionette" })
-        assertEquals(listOf(0L), marionetteInfo.playerIds)
+        val marionetteInfo = assertNotNull(first.find { it.slotId == "marionette" })
+        assertEquals(listOf(0L), marionetteInfo.wakes)
         assertTrue("P3" in marionetteInfo.detail)
     }
 

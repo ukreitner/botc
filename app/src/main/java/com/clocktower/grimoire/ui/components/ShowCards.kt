@@ -1,7 +1,10 @@
 package com.clocktower.grimoire.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,7 +42,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -49,6 +57,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.clocktower.engine.Character
 import com.clocktower.engine.GameState
+import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.Team
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.theme.AgedGold
@@ -56,106 +65,333 @@ import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.Parchment
 import com.clocktower.grimoire.ui.theme.TownsfolkBlue
 import com.clocktower.grimoire.ui.theme.color
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * A card the storyteller holds up to a player across the table: huge text
- * on a black screen, optionally with character tokens. Mirrors the paper
- * info tokens of the physical game.
+ * A card the storyteller holds up to a player across the table: huge text on a
+ * black screen, optionally with character tokens. Mirrors the paper info tokens
+ * of the physical game.
+ *
+ * This is the RENDERER's type. The engine offers cards as `ShowCardSpec`
+ * (serialisable, no Compose); [asCard] maps one onto the other, and the three
+ * variants ux/night-screen §D asks for — [PointCard], [MultiTokenCard] and an
+ * [AlignmentCard] that carries its own text — live here, where the drawing is.
  */
 sealed interface ShowCard {
     data class Message(val title: String, val subtitle: String = "") : ShowCard
+
     data class CharacterCard(val prefix: String, val characterId: String) : ShowCard
+
     data class NumberCard(val number: Int) : ShowCard
-    data class AlignmentCard(val evil: Boolean) : ShowCard
+
+    /**
+     * GOOD / EVIL, or neither. [text] is the caption the guide entry asked for —
+     * a `kind:"good"` show whose text reads "GOOD IS WINNING" must not be
+     * repainted as "YOU ARE GOOD" (defect #6, characters/general.md #1).
+     */
+    data class AlignmentCard(val evil: Boolean?, val text: String = "") : ShowCard
+
     data class BluffsCard(val characterIds: List<String>) : ShowCard
 
     /**
-     * A neutral, full-script character sheet the player can silently point
-     * at (Pit-Hag, Philosopher, Cerenovus…). Shows every script character
-     * with zero game-state hints, so it reveals nothing.
+     * A neutral, full-script character sheet the player can silently point at
+     * (Pit-Hag, Philosopher, Cerenovus…). Shows every script character with zero
+     * game-state hints, so it reveals nothing.
      */
     data class SheetCard(val characterIds: List<String>) : ShowCard
+
+    /**
+     * The card the app never had (defect #18): **one to three player names at
+     * 48 sp with their seat numbers**, so the storyteller points with the phone
+     * instead of putting it down and pointing with a hand they do not have free.
+     *
+     * Washerwoman, Librarian, Investigator, Noble, Steward, Knight, Sage,
+     * Grandmother, "this player stopped you", "these are your Minions".
+     */
+    data class PointCard(
+        val prefix: String,
+        val playerNames: List<String>,
+        val seatNumbers: List<Int>,
+        /** Optional token between prefix and names. */
+        val characterId: String? = null,
+    ) : ShowCard
+
+    /** Two or more tokens at once — the Dreamer's pair, the Godfather's Outsiders. */
+    data class MultiTokenCard(val prefix: String, val characterIds: List<String>) : ShowCard
 }
 
-/** Full-screen presentation of a [ShowCard]; tap anywhere to close. */
+/** The renderer's view of an engine-offered card. */
+fun ShowCardSpec.asCard(): ShowCard = when (this) {
+    is ShowCardSpec.Message -> ShowCard.Message(title, subtitle)
+    is ShowCardSpec.CharacterCard -> ShowCard.CharacterCard(prefix, characterId)
+    is ShowCardSpec.NumberCard -> ShowCard.NumberCard(number)
+    is ShowCardSpec.AlignmentCard -> ShowCard.AlignmentCard(evil)
+    is ShowCardSpec.BluffsCard -> ShowCard.BluffsCard(characterIds)
+    is ShowCardSpec.SheetCard -> ShowCard.SheetCard(characterIds)
+}
+
+/** What this card said, in one line, for the ledger ("Ben was shown: 1"). */
+fun ShowCard.describe(nameOf: (String) -> String): String = when (this) {
+    is ShowCard.Message -> listOf(title, subtitle).filter { it.isNotBlank() }.joinToString(" — ")
+    is ShowCard.CharacterCard -> "$prefix ${nameOf(characterId)}"
+    is ShowCard.NumberCard -> number.toString()
+    is ShowCard.AlignmentCard -> text.ifBlank { alignmentWord(evil) }
+    is ShowCard.BluffsCard -> "not in play: " + characterIds.joinToString { nameOf(it) }
+    is ShowCard.SheetCard -> "the character sheet"
+    is ShowCard.PointCard -> prefix + " " + playerNames.joinToString()
+    is ShowCard.MultiTokenCard -> prefix + " " + characterIds.joinToString { nameOf(it) }
+}
+
+private fun alignmentWord(evil: Boolean?): String = when (evil) {
+    true -> "EVIL"
+    false -> "GOOD"
+    null -> "NEITHER"
+}
+
+/**
+ * Full-screen presentation of a [ShowCard].
+ *
+ * **The card body is not tappable** (defect #2 — a tap anywhere used to dismiss
+ * it, including a tap by the player it was being shown to, dropping straight
+ * back to the night sheet while the phone still pointed at their face). Exit is
+ * a press-and-hold on a bottom-edge control, and **releasing it lands on the
+ * privacy cover**, never on the grimoire: the storyteller turns the phone back
+ * around and holds again (ux/night-screen §E).
+ *
+ * ⟳ FLIP rotates the content 180° for a card held out to a player sitting
+ * opposite — every card used to be upside down to its intended reader.
+ */
 @Composable
 fun FullScreenShow(
     card: ShowCard,
     viewModel: GameViewModel,
     onDismiss: () -> Unit,
+    /** Shown on the cover the card exits onto: "Night 3". */
+    coverCaption: String = "",
 ) {
+    var covered by remember { mutableStateOf(false) }
+    if (covered) {
+        PrivacyCover(caption = coverCaption, onUnlock = onDismiss)
+        return
+    }
+    var flipped by remember { mutableStateOf(false) }
     Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        onDismissRequest = { /* the card is not dismissible by a tap; hold to close */ },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+        ),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.Center,
-        ) {
-            when (card) {
-                is ShowCard.Message -> BigText(card.title, card.subtitle)
-                is ShowCard.NumberCard -> Text(
-                    text = "${card.number}",
-                    fontSize = 220.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Serif,
-                    color = AgedGold,
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 96.dp)
+                    .graphicsLayer { rotationZ = if (flipped) 180f else 0f },
+                contentAlignment = Alignment.Center,
+            ) {
+                CardBody(card, viewModel)
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 20.dp),
+            ) {
+                FilledTonalButton(onClick = { flipped = !flipped }, modifier = Modifier.heightIn(min = 56.dp)) {
+                    Text("⟳ FLIP", fontSize = 16.sp)
+                }
+                HoldToClose(onClose = { covered = true })
+            }
+        }
+    }
+}
+
+/** The 1.2 s hold that closes a card, with the ring the privacy cover uses. */
+@Composable
+private fun HoldToClose(onClose: () -> Unit) {
+    var holding by remember { mutableStateOf(false) }
+    val progress by animateFloatAsState(
+        targetValue = if (holding) 1f else 0f,
+        animationSpec = tween(durationMillis = if (holding) HOLD_MILLIS.toInt() else 150),
+        label = "card-hold",
+    )
+    Box(
+        modifier = Modifier
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(AgedGold.copy(alpha = 0.18f))
+            .drawBehind {
+                if (progress > 0f) {
+                    drawRect(color = AgedGold.copy(alpha = 0.5f), size = size.copy(width = size.width * progress))
+                }
+                drawRoundRect(color = AgedGold.copy(alpha = 0.4f), style = Stroke(width = 2f))
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        holding = true
+                        val released = withTimeoutOrNull(HOLD_MILLIS) { tryAwaitRelease() }
+                        holding = false
+                        if (released == null) onClose()
+                    },
                 )
-                is ShowCard.AlignmentCard -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        text = if (card.evil) "EVIL" else "GOOD",
-                        fontSize = 110.sp,
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        color = if (card.evil) EmberRed else TownsfolkBlue,
-                        textAlign = TextAlign.Center,
-                    )
-                    Text(
-                        text = "YOU ARE " + (if (card.evil) "EVIL" else "GOOD"),
-                        fontSize = 34.sp,
-                        fontFamily = FontFamily.Serif,
-                        color = Parchment,
-                        textAlign = TextAlign.Center,
-                    )
+            }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (holding) "keep holding…" else "HOLD TO CLOSE",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = Parchment,
+        )
+    }
+}
+
+/** How long the exit control must be held, in ms. Matches the privacy cover. */
+private const val HOLD_MILLIS: Long = 1200L
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CardBody(card: ShowCard, viewModel: GameViewModel) {
+    when (card) {
+        is ShowCard.Message -> BigText(card.title, card.subtitle)
+
+        is ShowCard.NumberCard -> Text(
+            text = "${card.number}",
+            fontSize = 220.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif,
+            color = AgedGold,
+        )
+
+        is ShowCard.AlignmentCard -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = alignmentWord(card.evil),
+                fontSize = 110.sp,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                color = when (card.evil) {
+                    true -> EmberRed
+                    false -> TownsfolkBlue
+                    null -> Parchment
+                },
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                // The guide entry's own words win; "YOU ARE GOOD" is only the
+                // fallback (defect #6).
+                text = card.text.ifBlank { "YOU ARE " + alignmentWord(card.evil) },
+                fontSize = 34.sp,
+                fontFamily = FontFamily.Serif,
+                color = Parchment,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        is ShowCard.CharacterCard -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            BigText(card.prefix)
+            val character = viewModel.characterById(card.characterId)
+            CharacterToken(character = character, size = 180.dp)
+            Text(
+                text = character?.name ?: "?",
+                fontSize = 44.sp,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                color = Parchment,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        is ShowCard.BluffsCard -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            BigText("THESE CHARACTERS\nARE NOT IN PLAY")
+            // FlowRow, not Row: a fourth bluff used to run off the screen edge
+            // (defect #33).
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) {
+                for (id in card.characterIds) {
+                    TokenWithName(character = viewModel.characterById(id), size = 100.dp)
                 }
-                is ShowCard.CharacterCard -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
-                    BigText(card.prefix)
-                    val character = viewModel.characterById(card.characterId)
-                    CharacterToken(character = character, size = 180.dp)
-                    Text(
-                        text = character?.name ?: "?",
-                        fontSize = 44.sp,
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        color = Parchment,
-                        textAlign = TextAlign.Center,
-                    )
+            }
+        }
+
+        is ShowCard.MultiTokenCard -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            BigText(card.prefix)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(horizontal = 16.dp),
+            ) {
+                for (id in card.characterIds) {
+                    TokenWithName(character = viewModel.characterById(id), size = 110.dp)
                 }
-                is ShowCard.BluffsCard -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
-                    BigText("THESE CHARACTERS\nARE NOT IN PLAY")
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        for (id in card.characterIds) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CharacterToken(character = viewModel.characterById(id), size = 100.dp)
-                            }
+            }
+        }
+
+        is ShowCard.PointCard -> Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) {
+            Text(
+                text = card.prefix,
+                fontSize = 28.sp,
+                lineHeight = 34.sp,
+                fontFamily = FontFamily.Serif,
+                fontWeight = FontWeight.Bold,
+                color = AgedGold,
+                textAlign = TextAlign.Center,
+            )
+            card.characterId?.let {
+                CharacterToken(character = viewModel.characterById(it), size = 160.dp)
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                for ((index, name) in card.playerNames.withIndex()) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = name,
+                            fontSize = 48.sp,
+                            lineHeight = 54.sp,
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            color = Parchment,
+                            textAlign = TextAlign.Center,
+                        )
+                        card.seatNumbers.getOrNull(index)?.let { seat ->
+                            Text(
+                                text = "seat $seat",
+                                fontSize = 16.sp,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center,
+                            )
                         }
                     }
                 }
-                is ShowCard.SheetCard -> CharacterSheetGrid(card.characterIds, viewModel)
             }
         }
+
+        is ShowCard.SheetCard -> CharacterSheetGrid(card.characterIds, viewModel)
     }
 }
 
@@ -203,7 +439,7 @@ private fun CharacterSheetGrid(characterIds: List<String>, viewModel: GameViewMo
                     CharacterToken(character = character, size = 62.dp)
                     Text(
                         text = character.name,
-                        fontSize = 11.sp,
+                        fontSize = 14.sp,
                         color = Parchment,
                         textAlign = TextAlign.Center,
                         maxLines = 2,
@@ -211,15 +447,6 @@ private fun CharacterSheetGrid(characterIds: List<String>, viewModel: GameViewMo
                     )
                 }
             }
-        }
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            Text(
-                text = "tap anywhere to close",
-                fontSize = 12.sp,
-                color = Color.Gray,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            )
         }
     }
 }
@@ -253,8 +480,13 @@ private fun BigText(title: String, subtitle: String = "") {
 }
 
 /**
- * Picker for what to show: the classic info-token phrases, number and
- * alignment signals, character cards, current bluffs, and free text.
+ * Picker for what to show: the classic info-token phrases, number and alignment
+ * signals, character cards, current bluffs, and free text.
+ *
+ * It no longer announces what is in play (defect #35): this is the sheet the
+ * storyteller opens while walking towards a player, and it used to sort the
+ * in-play characters first and say so out loud. The in-play shortcut survives
+ * as a collapsed group that is hidden until asked for.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -267,18 +499,16 @@ fun ShowToolSheet(
     var customText by rememberSaveable { mutableStateOf("") }
     var characterPrefix by rememberSaveable { mutableStateOf("THIS PLAYER IS") }
     var characterSearch by rememberSaveable { mutableStateOf("") }
+    var showSuggested by rememberSaveable { mutableStateOf(false) }
     val scriptCharacters = viewModel.gameData.resolve(state.script)
     val inPlayIds = state.players.mapNotNull { it.characterId }.toSet()
-    val visibleCharacters = remember(scriptCharacters, inPlayIds, characterSearch) {
+    val visibleCharacters = remember(scriptCharacters, characterSearch) {
         val needle = characterSearch.trim()
         scriptCharacters
             .filter { it.team != Team.FABLED }
             .filter { needle.isEmpty() || it.name.contains(needle, ignoreCase = true) }
-            .sortedWith(
-                compareByDescending<Character> { it.id in inPlayIds }
-                    .thenBy { it.team.ordinal }
-                    .thenBy { it.name },
-            )
+            // Alphabetical within team, and NOTHING about what is in play.
+            .sortedWith(compareBy<Character> { it.team.ordinal }.thenBy { it.name })
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -292,8 +522,9 @@ fun ShowToolSheet(
             item {
                 Text("Show a card", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
                 Text(
-                    "Hold the phone up to a player — tap the screen to close it again.",
-                    style = MaterialTheme.typography.bodySmall,
+                    "Hold the phone up to a player. The card cannot be tapped away — " +
+                        "hold the button at the bottom to close it.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 AssistChip(
@@ -309,11 +540,6 @@ fun ShowToolSheet(
             }
             item {
                 Text("Character tokens", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "Characters in play are first. Pick or type the phrase, then tap a token.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -349,6 +575,23 @@ fun ShowToolSheet(
                         .fillMaxWidth()
                         .padding(vertical = 6.dp),
                 )
+                AssistChip(
+                    onClick = { showSuggested = !showSuggested },
+                    label = { Text(if (showSuggested) "Hide suggestions" else "Suggest from this game") },
+                )
+                if (showSuggested) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        for (character in visibleCharacters.filter { it.id in inPlayIds }) {
+                            ShowCharacterTile(character) {
+                                onShow(ShowCard.CharacterCard(characterPrefix, character.id))
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -374,6 +617,30 @@ fun ShowToolSheet(
                         "DID YOU NOMINATE TODAY?",
                     )) {
                         AssistChip(onClick = { onShow(ShowCard.Message(phrase)) }, label = { Text(phrase) })
+                    }
+                }
+            }
+            item {
+                Text("Point at a seat", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "The phone does the pointing — hold it up and the player reads the name.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for ((index, seat) in state.seats.withIndex()) {
+                        AssistChip(
+                            onClick = {
+                                onShow(
+                                    ShowCard.PointCard(
+                                        prefix = "THIS PLAYER",
+                                        playerNames = listOf(seat.name),
+                                        seatNumbers = listOf(index + 1),
+                                    ),
+                                )
+                            },
+                            label = { Text("${index + 1} ${seat.name}") },
+                        )
                     }
                 }
             }
@@ -426,7 +693,7 @@ private fun ShowCharacterTile(character: Character, onClick: () -> Unit) {
         Spacer(Modifier.height(4.dp))
         Text(
             character.name,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,

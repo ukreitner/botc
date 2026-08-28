@@ -148,11 +148,12 @@ data class NightStep(
     /** True when this row still owes the storyteller something. A Skip is done by definition. */
     fun isDone(done: Set<String>): Boolean = !required || key.token in done
 
-    /** Legacy alias for the night-order id. Deleted with WP8's NightScreen. */
-    val id: String get() = slotId
-
-    /** Legacy alias: every seat this row wakes. Deleted with WP8's NightScreen. */
-    val playerIds: List<Long> get() = holderIds.ifEmpty { listOfNotNull(key.holderId) }
+    /**
+     * Every seat this row wakes: the group for a group step ([holderIds]),
+     * otherwise the single holder. WP8 replaced the deprecated `playerIds`
+     * alias with this name; `id` (an alias for [slotId]) is gone.
+     */
+    val wakes: List<Long> get() = holderIds.ifEmpty { listOfNotNull(key.holderId) }
 }
 
 /** What the storyteller entered on a step. */
@@ -360,7 +361,7 @@ data class NightPlan(
             val projected = build(state, lookup).steps
                 .filter { it.wakeCounts == WakeCount.ACT && it.gate !is StepGate.Skip }
                 .filter { it.gate !is StepGate.Reduced }
-                .flatMap { it.playerIds }
+                .flatMap { it.wakes }
                 .toSet()
             return targets.distinct().count { it in woke || it in projected }
         }
@@ -1303,7 +1304,7 @@ data class NightPlan(
             var next = state
             val ownAbility = step.wakeCounts == WakeCount.ACT && step.gate !is StepGate.Reduced
             if (step.wakeCounts != WakeCount.NONE) {
-                for (holder in step.playerIds) {
+                for (holder in step.wakes) {
                     next = ledger(
                         next,
                         LedgerKind.WOKE,

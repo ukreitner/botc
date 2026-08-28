@@ -389,7 +389,7 @@ class NightPlanTest {
             plan(state).steps.firstOrNull { it.slotId == NightMarkers.MINION_INFO },
         )
         assertEquals(WakeCount.INFORMED, minionInfo.wakeCounts)
-        assertTrue(1L in minionInfo.playerIds, "the Baron is woken for Minion info")
+        assertTrue(1L in minionInfo.wakes, "the Baron is woken for Minion info")
         assertEquals(
             0,
             NightPlan.wokeCount(state, lookup, listOf(1L)),
