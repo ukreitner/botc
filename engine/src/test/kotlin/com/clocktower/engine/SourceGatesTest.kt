@@ -8,19 +8,28 @@ import kotlin.test.assertTrue
  * The CI gates of ARCHITECTURE §4 (WP12) — grep-style structural rules that no
  * unit test can express, run as JUnit so `./gradlew :engine:test` enforces them.
  *
- * Three invariants:
+ * Five invariants:
  *  1. **I1 / §3.4.3** — no character id in `NightScreen.kt` or anywhere in
  *     the Day tab's package. Per-character behaviour belongs in `engine/rules/`.
  *  2. **D26 / §3.4.5** — `GameViewModel.kt` and `WebGameViewModel.kt` contain no
  *     `GameActions.` call; every verb goes through `GameActionsApi`.
  *  3. **D5 / §3.4.1** — no reminder label literal outside `engine/rules/` is
  *     compared with `==`; use `Tokens.key(sourceId, label)`.
+ *  4. **§4.1 / WP1** — no UI source anywhere under `app/` or `web/` names the
+ *     frozen `GameActions` façade or the deprecated `Deaths.kill`.
+ *     `GameActionsApi.kt` is the ONE file allowed to, because being that
+ *     boundary is its job. Gate 2 is the same rule for two files; this is it
+ *     for the whole UI.
+ *  5. **rules package hygiene** — no two files under `engine/rules/` declare a
+ *     top-level helper of the same name. Every registry file shares one Kotlin
+ *     package, so two same-signature helpers are a CONFLICTING_OVERLOADS build
+ *     failure rather than a shadowing bug — which is exactly what WP7-SV hit
+ *     with `seatsHolding` (FOLLOWUPS.md, WP7-SV merger note).
  *
- * Every gate is LIVE as of W6A: the last `@Ignore` came off gate 2 when
- * `GameActionsApi.newGame` landed and both view models stopped naming
- * `GameActions` at all. Gate 3 keeps its live baseline test alongside the real
- * one, because three tolerated `label ==` sites still stand (lead D5); a new
- * one fails the baseline immediately rather than waiting for a cleanup.
+ * Every gate is LIVE, and none of them may be `@Ignore`d again — the last test
+ * in this file asserts that about this file. Gates 3 and 4 keep a named
+ * baseline of the sites that still stand, so a NEW violation fails immediately
+ * instead of waiting for the cleanup that would let the strict form pass.
  */
 class SourceGatesTest {
 
@@ -30,6 +39,18 @@ class SourceGatesTest {
     private val dayScreen = "app/src/main/java/com/clocktower/grimoire/ui/screens/DayScreen.kt"
     private val androidViewModel = "app/src/main/java/com/clocktower/grimoire/ui/GameViewModel.kt"
     private val webViewModel = "web/src/wasmJsMain/kotlin/com/clocktower/grimoire/ui/WebGameViewModel.kt"
+
+    /** The one UI file allowed to name the engine's frozen verbs: being the boundary is its job. */
+    private val gameActionsApi = "app/src/main/java/com/clocktower/grimoire/ui/GameActionsApi.kt"
+
+    /** This file, so the last test can check the gates are still switched on. */
+    private val thisFile = "engine/src/test/kotlin/com/clocktower/engine/SourceGatesTest.kt"
+
+    /** One Kotlin package, nine files: every registry file sees every other file's helpers. */
+    private val rulesDir = "engine/src/main/kotlin/com/clocktower/engine/rules"
+
+    /** Every UI source root gate 4 polices. */
+    private val uiRoots = listOf("app/src/main", "web/src")
 
     /** Everything the Day tab is made of (WP9 split it up); `DayScreen.kt` leads. */
     private val daySources = listOf(
@@ -191,19 +212,228 @@ class SourceGatesTest {
     }
 
     // ------------------------------------------------------------------
+    // Gate 4 — no UI source calls the frozen façade or the deprecated kill
+    // ------------------------------------------------------------------
+
+    /** `GameActions.`, however it is qualified, and the WP1-deprecated kill verb. */
+    private val frozenFacade = Regex("\\bGameActions\\s*\\.")
+    private val deprecatedKill = Regex("\\bDeaths\\s*\\.\\s*kill\\s*\\(")
+
+    private fun facadeHits(): List<Hit> {
+        val exempt = RepoFiles.file(gameActionsApi).canonicalPath
+        val hits = mutableListOf<Hit>()
+        for (root in uiRoots) {
+            for (file in RepoFiles.kotlinSources(root)) {
+                if (file.canonicalPath == exempt) continue
+                val relative = file.relativeTo(RepoFiles.root).path
+                for ((index, line) in codeLines(file.readText())) {
+                    if (frozenFacade.containsMatchIn(line)) {
+                        hits += Hit(relative, index + 1, "GameActions.", line.trim())
+                    }
+                    if (deprecatedKill.containsMatchIn(line)) {
+                        hits += Hit(relative, index + 1, "Deaths.kill", line.trim())
+                    }
+                }
+            }
+        }
+        return hits
+    }
+
+    /**
+     * `GameActions` was gutted to a façade in WP0 and frozen; `Deaths.kill`
+     * was deprecated in WP1 because it skips protections entirely. Both are
+     * reachable from every UI file, and a screen that reaches for one of them
+     * silently bypasses the kill funnel or the view model's undo label.
+     *
+     * `GameActionsApi.kt` is exempt on purpose — it is the boundary, and it is
+     * the file the other 60-odd are supposed to go through.
+     */
+    @Test
+    fun `no app or web source calls the frozen facade or the deprecated kill`() {
+        // Live baseline: two calls in GameExtras.kt still reach past the API for
+        // a verb the API already has (`GameActionsApi.moveSeat`). Not this
+        // package's file to edit; a THIRD one fails here immediately.
+        val known = setOf(
+            "app/src/main/java/com/clocktower/grimoire/ui/screens/GameExtras.kt" to "GameActions.",
+        )
+        val hits = facadeHits()
+        val fresh = hits.filterNot { (it.where.replace('\\', '/') to it.what) in known }
+        assertTrue(
+            fresh.isEmpty(),
+            "call engine verbs through GameActionsApi, and kills through Deaths.attempt " +
+                "with a real KillCause (§4.1, WP1):\n" + fresh.joinToString("\n"),
+        )
+        assertTrue(
+            hits.size <= 2,
+            "façade/deprecated-kill call sites grew from 2 to ${hits.size}:\n" +
+                hits.joinToString("\n"),
+        )
+    }
+
+    /**
+     * The exemption has to be pointing at something. If `GameActionsApi.kt`
+     * stopped naming the engine's verbs entirely, gate 4 would be exempting a
+     * file that needs no exemption, and the next reader would not know it could
+     * be deleted.
+     */
+    @Test
+    fun `the exempt boundary file is the one that really holds the engine calls`() {
+        val api = assertNotNull(RepoFiles.textOrNull(gameActionsApi), "missing $gameActionsApi")
+        val lines = codeLines(api)
+        assertTrue(
+            lines.any { (_, line) -> frozenFacade.containsMatchIn(line) } ||
+                lines.any { (_, line) -> deprecatedKill.containsMatchIn(line) },
+            "GameActionsApi.kt no longer needs its exemption — delete it from gate 4",
+        )
+    }
+
+    // ------------------------------------------------------------------
+    // Gate 5 — engine/rules/ helper names never collide across files
+    // ------------------------------------------------------------------
+
+    /** A top-level `private`/`internal` `fun` or `val` declaration. */
+    private val topLevelHelper =
+        Regex("^(private|internal)\\s+(?:inline\\s+)?(?:fun|val)\\s+(?:<[^>]*>\\s*)?([A-Za-z0-9_]+)")
+
+    /** Helper name -> the rules files that declare it, with its visibility. */
+    private fun rulesHelpers(): Map<String, List<Pair<String, String>>> {
+        val found = mutableMapOf<String, MutableList<Pair<String, String>>>()
+        for (file in RepoFiles.kotlinSources(rulesDir)) {
+            for ((_, line) in codeLines(file.readText())) {
+                val match = topLevelHelper.find(line) ?: continue
+                found.getOrPut(match.groupValues[2]) { mutableListOf() }
+                    .add(file.name to match.groupValues[1])
+            }
+        }
+        return found
+    }
+
+    /**
+     * The `seatsHolding` regression (FOLLOWUPS.md, WP7-SV merger note).
+     *
+     * All nine registry files live in `com.clocktower.engine.rules`, so a
+     * top-level helper is visible to every other file in the package —
+     * `internal` ones by design, `private` ones because a same-signature
+     * duplicate is a CONFLICTING_OVERLOADS compile error, not a shadow. WP7-FAB
+     * exported `internal fun seatsHolding`; WP7-SV wrote a `private fun` of the
+     * same name and signature and the module stopped compiling. The fix was to
+     * edition-prefix it (`svSeatsHolding`), and that is the rule this gate
+     * keeps: a helper that is not obviously unique gets its edition's prefix.
+     *
+     * Three names are shared today and compile only because their signatures
+     * differ. They are named here so the set cannot grow quietly; anything new
+     * is edition-prefixed instead.
+     */
+    @Test
+    fun `rules files never share a top-level helper name`() {
+        val shared = setOf("demonAttack", "hasToken", "isSpent")
+        val helpers = rulesHelpers()
+        val collisions = helpers
+            .filterValues { it.map { (file, _) -> file }.distinct().size > 1 }
+            .mapValues { (_, v) -> v.sortedBy { it.first } }
+
+        val fresh = collisions.filterKeys { it !in shared }
+        assertTrue(
+            fresh.isEmpty(),
+            "two rules files declare the same top-level helper. One package, one " +
+                "namespace: prefix it with the edition (svSeatsHolding, bmrHasToken):\n" +
+                fresh.entries.joinToString("\n") { (name, where) ->
+                    "  $name  ${where.joinToString(", ") { "${it.second} in ${it.first}" }}"
+                },
+        )
+        assertTrue(
+            collisions.keys.size <= shared.size,
+            "shared helper names grew beyond the known ${shared.sorted()}: ${collisions.keys.sorted()}",
+        )
+
+        // An `internal` helper is a deliberate package-wide export, so it may
+        // never be shadowed by anything, in any file, under any visibility.
+        val exported = helpers.filterValues { list -> list.any { it.second == "internal" } }
+        val shadowed = exported.filterValues { it.map { (file, _) -> file }.distinct().size > 1 }
+        assertTrue(
+            shadowed.isEmpty(),
+            "an internal rules helper is redeclared elsewhere in the package:\n" +
+                shadowed.entries.joinToString("\n") { (name, where) ->
+                    "  $name  ${where.joinToString(", ") { "${it.second} in ${it.first}" }}"
+                },
+        )
+    }
+
+    // ------------------------------------------------------------------
     // The gates are only worth anything if they can see the sources.
     // ------------------------------------------------------------------
 
     @Test
     fun `the gates can find every file they police`() {
-        for (relative in listOf(nightScreen, androidViewModel, webViewModel) + daySources) {
+        val named = listOf(nightScreen, androidViewModel, webViewModel, gameActionsApi, thisFile) +
+            daySources
+        for (relative in named) {
             assertNotNull(RepoFiles.textOrNull(relative), "gate target not found: $relative")
         }
-        for (root in scannedRoots) {
+        for (root in scannedRoots + uiRoots) {
             assertTrue(
                 RepoFiles.kotlinSources(root).isNotEmpty(),
-                "no Kotlin sources under $root — the label gate would pass vacuously",
+                "no Kotlin sources under $root — a gate over it would pass vacuously",
             )
+        }
+
+        // Gate 4 sees the whole UI, not just the handful of files named above.
+        val uiSources = uiRoots.flatMap { RepoFiles.kotlinSources(it) }
+        assertTrue(uiSources.size >= 40, "gate 4 sees only ${uiSources.size} UI sources")
+        for (relative in named - thisFile) {
+            assertTrue(
+                uiSources.any { it.canonicalPath == RepoFiles.file(relative).canonicalPath } ||
+                    !relative.startsWith("app/") && !relative.startsWith("web/"),
+                "$relative is not reached by the UI walk",
+            )
+        }
+
+        // Gate 5 sees all nine registry files and their helpers.
+        val ruleFiles = RepoFiles.kotlinSources(rulesDir)
+        assertTrue(ruleFiles.size >= 9, "only ${ruleFiles.size} files under $rulesDir")
+        assertTrue(
+            rulesHelpers().size >= 100,
+            "gate 5 found only ${rulesHelpers().size} top-level helpers — the regex has rotted",
+        )
+
+        // Gate 1 has ids to look for and gate 3 has labels to look for.
+        assertTrue(data.characters.size >= 150, "only ${data.characters.size} characters loaded")
+        assertTrue(
+            data.characters.flatMap { it.allReminders }.isNotEmpty(),
+            "no reminder labels loaded — the label gate would pass vacuously",
+        )
+    }
+
+    /**
+     * The one failure mode a CI gate cannot catch about itself: being switched
+     * off. Eight `@Ignore`s came off this file and the fixtures over WP12's two
+     * passes, each naming the package that would deliver it. There are no
+     * packages left to wait for, so there is no reason left to skip a gate.
+     *
+     * The needle is assembled from pieces so this test is not itself a hit.
+     */
+    @Test
+    fun `no gate in this file is switched off`() {
+        val source = assertNotNull(RepoFiles.textOrNull(thisFile), "cannot read $thisFile")
+        val ignore = "@" + "Ignore"
+        val hits = codeLines(source)
+            .filter { (_, line) -> ignore in line }
+            .map { (index, line) -> Hit(thisFile, index + 1, ignore, line.trim()) }
+        assertTrue(
+            hits.isEmpty(),
+            "every CI gate is live as of WP12 pass 2 — fix the violation, do not skip the gate:\n" +
+                hits.joinToString("\n"),
+        )
+        // And the gates are all still here.
+        for (name in listOf(
+            "NightScreen branches on no character id",
+            "the day package names no character id",
+            "view models contain no GameActions call",
+            "no reminder label literal outside engine rules is compared with equals",
+            "no app or web source calls the frozen facade or the deprecated kill",
+            "rules files never share a top-level helper name",
+        )) {
+            assertTrue("`$name`" in source, "gate `$name` has gone missing")
         }
     }
 }
