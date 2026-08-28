@@ -161,9 +161,10 @@ fun NightScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            // Room at the foot for the docked timer, so the last card's
-            // primary button is never underneath it.
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 72.dp),
+            // The timer no longer floats over this sheet (it docks in the
+            // progress strip), so the foot only needs room to scroll the last
+            // card clear of the navigation bar.
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             itemsIndexedRows(rows, window) { index, row ->

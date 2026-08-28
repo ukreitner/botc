@@ -35,6 +35,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clocktower.grimoire.ui.components.DayTimer
+import com.clocktower.grimoire.ui.components.HostTimerInBar
+import com.clocktower.grimoire.ui.components.TimerControls
+import com.clocktower.grimoire.ui.components.TimerFormat
+import com.clocktower.grimoire.ui.components.TimerState
+import com.clocktower.grimoire.ui.components.rememberTimerNow
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.Twilight
@@ -152,7 +158,17 @@ fun ProgressStrip(
     onDim: () -> Unit,
     onToggleList: () -> Unit,
     modifier: Modifier = Modifier,
+    timer: TimerState = DayTimer.shared,
 ) {
+    // The discussion timer docks HERE on the Night tab, and hosting it stands
+    // the shell's floating pill down. The pill was aligned BottomStart "out of
+    // the way of the night sheet's primary button" — but that button is full
+    // width, so the pill sat squarely on it and swallowed its taps
+    // (playtest B P1 #4).
+    HostTimerInBar(timer)
+    val now = rememberTimerNow(timer)
+    var timerOpen by remember { mutableStateOf(false) }
+
     Surface(color = Twilight, tonalElevation = 4.dp, modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -172,6 +188,18 @@ fun ProgressStrip(
                     modifier = Modifier.weight(1f),
                 )
                 Text(
+                    text = if (timer.idle) "TIMER" else TimerFormat.barLabel(timer, now),
+                    fontSize = NIGHT_MIN_SP.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (timer.idle) MaterialTheme.colorScheme.onSurfaceVariant else AgedGold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { timerOpen = !timerOpen }
+                        .heightIn(min = 44.dp)
+                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                        .semantics { contentDescription = "Discussion timer" },
+                )
+                Text(
                     text = if (listOpen) "hide sheet" else "whole sheet",
                     fontSize = NIGHT_MIN_SP.sp,
                     color = AgedGold,
@@ -182,7 +210,9 @@ fun ProgressStrip(
                         .padding(horizontal = 8.dp, vertical = 12.dp),
                 )
                 Text(
-                    text = "⏻ ${dimLabel(dimLevel)}",
+                    // "DIM", not U+23FB: the bundled font has no glyph for it
+                    // and the control rendered as an empty box (playtest B P2 #12).
+                    text = "DIM ${dimLabel(dimLevel)}",
                     fontSize = NIGHT_MIN_SP.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (dimLevel == 0) MaterialTheme.colorScheme.onSurfaceVariant else AgedGold,
@@ -193,6 +223,9 @@ fun ProgressStrip(
                         .padding(horizontal = 8.dp, vertical = 12.dp)
                         .semantics { contentDescription = "Screen dimming, now ${dimLabel(dimLevel)}" },
                 )
+            }
+            if (timerOpen) {
+                TimerControls(timer, now, onDone = { timerOpen = false })
             }
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth()) {
                 for ((index, tone) in segments.withIndex()) {

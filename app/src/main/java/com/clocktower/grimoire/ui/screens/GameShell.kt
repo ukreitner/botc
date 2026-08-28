@@ -357,15 +357,14 @@ fun GameShell(
                 }
             }
             // Mounted on EVERY tab so its deadline survives a tab switch
-            // (grimoire-and-seats §13, P1-17); it docks out of the way of the
-            // night sheet's primary button rather than being destroyed.
+            // (grimoire-and-seats §13, P1-17). The Day and Night tabs dock it
+            // in a bar of their own (`HostTimerInBar`) and this pill stands
+            // down there: a floating control cannot be kept clear of the night
+            // card's FULL-WIDTH primary button, and BottomStart landed squarely
+            // on it, stealing its taps (playtest B P1 #4).
             DiscussionTimer(
                 modifier = Modifier
-                    .align(
-                        // Away from the night sheet's primary button and its
-                        // dim control, which both live on the right.
-                        if (tab == GameTab.NIGHT) Alignment.BottomStart else Alignment.BottomEnd,
-                    )
+                    .align(Alignment.BottomEnd)
                     .padding(12.dp),
             )
         }
