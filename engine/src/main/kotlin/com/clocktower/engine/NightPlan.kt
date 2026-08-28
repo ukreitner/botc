@@ -276,8 +276,36 @@ data class NightPlan(
             return NightPlan(
                 cycle = state.cycle,
                 isFirstNight = ctx.isFirstNight,
-                steps = restamp(ctx, base, base + inserted).sortedBy { it.order },
+                steps = beforeDawn(restamp(ctx, base, base + inserted)).sortedBy { it.order },
             )
+        }
+
+        /**
+         * Dawn closes the night, so nothing may sort after it.
+         *
+         * Two paths could put a row there. `restamp` stamps an out-of-order row
+         * at `cursor + 0.5`, and the cursor is the Dawn marker itself once
+         * everything before it is done or skipped; and `positionOf` falls back to
+         * "past the end of the list" for a slot tonight's order does not carry.
+         * Either way the Professor's re-run of a resurrected Grandmother's first
+         * night landed AFTER the Dawn card, which is also the card whose primary
+         * button opens the day (playtest D, P1-8).
+         *
+         * Relative order among the moved rows is kept; they land just before Dawn
+         * and after every base row, which is where "insert after the cursor"
+         * meant to put them.
+         */
+        private fun beforeDawn(steps: List<NightStep>): List<NightStep> {
+            val dawn = steps.firstOrNull { it.slotId == NightMarkers.DAWN } ?: return steps
+            val over = steps
+                .filter { it.slotId != NightMarkers.DAWN && it.order >= dawn.order }
+                .sortedBy { it.order }
+            if (over.isEmpty()) return steps
+            val gap = 0.5 / (over.size + 1)
+            val moved = over
+                .mapIndexed { n, step -> step.key.token to (dawn.order - 0.5 + gap * (n + 1)) }
+                .toMap()
+            return steps.map { step -> moved[step.key.token]?.let { step.copy(order = it) } ?: step }
         }
 
         // ---- resolution ---------------------------------------------------
