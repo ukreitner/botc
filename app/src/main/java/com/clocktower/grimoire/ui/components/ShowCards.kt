@@ -36,6 +36,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -146,7 +147,10 @@ fun ShowCard.describe(nameOf: (String) -> String): String = when (this) {
     is ShowCard.AlignmentCard -> text.ifBlank { alignmentWord(evil) }
     is ShowCard.BluffsCard -> "not in play: " + characterIds.joinToString { nameOf(it) }
     is ShowCard.SheetCard -> "the character sheet"
-    is ShowCard.PointCard -> prefix + " " + playerNames.joinToString()
+    // The character is half the meaning: "ONE OF THESE PLAYERS IS THE Chef —
+    // Ana, Dan", never "…IS THE Ana, Dan" (playtest B P2 #16).
+    is ShowCard.PointCard ->
+        prefix + (characterId?.let { " " + nameOf(it) }.orEmpty()) + " — " + playerNames.joinToString()
     is ShowCard.MultiTokenCard -> prefix + " " + characterIds.joinToString { nameOf(it) }
 }
 
@@ -197,12 +201,22 @@ fun FullScreenShow(
         // where the phone's gesture strip covered all but a sliver of it and
         // the storyteller could not close the card at all.
         Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-            val safeBottom = overlaySafeBottom()
+            // The insets are the ones measured at the app ROOT: inside a
+            // Dialog's own window Compose reports zero, which is how FLIP and
+            // HOLD TO CLOSE came to be drawn inside the gesture strip, sliced
+            // in half and untappable (playtest B P1 #5).
+            val safeBottom = dialogSafeBottom()
+            // …plus the height the window itself pushed the content down by,
+            // which is exactly how far it now hangs off the bottom edge.
+            val overflow = dialogTopOverflow()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars)
-                    .padding(top = overlaySafeTop(), bottom = bottomActionClearance(safeBottom))
+                    .padding(
+                        top = overlaySafeTop(),
+                        bottom = bottomActionClearance(safeBottom) + overflow,
+                    )
                     .graphicsLayer { rotationZ = if (flipped) 180f else 0f },
                 contentAlignment = Alignment.Center,
             ) {
@@ -216,7 +230,7 @@ fun FullScreenShow(
                     // Bottom only: a side navigation bar in landscape must not
                     // shift a row that is meant to stay centred.
                     .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))
-                    .padding(bottom = bottomActionPadding(safeBottom)),
+                    .padding(bottom = bottomActionPadding(safeBottom) + overflow),
             ) {
                 FilledTonalButton(onClick = { flipped = !flipped }, modifier = Modifier.heightIn(min = 56.dp)) {
                     Text("⟳ FLIP", fontSize = 16.sp)
@@ -529,7 +543,13 @@ fun ShowToolSheet(
             .sortedWith(compareBy<Character> { it.team.ordinal }.thenBy { it.name })
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Fully expanded from the first frame: half-open, the sheet's own search
+    // field landed under the home indicator and `audit` called its centre
+    // untappable (playtest B P2 #20).
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()

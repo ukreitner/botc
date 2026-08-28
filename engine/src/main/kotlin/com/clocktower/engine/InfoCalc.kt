@@ -49,6 +49,12 @@ data class InfoResult(
     val caveats: List<String> = emptyList(),
     /** True when the holder's ability is not working at all. */
     val abilityMalfunctions: Boolean = false,
+    /**
+     * The words above the token on a character card, when the physical info
+     * token says something more specific than "THIS CHARACTER" — the
+     * Undertaker's is "THIS CHARACTER DIED TODAY".
+     */
+    val cardPrefix: String = "",
 )
 
 /**
@@ -255,7 +261,14 @@ object InfoCalc {
                 else -> "${player.name} has no ability ($sourceName)."
             }
         }
-        if (!player.alive) notes += "${player.name} is dead — they normally don't act."
+        // …but not for a character whose ability is MEANT to fire from the
+        // grave. The Ravenkeeper's own card already says "dead — acts anyway",
+        // and the two lines contradicted each other (playtest B P2 #15).
+        val actsWhenDead =
+            CharacterRules.all[Character.normalizeId(player.characterId.orEmpty())]?.keepsAbilityWhenDead
+        if (!player.alive && actsWhenDead != true) {
+            notes += "${player.name} is dead — they normally don't act."
+        }
         return notes
     }
 
@@ -323,11 +336,25 @@ object InfoCalc {
                 .map { Answer.Characters(listOf(it.id)) }
         }
 
+        // A lie must have the SAME SHAPE as the truth: a "1 of 2 players"
+        // answer lied about with one name is not a lie the storyteller can
+        // show (playtest B P0 #1). Every generated set is the same size as the
+        // true one and disjoint from it, so it is false by construction.
         is Answer.Players -> {
             val real = answer.ids.toSet()
-            ctx.state.seats.filterNot { it.id in real }
-                .take(MAX_LIES)
-                .map { Answer.Players(listOf(it.id), answer.characterId) }
+            // Never the recipient: a card that points at the player holding it
+            // tells them nothing, true or false.
+            val others = ctx.state.seats.filterNot { it.id in real || it.id == ctx.holder?.id }
+            when {
+                answer.ids.size <= 1 ->
+                    others.take(MAX_LIES).map { Answer.Players(listOf(it.id), answer.characterId) }
+
+                others.size < answer.ids.size -> emptyList()
+
+                else -> others.windowed(answer.ids.size, step = 1)
+                    .take(MAX_LIES)
+                    .map { window -> Answer.Players(window.map { it.id }, answer.characterId) }
+            }
         }
 
         // Prose answers can only be lied about by the storyteller; the calculator
@@ -489,6 +516,9 @@ object InfoCalc {
             answer = Answer.Characters(listOfNotNull(characterId)),
             headline = "Show: ${character?.name ?: "?"}",
             detail = "${player?.name ?: "?"} was executed today",
+            // The physical info token reads "THIS CHARACTER DIED TODAY"; the
+            // card printed the generic half of it (playtest B P2 #17).
+            cardPrefix = "THIS CHARACTER DIED TODAY",
             caveats = player?.let { misregistrations(ctx, listOf(it)) } ?: emptyList(),
         )
     }
@@ -636,7 +666,9 @@ object InfoCalc {
                 "Dead ($dead) don't outnumber living ($alive) — the King doesn't wake",
             )
         }
-        val aliveSeats = ctx.players.filter { it.alive }
+        // Never the King's own token: "you learn 1 ALIVE character" is
+        // information, and their own is not.
+        val aliveSeats = ctx.players.filter { it.alive && it.id != ctx.holder?.id }
         return InfoResult(
             answer = Answer.Characters(aliveSeats.mapNotNull { it.characterId }.take(1)),
             headline = "Show 1 alive character",
@@ -644,40 +676,131 @@ object InfoCalc {
         )
     }
 
+    /**
+     * "You start knowing that **1 of 2 players** is a particular X" — the
+     * Washerwoman, the Librarian and the Investigator.
+     *
+     * The card is a PAIR and one character token: exactly one of the two really
+     * is that character, the other is a decoy, and **neither is the recipient**
+     * (playtest B P0 #1 — the engine used to hand the whole candidate set plus
+     * the first candidate's token to the card, which with one candidate is a
+     * flat reveal and with five is nonsense).
+     */
     private fun startKnowing(ctx: Ctx, team: Team, label: String): InfoResult {
-        val inPlay = ctx.players.filter { ctx.character(it)?.team == team }
+        val holderId = ctx.holder?.id
+        val others = ctx.players.filter { it.id != holderId }
+        val inPlay = others.filter { ctx.character(it)?.team == team }
         if (inPlay.isEmpty()) {
+            // A lie here keeps the real shape: a pair of players and a
+            // character token that is NOT in play.
+            val decoyPair = others.firstOrNull()?.let { pointPair(ctx, it, holderId) }
             return InfoResult(
                 answer = Answer.Count(0, 0, 0),
                 headline = "No $label in play" + if (team == Team.OUTSIDER) " — show the 0 signal" else "",
-                alternatives = ctx.script.filter { it.team == team }
-                    .take(MAX_LIES)
-                    .map { Answer.Characters(listOf(it.id)) },
+                detail = "Show the '0' signal — there is no $label to point at.",
+                alternatives = if (decoyPair == null) {
+                    emptyList()
+                } else {
+                    ctx.script
+                        .filter { it.team == team && Character.normalizeId(it.id) !in ctx.inPlayIds }
+                        .take(MAX_LIES)
+                        .map { Answer.Players(decoyPair, it.id) }
+                },
                 caveats = misregistrations(ctx, ctx.players),
             )
         }
+        val trueHolder = inPlay.first()
+        val characterId = trueHolder.characterId
+        val characterName = ctx.character(trueHolder)?.name ?: "?"
+        val pair = pointPair(ctx, trueHolder, holderId)
+            ?: return InfoResult(
+                answer = Answer.Players(listOf(trueHolder.id), characterId),
+                headline = "${ctx.name(trueHolder)} is the $characterName — nobody left to pair them with",
+                caveats = misregistrations(ctx, ctx.players),
+            )
+        val decoyName = pair.filter { it != trueHolder.id }
+            .mapNotNull { ctx.state.player(it)?.name }
+            .joinToString()
         return InfoResult(
-            answer = Answer.Players(inPlay.map { it.id }, inPlay.first().characterId),
-            headline = "$label in play: " + inPlay.joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" },
-            detail = "Show one of those character tokens, point to that player plus 1 wrong player.",
+            answer = Answer.Players(pair, characterId),
+            headline = "1 of 2 players is the $characterName — " +
+                "${ctx.name(trueHolder)} really is, $decoyName is the decoy",
+            detail = "Show the $characterName token, then point at " +
+                pair.mapNotNull { id -> ctx.state.player(id)?.name }.joinToString(" and ") +
+                ". Other $label in play: " +
+                (
+                    inPlay.filter { it.id != trueHolder.id }
+                        .joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" }
+                        .ifEmpty { "none" }
+                    ),
+            // The two lies that keep the card's shape: same pair with a wrong
+            // token, and the true token over a pair that does not contain them.
+            alternatives = startKnowingLies(ctx, team, pair, trueHolder, characterId),
             caveats = misregistrations(ctx, ctx.players),
         )
+    }
+
+    /**
+     * [trueHolder] plus one decoy, in seat order — never [excludeId], who is the
+     * player the card is being shown to.
+     */
+    private fun pointPair(ctx: Ctx, trueHolder: Player, excludeId: Long?): List<Long>? {
+        val seats = ctx.players
+        val start = seats.indexOfFirst { it.id == trueHolder.id }
+        if (start < 0) return null
+        for (offset in 1 until seats.size) {
+            val candidate = seats[(start + offset) % seats.size]
+            if (candidate.id == trueHolder.id || candidate.id == excludeId) continue
+            val pairIds = seats.filter { it.id == trueHolder.id || it.id == candidate.id }.map { it.id }
+            return pairIds
+        }
+        return null
+    }
+
+    /** Same shape, wrong content: a wrong token, or a pair without the true one. */
+    private fun startKnowingLies(
+        ctx: Ctx,
+        team: Team,
+        pair: List<Long>,
+        trueHolder: Player,
+        characterId: String?,
+    ): List<Answer> {
+        val wrongTokens = ctx.script
+            .filter {
+                it.team == team && Character.normalizeId(it.id) != Character.normalizeId(characterId.orEmpty())
+            }
+            .sortedBy { if (Character.normalizeId(it.id) in ctx.inPlayIds) 1 else 0 }
+            .take(2)
+            .map { Answer.Players(pair, it.id) }
+        val wrongPair = ctx.players
+            .filter { it.id != trueHolder.id && it.id != ctx.holder?.id }
+            .take(2)
+            .takeIf { it.size == 2 }
+            ?.let { listOf(Answer.Players(it.map { p -> p.id }, characterId)) }
+            .orEmpty()
+        return wrongTokens + wrongPair
     }
 
     private fun sage(ctx: Ctx): InfoResult {
         val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
         if (demons.isEmpty()) return InfoResult(Answer.Message("?"), "No Demon in the grimoire")
+        // "You learn 2 players, 1 of which is the Demon" — a bare Demon is a
+        // full reveal, so the pair is built here, never by the storyteller.
+        val demon = demons.first()
+        val pair = pointPair(ctx, demon, ctx.holder?.id) ?: listOf(demon.id)
         return InfoResult(
-            answer = Answer.Players(demons.map { it.id }),
-            headline = "Point to 2 players: one must be the Demon",
-            detail = "Demon: ${demons.joinToString { ctx.name(it) }} — pair with any other player",
+            answer = Answer.Players(pair),
+            headline = "1 of 2 players is the Demon — ${ctx.name(demon)} really is",
+            detail = "Point at " + pair.mapNotNull { ctx.state.player(it)?.name }.joinToString(" and "),
             caveats = listOf("Only if the Demon killed the Sage; other deaths don't wake them."),
         )
     }
 
     private fun knight(ctx: Ctx): InfoResult {
         val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
-        val notDemon = ctx.players.filterNot { p -> demons.any { it.id == p.id } }
+        val notDemon = ctx.players.filter { p ->
+            p.id != ctx.holder?.id && demons.none { it.id == p.id }
+        }
         return InfoResult(
             answer = Answer.Players(notDemon.take(2).map { it.id }),
             headline = "Point to 2 players that are NOT the Demon",
@@ -687,20 +810,26 @@ object InfoCalc {
     }
 
     private fun steward(ctx: Ctx): InfoResult {
-        val good = ctx.players.filter { !ctx.isEvil(it) }
+        // Never the Steward themselves: they already know they are good.
+        val good = ctx.players.filter { !ctx.isEvil(it) && it.id != ctx.holder?.id }
         return InfoResult(
             answer = Answer.Players(good.take(1).map { it.id }),
-            headline = "Point to 1 good player",
+            headline = "Point to 1 good player" +
+                good.firstOrNull()?.let { " — ${ctx.name(it)}" }.orEmpty(),
             detail = "Good players: ${good.joinToString { ctx.name(it) }}",
             caveats = misregistrations(ctx, ctx.players),
         )
     }
 
     private fun noble(ctx: Ctx): InfoResult {
-        val evil = ctx.players.filter { ctx.isEvil(it) }
-        val good = ctx.players.filter { !ctx.isEvil(it) }
+        val others = ctx.players.filter { it.id != ctx.holder?.id }
+        val evil = others.filter { ctx.isEvil(it) }
+        val good = others.filter { !ctx.isEvil(it) }
+        val trio = (evil.take(1) + good.take(2)).sortedBy { p ->
+            ctx.players.indexOfFirst { it.id == p.id }
+        }
         return InfoResult(
-            answer = Answer.Players((evil.take(1) + good.take(2)).map { it.id }),
+            answer = Answer.Players(trio.map { it.id }),
             headline = "Point to 3 players: exactly 1 evil, 2 good",
             detail = "Evil players: ${evil.joinToString { ctx.name(it) }}",
             caveats = misregistrations(ctx, ctx.players),
@@ -708,7 +837,7 @@ object InfoCalc {
     }
 
     private fun bountyHunter(ctx: Ctx): InfoResult {
-        val evil = ctx.players.filter { ctx.isEvil(it) }
+        val evil = ctx.players.filter { ctx.isEvil(it) && it.id != ctx.holder?.id }
         return InfoResult(
             answer = Answer.Players(evil.take(1).map { it.id }),
             headline = "Point to 1 evil player (mark them 'Known')",
@@ -751,11 +880,12 @@ object InfoCalc {
     }
 
     private fun balloonist(ctx: Ctx): InfoResult {
-        val byType = ctx.players
+        val others = ctx.players.filter { it.id != ctx.holder?.id }
+        val byType = others
             .mapNotNull { p -> ctx.character(p)?.let { c -> c.team to p } }
             .groupBy({ it.first }, { it.second })
         return InfoResult(
-            answer = Answer.Players(ctx.players.take(1).map { it.id }),
+            answer = Answer.Players(others.take(1).map { it.id }),
             headline = "Show a player of a DIFFERENT character type than last night",
             detail = byType.entries.joinToString("\n") { (team, ps) ->
                 "${team.displayName}: ${ps.joinToString { ctx.name(it) }}"

@@ -46,6 +46,57 @@ class BriefingsTest {
         briefing.of(kind).map { it.text }
 
     // ==================================================================
+    // The dawn card's "your notes"
+    // ==================================================================
+
+    @Test
+    fun `the dawn notes carry what the night did and what does not lift`() {
+        var state = newGame(tb, listOf("Ana", "Ben", "Cleo", "Dan", "Eve", "Fay", "Gus", "Hal"))
+        for ((name, id) in listOf(
+            "Ana" to "imp", "Ben" to "poisoner", "Cleo" to "empath", "Dan" to "monk",
+            "Eve" to "chef", "Fay" to "mayor", "Gus" to "butler", "Hal" to "virgin",
+        )) {
+            state = assign(state, name, id)
+        }
+        state = night(state)
+        val cleo = seat(state, "Cleo")
+        val ben = seat(state, "Ben")
+
+        // The Poisoner chose Cleo — a mark that outlives the dawn sweep.
+        state = Effects.place(
+            state = state,
+            target = cleo,
+            kind = EffectKind.POISONED,
+            sourceCharacterId = "poisoner",
+            sourcePlayerId = ben,
+            until = Until.DUSK,
+            label = "Poisoned",
+        ).state
+        state = Ledger.choice(state, "poisoner", ben, listOf(cleo))
+        state = Ledger.told(state, cleo, "empath", shown = "1", impaired = true)
+
+        val dawn = Briefings.at(state, lookup, BriefingSlot.DAWN)
+        val notes = dawn.items.map { it.text }
+
+        assertTrue(
+            notes.any { "Cleo" in it && "1" in it },
+            "the card shown to Cleo is in the notes: ${'$'}notes",
+        )
+        assertTrue(
+            notes.any { "Ben" in it && "Cleo" in it },
+            "the Poisoner's choice is in the notes: ${'$'}notes",
+        )
+        assertTrue(
+            notes.any { "Cleo" in it && "does not lift at dawn" in it },
+            "a poisoning that runs to dusk is still standing at dawn: ${'$'}notes",
+        )
+        assertTrue(
+            dawn.items.any { it.kind == BriefingKind.PRIVATE },
+            "and none of it is said out loud",
+        )
+    }
+
+    // ==================================================================
     // The user's Professor request, end to end
     // ==================================================================
 

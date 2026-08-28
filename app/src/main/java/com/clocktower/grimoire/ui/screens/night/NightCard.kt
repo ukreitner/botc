@@ -49,6 +49,8 @@ import com.clocktower.engine.NightMarkers
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
+import com.clocktower.engine.Prompt
+import com.clocktower.engine.PromptKind
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -90,6 +92,12 @@ fun NightCard(
     onBack: () -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Questions the engine raised from this row and is still owed — the Imp's
+     * star pass. They are asked HERE, on the card, before the row is left
+     * (playtest B P0 #3); the sheet keeps the row open until they are answered.
+     */
+    prompts: List<Prompt> = emptyList(),
 ) {
     val key = step.key
     // Keyed on the CYCLE as well as the step: last night's two lit chips must
@@ -118,11 +126,23 @@ fun NightCard(
             null
         }
     }
-    val offers = remember(step.cards, info, state) {
-        (step.cards + info?.let { NightPlan.cardsFor(state, it) }.orEmpty())
+    val answerCards = remember(info, state) {
+        info?.let { result ->
+            NightPlan.cardsFor(state, result) { id -> viewModel.characterById(id)?.name ?: id }
+        }.orEmpty()
+    }
+    val offers = remember(step.cards, answerCards) {
+        (step.cards + answerCards)
             .map { UiOffer(it.label, it.card.asCard(), it.truthful, it.editable) }
             .distinctBy { it.label }
     }
+    // The card the primary button is PROMISING. `SHOW "0" TO CLEO` used to tick
+    // the row and advance without ever putting a card on screen or writing a
+    // `shown:` row, so the Chef got nothing and the sheet said the step was
+    // done (playtest B P1 #6).
+    val truthCard = remember(answerCards) { answerCards.firstOrNull { it.truthful }?.card?.asCard() }
+    val truthful = remember(offers) { offers.filter { it.truthful } }
+    val lies = remember(offers) { offers.filterNot { it.truthful } }
     val answer = info?.let {
         answerLabel(
             it.answer,
@@ -158,16 +178,29 @@ fun NightCard(
         deathHeadline(outcome, state.player(id)?.name.orEmpty())
     }.trim(' ', '·')
 
+    // A card the storyteller has deliberately chosen from the offers. It, and
+    // not the computed truth, is then what the primary promises: for a poisoned
+    // holder the card itself says "give false info", and the one gold button
+    // must not be the true answer (playtest B P1 #9).
+    var chosen by remember(state.cycle, key.token, info) { mutableStateOf<UiOffer?>(null) }
+    val owesFalseInfo = info != null && mustNotShowTruth(info.obligation, info.abilityMalfunctions)
+    val shownAnswer = when {
+        chosen != null -> offerAnswerText(chosen!!.label)
+        owesFalseInfo -> ""
+        else -> answer
+    }
+
     val isDawn = step.slotId == NightMarkers.DAWN
     val label = primaryLabel(
         picked = pick.playerIds.mapNotNull { state.player(it)?.name },
         places = placedLabels(effects),
         deathLine = deathLine,
-        answer = answer,
+        answer = shownAnswer,
         holder = holderName,
         none = pick.none,
         skipped = skipped,
         dawn = isDawn,
+        impairedHolder = if (owesFalseInfo && chosen == null) holderName else "",
     )
 
     Surface(
@@ -243,6 +276,21 @@ fun NightCard(
                 )
             }
 
+            // ---- 4b. the question the engine is still owed, before anything else ----
+            val owed = prompts.firstOrNull()
+            if (owed != null) {
+                NightPromptAsk(
+                    viewModel = viewModel,
+                    state = state,
+                    prompt = owed,
+                    onAnswer = { seatId -> viewModel.answerPromptWithPlayer(owed.id, seatId) },
+                    onDone = { viewModel.resolvePrompt(owed.id) },
+                    onShow = onShow,
+                    onDismiss = { viewModel.dismissPrompt(owed.id) },
+                )
+                return@Column
+            }
+
             // ---- 5. a Conditional gate is answered before anything is offered ----
             if (awaitingGate && gate is StepGate.Conditional) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -298,11 +346,32 @@ fun NightCard(
             }
 
             // ---- 8. pre-filled cards: tap shows, long-press edits ----
-            if (offers.isNotEmpty()) {
+            // A healthy Ravenkeeper was offered ONE truthful card and FIVE
+            // ember `LIE · SHOW …` chips filling three rows above the primary,
+            // with nothing to say why lying was being suggested (playtest B
+            // P2 #18). The lies come out only when the engine says one is
+            // owed, at most three of them, under a line that gives the reason;
+            // the rest stay one tap away in the drawer.
+            val liesOnCard = if (owesFalseInfo) lies.take(MAX_LIE_CHIPS) else emptyList()
+            if (liesOnCard.isNotEmpty()) {
+                Text(
+                    text = "SHOW ONE OF THESE INSTEAD — " +
+                        info?.caveats?.firstOrNull().orEmpty().ifBlank { "their ability is not working" },
+                    fontSize = NIGHT_MIN_SP.sp,
+                    lineHeight = nightSp(19f).sp,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                )
+            }
+            if (truthful.isNotEmpty() || liesOnCard.isNotEmpty()) {
                 CardOffers(
-                    offers = offers,
+                    offers = truthful + liesOnCard,
                     recipientId = step.holderId,
-                    onShow = onShow,
+                    chosen = chosen,
+                    onShow = { offer ->
+                        chosen = offer
+                        onShow(offer.card, step.holderId, offer.truthful)
+                    },
                     onEdit = { editing = it },
                 )
             }
@@ -323,7 +392,7 @@ fun NightCard(
             } else if (!awaitingGate) {
                 PrimaryButton(
                     label = if (needsKillSheet) "RESOLVE THE DEATH…" else label,
-                    enabled = primaryEnabled(action, pick),
+                    enabled = primaryEnabled(action, pick) && !(owesFalseInfo && chosen == null),
                     holdMillis = if (isDestructive(effects) && !needsKillSheet) HOLD_CONFIRM_MILLIS else 0,
                     onConfirm = {
                         when {
@@ -332,6 +401,13 @@ fun NightCard(
                                     ?.let { onKillSheet(it.first, step.holderId) }
 
                             else -> {
+                                // A primary that says SHOW performs the showing:
+                                // the card goes up and the `shown:` row is
+                                // written, then the step is ticked (§B.7).
+                                val card = chosen?.card ?: truthCard.takeIf { !owesFalseInfo }
+                                if (shownAnswer.isNotBlank() && card != null) {
+                                    onShow(card, step.holderId, chosen?.truthful ?: true)
+                                }
                                 viewModel.resolveNightStep(
                                     key,
                                     NightInput(
@@ -382,6 +458,11 @@ fun NightCard(
                     step = step,
                     attacked = pick.playerIds,
                     hasAttack = attack != null,
+                    otherCards = lies - liesOnCard.toSet(),
+                    onShow = { offer ->
+                        chosen = offer
+                        onShow(offer.card, step.holderId, offer.truthful)
+                    },
                     onOpenShowTool = onOpenShowTool,
                     onKillSheet = onKillSheet,
                 )
@@ -399,6 +480,109 @@ fun NightCard(
             },
         )
     }
+}
+
+/**
+ * A question the engine raised and is still owed, asked on the card that raised
+ * it — "Fay killed themselves: a Minion becomes the Imp".
+ *
+ * It knows no rule. [Prompt.targetIds] are the legal answers the engine worked
+ * out, [Prompt.becomesCharacterId] is what answering DOES, and
+ * `answerPromptWithPlayer` applies both in one state change. A prompt the
+ * storyteller rules does not apply is dismissed, and the row carries on.
+ */
+@Suppress("LongParameterList")
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NightPromptAsk(
+    viewModel: GameViewModel,
+    state: GameState,
+    prompt: Prompt,
+    onAnswer: (Long) -> Unit,
+    onDone: () -> Unit,
+    onShow: (ShowCard, Long?, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var picked by remember(prompt.id) { mutableStateOf<Long?>(null) }
+    val becomes = viewModel.characterById(prompt.becomesCharacterId)
+    // Only a question that asks for a SEAT gets a picker. An obligation that
+    // just has to be discharged — "show Ben his new character" — is a card and
+    // a confirmation, not a grid of every player.
+    val choices = remember(prompt.id, prompt.kind, state.players) {
+        if (prompt.kind != PromptKind.CHOOSE_PLAYER) {
+            emptyList()
+        } else {
+            val offered = prompt.targetIds.mapNotNull { state.player(it) }
+            offered.ifEmpty { state.seats.filter { it.alive && it.id != prompt.subjectPlayerId } }
+        }
+    }
+    // The token the obligation names — the heir's new "YOU ARE" card.
+    val card = remember(prompt.id) {
+        prompt.characterIds.firstOrNull()?.let { ShowCard.CharacterCard("YOU ARE", it) }
+    }
+
+    Text(
+        text = prompt.title,
+        fontSize = nightSp(18f).sp,
+        lineHeight = nightSp(24f).sp,
+        fontWeight = FontWeight.Bold,
+        color = EmberRed,
+    )
+    if (prompt.detail.isNotBlank()) {
+        Text(
+            text = prompt.detail,
+            fontSize = nightSp(16f).sp,
+            lineHeight = nightSp(21f).sp,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+    if (choices.isEmpty()) {
+        if (card != null) {
+            CardOffers(
+                offers = listOf(
+                    UiOffer(
+                        label = "SHOW: YOU ARE " +
+                            (viewModel.characterById(prompt.characterIds.first())?.name ?: "?"),
+                        card = card,
+                        truthful = true,
+                    ),
+                ),
+                recipientId = prompt.subjectPlayerId,
+                chosen = null,
+                onShow = { offer -> onShow(offer.card, prompt.subjectPlayerId, true) },
+                onEdit = {},
+            )
+        }
+        PrimaryButton(label = promptDoneLabel(card != null), onConfirm = onDone)
+        return
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        for (seat in choices) {
+            val index = state.seats.indexOfFirst { it.id == seat.id } + 1
+            val character = viewModel.characterById(seat.characterId)
+            NightChip(
+                label = "$index ${seat.name}" + character?.let { " · ${it.name}" }.orEmpty(),
+                tone = if (picked == seat.id) Tone.ACTIVE else Tone.NORMAL,
+                onClick = { picked = if (picked == seat.id) null else seat.id },
+            )
+        }
+    }
+    PrimaryButton(
+        label = promptPrimaryLabel(picked?.let { id -> state.player(id)?.name }, becomes?.name),
+        enabled = picked != null,
+        holdMillis = if (becomes == null) 0 else HOLD_CONFIRM_MILLIS,
+        onConfirm = { picked?.let(onAnswer) },
+    )
+    NightChip(
+        label = "this does not apply — put the question away",
+        tone = Tone.MUTED,
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onDismiss,
+    )
 }
 
 /**
@@ -448,7 +632,8 @@ fun outcomeDetail(outcome: KillOutcome): String = when (outcome) {
 private fun CardOffers(
     offers: List<UiOffer>,
     recipientId: Long?,
-    onShow: (ShowCard, Long?, Boolean) -> Unit,
+    chosen: UiOffer?,
+    onShow: (UiOffer) -> Unit,
     onEdit: (ShowCard) -> Unit,
 ) {
     FlowRow(
@@ -458,12 +643,13 @@ private fun CardOffers(
         for (offer in offers) {
             val tone = if (offer.truthful) Tone.ACTIVE else Tone.ALERT
             val card = offer.card
+            val picked = chosen?.label == offer.label
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(tone.color().copy(alpha = 0.16f))
+                    .background(tone.color().copy(alpha = if (picked) 0.38f else 0.16f))
                     .combinedClickable(
-                        onClick = { onShow(card, recipientId, offer.truthful) },
+                        onClick = { onShow(offer) },
                         onLongClick = { if (offer.editable) onEdit(card) },
                     )
                     .heightIn(min = 48.dp)
@@ -471,7 +657,7 @@ private fun CardOffers(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = offer.label,
+                    text = if (picked) "✓ ${offer.label}" else offer.label,
                     fontSize = NIGHT_MIN_SP.sp,
                     lineHeight = nightSp(18f).sp,
                     fontWeight = FontWeight.Bold,
@@ -484,17 +670,35 @@ private fun CardOffers(
 
 /** Two taps for the uncommon: alternates, the card catalogue, the run-book. */
 @Composable
+@Suppress("LongParameterList")
 private fun SecondaryDrawer(
     viewModel: GameViewModel,
     state: GameState,
     step: NightStep,
     attacked: List<Long>,
     hasAttack: Boolean,
+    otherCards: List<UiOffer>,
+    onShow: (UiOffer) -> Unit,
     onOpenShowTool: () -> Unit,
     onKillSheet: (Long, Long?) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider()
+        if (otherCards.isNotEmpty()) {
+            Text(
+                text = "FALSE INFO YOU COULD SHOW INSTEAD",
+                fontSize = NIGHT_MIN_SP.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            CardOffers(
+                offers = otherCards,
+                recipientId = step.holderId,
+                chosen = null,
+                onShow = onShow,
+                onEdit = {},
+            )
+        }
         NightChip(
             label = "show a card…",
             tone = Tone.NORMAL,
@@ -520,6 +724,8 @@ private fun SecondaryDrawer(
                 onClick = { viewModel.toggleNightStep(step.key) },
             )
         }
+        // The generic run-book. A marker row's own words are its `prompt` and
+        // are already on the card, so this no longer prints them twice.
         val guide = NightGuide.forStep(step.abilityId, step.style)?.instructions.orEmpty()
         val book = listOf(guide, step.detail).filter { it.isNotBlank() }.distinct().joinToString("\n\n")
         if (book.isNotBlank()) {
@@ -602,6 +808,9 @@ private fun TokenPlacer(viewModel: GameViewModel, state: GameState, step: NightS
         }
     }
 }
+
+/** How many false cards the card itself offers before the rest go in the drawer. */
+private const val MAX_LIE_CHIPS = 3
 
 /** Long-press on an offer: the free-text editor, no longer the default path. */
 @Composable

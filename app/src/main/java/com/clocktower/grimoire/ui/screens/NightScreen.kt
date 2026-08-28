@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameState
 import com.clocktower.engine.LedgerKind
@@ -52,7 +53,12 @@ import com.clocktower.grimoire.ui.screens.night.color
 import com.clocktower.grimoire.ui.screens.night.dimAlpha
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
 import com.clocktower.grimoire.ui.screens.night.nightSp
+import com.clocktower.grimoire.ui.screens.night.openRowKey
+import com.clocktower.grimoire.ui.screens.night.openRowToken
+import com.clocktower.grimoire.ui.screens.night.openingToken
 import com.clocktower.grimoire.ui.screens.night.progress
+import com.clocktower.grimoire.ui.screens.night.promptBelongsTo
+import com.clocktower.grimoire.ui.screens.night.promptedToken
 import com.clocktower.grimoire.ui.screens.night.rowViews
 import com.clocktower.grimoire.ui.screens.night.segmentTones
 import com.clocktower.grimoire.ui.theme.AgedGold
@@ -84,7 +90,13 @@ fun NightScreen(
     val plan = remember(state) { viewModel.nightPlan(state) }
     val done = state.nightStepsDone
 
-    var activeToken by rememberSaveable(state.cycle) { mutableStateOf<String?>(null) }
+    // "<night>|<token>", never a bare token: `rememberSaveable(state.cycle)`
+    // restores its saved value even when the key changed, so the DAWN row left
+    // over from the end of the previous night became night 2's opening card —
+    // one tap on "OPEN THE DAY →" and nobody was poisoned, protected or killed
+    // (playtest B P0 #2).
+    var openRow by rememberSaveable { mutableStateOf("") }
+    val activeToken = openRowToken(openRow, state.cycle)
     var listOpen by rememberSaveable { mutableStateOf(false) }
     var forced by remember(state.cycle) { mutableStateOf(emptySet<String>()) }
     var shown by remember { mutableStateOf<ShownCard?>(null) }
@@ -92,17 +104,22 @@ fun NightScreen(
     var pendingDawn by remember(state.cycle) { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
-    val active = plan.steps.firstOrNull { it.key.token == activeToken }
-        ?: plan.steps.getOrNull(plan.cursor(done).takeIf { it >= 0 } ?: plan.steps.lastIndex)
+    // A question the engine raised and is still owed (an Imp that killed itself
+    // owes a star pass) holds ITS row open until it is answered — ticking the
+    // row is not what answers it (playtest B P0 #3).
+    val owed = viewModel.promptsDue(state, BriefingSlot.NOW)
+    val pinned = promptedToken(plan.steps, owed)
+    val active = plan.steps.firstOrNull { it.key.token == pinned }
+        ?: plan.steps.firstOrNull { it.key.token == activeToken }
+        ?: plan.steps.firstOrNull { it.key.token == openingToken(plan.steps, done) }
     val activeIndex = plan.steps.indexOfFirst { it.key.token == active?.key?.token }
 
     // The button that finished a step also advances to the next one: ticking is
     // a consequence of doing, never a separate act (defect #7).
-    LaunchedEffect(done, plan.steps.size, pendingDawn) {
+    LaunchedEffect(done, plan.steps.size, pendingDawn, state.cycle) {
         val token = activeToken
         if (token == null || token in done || plan.steps.none { it.key.token == token }) {
-            activeToken = plan.steps.firstOrNull { it.required && it.key.token !in done }?.key?.token
-                ?: plan.steps.lastOrNull()?.key?.token
+            openRow = openRowKey(state.cycle, openingToken(plan.steps, done))
         }
         // The dawn card's button ticked its own row a frame ago; the phase
         // button now sees a finished sheet and raises the dawn briefing. If
@@ -144,9 +161,10 @@ fun NightScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
-            // Room at the foot for the docked timer, so the last card's
-            // primary button is never underneath it.
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 72.dp),
+            // The timer no longer floats over this sheet (it docks in the
+            // progress strip), so the foot only needs room to scroll the last
+            // card clear of the navigation bar.
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             itemsIndexedRows(rows, window) { index, row ->
@@ -173,20 +191,24 @@ fun NightScreen(
                         },
                         onDawn = { pendingDawn = true },
                         onBack = {
-                            activeToken = plan.steps.getOrNull(index - 1)?.key?.token ?: activeToken
+                            openRow = openRowKey(
+                                state.cycle,
+                                plan.steps.getOrNull(index - 1)?.key?.token ?: activeToken,
+                            )
                         },
                         onSkip = {
                             viewModel.markNightStepDone(step.key)
-                            activeToken = plan.steps.getOrNull(index + 1)?.key?.token
+                            openRow = openRowKey(state.cycle, plan.steps.getOrNull(index + 1)?.key?.token)
                         },
+                        prompts = owed.filter { promptBelongsTo(it, step) },
                     )
                 } else {
                     NightRowLine(
                         row = row,
-                        onOpen = { activeToken = row.token },
+                        onOpen = { openRow = openRowKey(state.cycle, row.token) },
                         onRunAnyway = {
                             forced = forced + row.token
-                            activeToken = row.token
+                            openRow = openRowKey(state.cycle, row.token)
                         },
                     )
                 }
@@ -274,12 +296,27 @@ private fun resultOf(state: GameState, step: NightStep): String {
         ?.takeIf { it.cycle == state.cycle }
     if (choice != null) {
         if (choice.text == NightPlan.NO_CHOICE) return "chose nobody"
-        val names = choice.targetIds.mapNotNull { state.player(it)?.name }
+        // A row that attacked says what HAPPENED, not merely who was pointed
+        // at: "→ Cleo" read the same whether the Monk saved her or not
+        // (playtest B P2 #14).
+        val attacked = actionEffects(step.action).any { it is NightEffect.Attack }
+        val names = choice.targetIds.mapNotNull { id ->
+            val name = state.player(id)?.name ?: return@mapNotNull null
+            if (!attacked) name else "$name ${fateOf(state, id)}"
+        }
         if (names.isNotEmpty()) return "→ ${names.joinToString()}"
     }
     val told = Memory.by(state, LedgerKind.TOLD, step.abilityId, step.holderId)
         .lastOrNull { it.cycle == state.cycle }
     return told?.shown?.takeIf { it.isNotBlank() }?.let { "shown: $it" }.orEmpty()
+}
+
+/** Did tonight's attack on [playerId] land? Read from the deaths, not the tokens. */
+private fun fateOf(state: GameState, playerId: Long): String {
+    val died = state.deaths.any {
+        it.playerId == playerId && it.day == state.cycle && it.atNight && !it.resurrected
+    }
+    return if (died) "died" else "survived"
 }
 
 /** One line of the collapsed sheet. Tapping it opens that step's card. */

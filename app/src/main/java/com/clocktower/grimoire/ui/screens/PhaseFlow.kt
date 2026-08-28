@@ -34,6 +34,7 @@ import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Phase
+import com.clocktower.engine.Prompts
 import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
@@ -112,7 +113,11 @@ object PhaseFlow {
         lookup: (String) -> Character?,
     ): List<BriefingItem>? {
         val unfinished = NightPlan.build(state, lookup).unfinished(state.nightStepsDone)
-        if (unfinished.isEmpty()) return null
+        // A question the engine raised tonight and is still owed — the Imp's
+        // star pass — blocks the dawn exactly as an unticked row does: the
+        // night cannot end with no Demon on the board (playtest B P0 #3).
+        val owed = Prompts.due(state, BriefingSlot.NOW)
+        if (unfinished.isEmpty() && owed.isEmpty()) return null
         return unfinished.map { step ->
             BriefingItem(
                 key = "night-step:${step.key.token}",
@@ -121,6 +126,16 @@ object PhaseFlow {
                 sourceId = step.abilityId,
                 text = step.title,
                 playerId = step.holderId,
+            )
+        } + owed.map { prompt ->
+            BriefingItem(
+                key = "prompt:${prompt.id}",
+                kind = BriefingKind.TODO_ASK,
+                severity = BriefingSeverity.ALERT,
+                sourceId = prompt.sourceId,
+                text = prompt.title,
+                playerId = prompt.subjectPlayerId,
+                promptId = prompt.id,
             )
         }
     }

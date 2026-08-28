@@ -1,14 +1,17 @@
 package com.clocktower.grimoire.ui.screens.night
 
 import com.clocktower.engine.Answer
+import com.clocktower.engine.Character
 import com.clocktower.engine.ChooseCharacter
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
+import com.clocktower.engine.InfoObligation
 import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.NightAction
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
+import com.clocktower.engine.Prompt
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -195,6 +198,75 @@ fun rowViews(
 }
 
 // ---------------------------------------------------------------------------
+// Which row is open — and which row a FRESH night opens on
+// ---------------------------------------------------------------------------
+
+/**
+ * The row a night sheet opens on: **the first unfinished required step**.
+ *
+ * The last row (the dawn card, whose primary button is "OPEN THE DAY →") is
+ * only ever the answer when every required row is already done — one tap on
+ * that button skips the whole night, so it must never be what a fresh night
+ * presents (playtest B P0 #2).
+ */
+fun openingToken(steps: List<NightStep>, done: Set<String>): String? =
+    steps.firstOrNull { it.required && it.key.token !in done }?.key?.token
+        ?: steps.lastOrNull()?.key?.token
+
+/**
+ * True when [prompt] is the question this row still owes — the engine raised it
+ * from this row's ability (an Imp that killed itself owes a star pass).
+ */
+fun promptBelongsTo(prompt: Prompt, step: NightStep): Boolean =
+    Character.normalizeId(prompt.sourceId) == Character.normalizeId(step.abilityId)
+
+/**
+ * The row an unanswered obligation holds open.
+ *
+ * A `BriefingSlot.NOW` prompt is a question the storyteller must answer before
+ * moving on — "a Minion becomes the Imp" — and it is raised *by* resolving the
+ * row, so the row cannot simply be ticked and left (playtest B P0 #3).
+ */
+fun promptedToken(steps: List<NightStep>, prompts: List<Prompt>): String? =
+    steps.firstOrNull { step -> prompts.any { promptBelongsTo(it, step) } }?.key?.token
+
+/**
+ * The primary of an obligation that only has to be DISCHARGED — an identity
+ * change whose new token still has to be shown to the player.
+ */
+fun promptDoneLabel(hasCard: Boolean): String =
+    if (hasCard) "DONE — THEY HAVE SEEN IT" else "DONE — CARRY ON"
+
+/**
+ * The primary of an obligation: it states what answering it DOES, exactly like
+ * every other primary on the night sheet.
+ */
+fun promptPrimaryLabel(picked: String?, becomes: String?): String = when {
+    picked == null -> "PICK ONE"
+    becomes.isNullOrBlank() -> "${picked.uppercase()} — CONFIRM"
+    else -> "${picked.uppercase()} BECOMES THE ${becomes.uppercase()}"
+}
+
+/**
+ * The open row, saved as `"<night>|<token>"`.
+ *
+ * `rememberSaveable(state.cycle)` is NOT enough on its own: it restores a saved
+ * value even when its key changed (Compose b/152014032), so the `DAWN` token
+ * left at the end of night 1 came back as night 2's open row — and every row
+ * below it was still pending. The night the token belongs to therefore travels
+ * WITH the value, and a token from another night reads as "nothing open".
+ */
+fun openRowKey(cycle: Int, token: String?): String = if (token.isNullOrBlank()) "" else "$cycle|$token"
+
+/** The token in [key], or null when it was saved on a different night. */
+fun openRowToken(key: String, cycle: Int): String? {
+    val separator = key.indexOf('|')
+    if (separator <= 0) return null
+    if (key.substring(0, separator).toIntOrNull() != cycle) return null
+    return key.substring(separator + 1).ifBlank { null }
+}
+
+// ---------------------------------------------------------------------------
 // The primary button
 // ---------------------------------------------------------------------------
 
@@ -223,10 +295,18 @@ fun primaryLabel(
     skipped: Boolean = false,
     /** The last row of the sheet opens the day. */
     dawn: Boolean = false,
+    /**
+     * Set to the holder's name when the engine says this information is owed
+     * FALSE and the storyteller has not picked a card yet. The one gold button
+     * must not be the true answer on a card that prints "give false info"
+     * (playtest B P1 #9).
+     */
+    impairedHolder: String = "",
 ): String {
     if (dawn) return "OPEN THE DAY →"
     if (none) return "THEY CHOSE NOBODY"
     if (deathLine.isNotBlank()) return deathLine.uppercase()
+    if (impairedHolder.isNotBlank()) return "PICK WHAT TO SHOW — ${impairedHolder.uppercase()} IS IMPAIRED"
     if (answer.isNotBlank()) {
         val shown = "SHOW “${answer.uppercase()}”"
         return if (holder.isBlank()) shown else "$shown TO ${holder.uppercase()}"
@@ -301,9 +381,27 @@ fun answerLabel(
     is Answer.Count -> answer.n.toString()
     is Answer.YesNoAnswer -> if (answer.yes) "YES" else "NO"
     is Answer.Characters -> answer.ids.joinToString(", ") { characterName(it) }
-    is Answer.Players -> answer.ids.joinToString(", ") { playerName(it) }
+    is Answer.Players -> {
+        val names = answer.ids.joinToString(", ") { playerName(it) }
+        answer.characterId?.let { "${characterName(it)} — $names" } ?: names
+    }
     is Answer.Message -> answer.text
 }
+
+/**
+ * True when the engine says this holder's information is owed FALSE: a Vortox
+ * forces it, or their own ability is not working (poisoned, drunk, no ability).
+ *
+ * The card already prints "! Eve is POISONED (Poisoner) — give false info."; the
+ * primary button beneath it used to be `SHOW "1" TO EVE`, the truth, in the one
+ * place a storyteller is trained to press without reading (playtest B P1 #9).
+ */
+fun mustNotShowTruth(obligation: InfoObligation, malfunctions: Boolean): Boolean =
+    obligation == InfoObligation.MUST_LIE || malfunctions
+
+/** The answer inside a card offer's label: "LIE · SHOW 0" and "SHOW: 0" -> "0". */
+fun offerAnswerText(label: String): String =
+    label.substringAfterLast("SHOW").trim().removePrefix(":").trim()
 
 /**
  * True when the primary button may fire: every ask has an answer, or the

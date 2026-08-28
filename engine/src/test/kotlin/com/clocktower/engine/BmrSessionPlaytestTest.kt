@@ -578,8 +578,8 @@ class BmrSessionPlaytestTest {
         assertEquals("po", lunaticInfo.abilityId, "the Lunatic runs the believed Demon's ability (D70)")
         assertEquals(listOf(jonas), lunaticInfo.wakes, "one seat wakes on it: the Lunatic")
         assertTrue(
-            lunaticInfo.detail.contains(lunatic.label),
-            "night 1 hands over the Lunatic's own bluff set: ${lunaticInfo.detail}",
+            lunaticInfo.prompt.contains(lunatic.label),
+            "night 1 hands over the Lunatic's own bluff set: ${lunaticInfo.prompt}",
         )
         // The Po has no first night, so neither has a Lunatic who believes they
         // are the Po — the row is the illusion (bluffs, token, fake Minions),

@@ -45,8 +45,119 @@ class InfoCalcTypedTest {
         assertTrue((fortune.answer as Answer.YesNoAnswer).yes, "seat 1 is the Imp")
 
         val librarian = assertNotNull(compute(state, "librarian", 5L))
-        assertIs<Answer.Players>(librarian.answer)
-        assertEquals(listOf(3L), (librarian.answer as Answer.Players).ids, "the Recluse is the Outsider")
+        val pair = assertIs<Answer.Players>(librarian.answer)
+        assertEquals(2, pair.ids.size, "1 of 2 players, never a bare reveal")
+        assertTrue(3L in pair.ids, "the Recluse is the Outsider")
+        assertEquals("recluse", Character.normalizeId(assertNotNull(pair.characterId)))
+    }
+
+    // ==================================================================
+    // "You start knowing that 1 of 2 players is …" (playtest B P0 #1)
+    // ==================================================================
+
+    /** The seat that really holds [answer]'s character, of the two named. */
+    private fun trueHolders(state: GameState, answer: Answer.Players): List<Long> {
+        val named = Character.normalizeId(answer.characterId.orEmpty())
+        return answer.ids.filter {
+            Character.normalizeId(state.player(it)?.characterId.orEmpty()) == named
+        }
+    }
+
+    @Test
+    fun `the Washerwoman names two players, one of whom really is the character`() {
+        // 0 washerwoman · 1 imp · 2 poisoner · 3 recluse · 4 spy · 5 chef · 6 empath · 7 mayor
+        val state = game("washerwoman", "imp", "poisoner", "recluse", "spy", "chef", "empath", "mayor")
+        val result = assertNotNull(compute(state, "washerwoman", 0L))
+        val answer = assertIs<Answer.Players>(result.answer)
+
+        assertEquals(2, answer.ids.size, "1 of 2 players: ${answer.ids}")
+        assertFalse(0L in answer.ids, "never the Washerwoman herself")
+        assertEquals(1, trueHolders(state, answer).size, "exactly one of the two really is it")
+        assertEquals(
+            Team.TOWNSFOLK,
+            data.character(assertNotNull(answer.characterId))?.team,
+            "and the token is a Townsfolk",
+        )
+    }
+
+    @Test
+    fun `the Librarian shows a pair, and the 0 signal when no Outsider is in play`() {
+        val withOutsider = game("librarian", "imp", "poisoner", "butler", "chef", "empath", "mayor", "monk")
+        val pair = assertIs<Answer.Players>(assertNotNull(compute(withOutsider, "librarian", 0L)).answer)
+        assertEquals(2, pair.ids.size)
+        assertFalse(0L in pair.ids)
+        assertEquals(1, trueHolders(withOutsider, pair).size)
+        assertEquals(Team.OUTSIDER, data.character(assertNotNull(pair.characterId))?.team)
+
+        val noOutsider = game("librarian", "imp", "poisoner", "chef", "empath", "mayor", "monk", "virgin")
+        val zero = assertNotNull(compute(noOutsider, "librarian", 0L))
+        assertEquals(Answer.Count(0, 0, 0), zero.answer, "no Outsider in play — show the 0")
+    }
+
+    @Test
+    fun `the Investigator always names a Minion, and never the Investigator`() {
+        val state = game("investigator", "imp", "poisoner", "spy", "chef", "empath", "mayor", "monk")
+        val answer = assertIs<Answer.Players>(assertNotNull(compute(state, "investigator", 0L)).answer)
+        assertEquals(2, answer.ids.size)
+        assertFalse(0L in answer.ids)
+        assertEquals(1, trueHolders(state, answer).size)
+        assertEquals(Team.MINION, data.character(assertNotNull(answer.characterId))?.team)
+    }
+
+    @Test
+    fun `a start-knowing lie swaps the character or the pair, never the shape`() {
+        val state = game("washerwoman", "imp", "poisoner", "recluse", "spy", "chef", "empath", "mayor")
+        val result = assertNotNull(compute(state, "washerwoman", 0L))
+        val truth = assertIs<Answer.Players>(result.answer)
+        val lies = result.alternatives.filterIsInstance<Answer.Players>()
+
+        assertTrue(lies.isNotEmpty(), "the storyteller must be offered a false card")
+        assertTrue(lies.all { it.ids.size == 2 }, "every lie is still 1 of 2 players: $lies")
+        assertTrue(
+            lies.all { it.characterId != truth.characterId || it.ids.toSet() != truth.ids.toSet() },
+            "a lie must differ from the truth: $lies",
+        )
+        assertTrue(
+            lies.none { lie -> trueHolders(state, lie).isNotEmpty() && lie.ids.toSet() == truth.ids.toSet() },
+            "a 'lie' whose token is really held by one of its own pair is the truth again: $lies",
+        )
+        assertTrue(lies.none { 0L in it.ids }, "and never points at the Washerwoman")
+    }
+
+    @Test
+    fun `a start-knowing card never names the recipient, whatever their seat`() {
+        // The Washerwoman in seat 5, with Townsfolk on either side of her.
+        val state = game("chef", "imp", "poisoner", "recluse", "spy", "washerwoman", "empath", "mayor")
+        val answer = assertIs<Answer.Players>(assertNotNull(compute(state, "washerwoman", 5L)).answer)
+        assertFalse(5L in answer.ids, "the recipient is never on their own card: ${answer.ids}")
+        assertEquals(2, answer.ids.size)
+        assertEquals(1, trueHolders(state, answer).size)
+    }
+
+    @Test
+    fun `the Steward, the Knight, the Noble and the Sage all leave themselves out`() {
+        val steward = game("steward", "imp", "poisoner", "chef", "empath", "mayor", "monk", "virgin")
+        assertFalse(
+            0L in assertIs<Answer.Players>(assertNotNull(compute(steward, "steward", 0L)).answer).ids,
+            "the Steward already knows they are good",
+        )
+
+        val knight = game("knight", "imp", "poisoner", "chef", "empath", "mayor", "monk", "virgin")
+        assertFalse(
+            0L in assertIs<Answer.Players>(assertNotNull(compute(knight, "knight", 0L)).answer).ids,
+        )
+
+        val noble = game("noble", "imp", "poisoner", "chef", "empath", "mayor", "monk", "virgin")
+        val trio = assertIs<Answer.Players>(assertNotNull(compute(noble, "noble", 0L)).answer)
+        assertEquals(3, trio.ids.size)
+        assertFalse(0L in trio.ids)
+        assertEquals(1, trio.ids.count { noble.player(it)?.isEvil(lookup) == true }, "exactly 1 evil")
+
+        val sage = game("sage", "imp", "poisoner", "chef", "empath", "mayor", "monk", "virgin")
+        val pair = assertIs<Answer.Players>(assertNotNull(compute(sage, "sage", 0L)).answer)
+        assertEquals(2, pair.ids.size, "1 of 2 players is the Demon, not a bare reveal")
+        assertTrue(1L in pair.ids, "and one of them really is the Imp")
+        assertFalse(0L in pair.ids)
     }
 
     @Test

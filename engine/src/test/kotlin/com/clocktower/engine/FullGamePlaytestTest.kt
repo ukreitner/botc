@@ -586,7 +586,7 @@ class FullGamePlaytestTest {
                     info = InfoCheck(
                         "washerwoman",
                         "Eve",
-                        engineHeadlineContains = "Townsfolk in play",
+                        engineHeadlineContains = "1 of 2 players is the",
                         informationShown = "Monk: Kira or Opal",
                         caveatContains = "IS the Drunk",
                     ),
@@ -596,7 +596,7 @@ class FullGamePlaytestTest {
                     "Finn",
                     "Finn was shown Poisoner and pointed to Cara plus Kira.",
                     targets = listOf("Cara", "Kira"),
-                    info = InfoCheck("investigator", "Finn", engineHeadlineContains = "Minion in play", informationShown = "Poisoner: Cara or Kira"),
+                    info = InfoCheck("investigator", "Finn", engineHeadlineContains = "1 of 2 players is the", informationShown = "Poisoner: Cara or Kira"),
                 ),
                 action(
                     "empath",

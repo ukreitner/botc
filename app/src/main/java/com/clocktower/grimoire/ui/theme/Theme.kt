@@ -1,17 +1,25 @@
 package com.clocktower.grimoire.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.clocktower.engine.EffectGroup
 import com.clocktower.engine.Team
+import com.clocktower.grimoire.ui.components.LocalRootSafeBottom
+import com.clocktower.grimoire.ui.components.LocalRootSafeTop
 
 // A candlelit gothic palette: deep night purples, aged gold, parchment.
 val NightSky = Color(0xFF0E0A14)
@@ -170,10 +178,25 @@ fun GrimoireTheme(content: @Composable () -> Unit) {
     // The grimoire is always a night-time artifact: one dark theme, tuned
     // for candlelight-adjacent play environments.
     isSystemInDarkTheme() // observed for future light theme support
-    MaterialTheme(
-        colorScheme = GrimoireColors,
-        typography = GrimoireTypography,
-        shapes = GrimoireShapes,
-        content = content,
-    )
+
+    // The safe area, measured HERE, at the root, where nothing has consumed it
+    // yet — and carried down by composition so a `Dialog`, which is its own
+    // window and is told the insets are zero, can still stay off the home
+    // indicator (see components/SafeArea.kt).
+    val insets = WindowInsets.systemBars.union(WindowInsets.mandatorySystemGestures)
+    val density = LocalDensity.current
+    val safeTop = with(density) { insets.getTop(density).toDp() }
+    val safeBottom = with(density) { insets.getBottom(density).toDp() }
+
+    CompositionLocalProvider(
+        LocalRootSafeTop provides safeTop,
+        LocalRootSafeBottom provides safeBottom,
+    ) {
+        MaterialTheme(
+            colorScheme = GrimoireColors,
+            typography = GrimoireTypography,
+            shapes = GrimoireShapes,
+            content = content,
+        )
+    }
 }

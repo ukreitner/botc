@@ -2,17 +2,24 @@ package com.clocktower.grimoire
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -122,11 +129,43 @@ private fun GrimoireAppRoot(viewModel: GameViewModel = viewModel()) {
                     onEndGame = {},
                 )
             } else {
+                // One system Back press used to throw the storyteller out of a
+                // running game and onto Home — and on a gesture phone an
+                // accidental edge swipe in the dark is one of the easiest
+                // gestures there is (playtest B P1 #10). Sheets and dialogs
+                // are their own windows and still consume Back themselves;
+                // this only catches the press that would leave the grimoire,
+                // and it asks.
+                var confirmExit by rememberSaveable { mutableStateOf(false) }
+                BackHandler { confirmExit = true }
                 GameShell(
                     viewModel = viewModel,
                     state = state,
                     onExit = { nav.popBackStack(Routes.HOME, inclusive = false) },
                 )
+                if (confirmExit) {
+                    AlertDialog(
+                        onDismissRequest = { confirmExit = false },
+                        title = { Text("Leave the game?") },
+                        text = {
+                            Text(
+                                "The game is saved. \"Resume game\" on the home screen brings it " +
+                                    "back exactly as it is.",
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmExit = false
+                                nav.popBackStack(Routes.HOME, inclusive = false)
+                            }) { Text("Back to home") }
+                        },
+                        dismissButton = {
+                            FilledTonalButton(onClick = { confirmExit = false }) {
+                                Text("Stay in the game")
+                            }
+                        },
+                    )
+                }
             }
         }
         composable(Routes.LIBRARY) {

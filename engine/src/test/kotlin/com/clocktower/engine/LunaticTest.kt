@@ -376,7 +376,7 @@ class LunaticTest {
             NightPlan.build(state, lookup).steps.firstOrNull { it.slotId == NightMarkers.DEMON_INFO },
         )
         val sentence = expected(state, lunatic, victim)
-        assertTrue(sentence in info.detail, "the Demon info row: ${info.detail}")
+        assertTrue(sentence in info.prompt, "the Demon info row: ${info.prompt}")
 
         state = NightPlan.resolve(state, lookup, info.key, NightInput())
         assertEquals(1, toldAbout(state, po).size, "the real Demon's ledger records it")
