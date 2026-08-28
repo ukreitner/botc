@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.clocktower.engine.Bluffs
+import com.clocktower.engine.Character
 import com.clocktower.engine.Candidate
 import com.clocktower.engine.RequirementKind
 import com.clocktower.engine.Selection
@@ -45,8 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.DeathCause
+import com.clocktower.engine.GameLog
 import com.clocktower.engine.GameState
-import com.clocktower.engine.NominationResult
 import com.clocktower.engine.Team
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
@@ -58,73 +59,72 @@ import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.TownsfolkBlue
 
-/** Chronological record of everything that happened, derived from state. */
+/**
+ * The whole transcript, grouped by phase — the engine's own [GameLog.rows], not
+ * a second opinion.
+ *
+ * It used to rebuild the list from `deaths` + `nominations` alone, so a
+ * recorded statement never reached it (C-10) and an execution that killed
+ * nobody left no entry at all (C-11) — the one record the Undertaker, the
+ * Vortox, the Mayor and the Zombuul all hinge on. `GameLog` already merges the
+ * ledger (statements, private answers, announcements, rulings, notes), the
+ * executions (`NO_EXECUTION` included), the identity changes, the nominations
+ * with their voters and the deaths into one total order; this renders it.
+ */
 @Composable
-fun GameLogDialog(state: GameState, onDismiss: () -> Unit) {
-    data class Entry(val day: Int, val atNight: Boolean, val text: String)
-
-    val entries = remember(state) {
-        val list = mutableListOf<Entry>()
-        for (d in state.deaths) {
-            val name = state.player(d.playerId)?.name ?: "?"
-            val cause = when (d.cause) {
-                DeathCause.EXECUTION -> "executed"
-                DeathCause.DEMON -> "died in the night"
-                DeathCause.OTHER_NIGHT_DEATH -> "died in the night (other)"
-                DeathCause.EXILE -> "exiled"
-                DeathCause.DEMON_KILL -> "died in the night"
-                DeathCause.EVIL_ABILITY, DeathCause.GOOD_ABILITY,
-                DeathCause.DAY_ABILITY, DeathCause.TRAVELLER_ABILITY,
-                -> "died to an ability"
-                DeathCause.STORYTELLER -> "died (storyteller)"
-            }
-            list += Entry(
-                d.day, d.atNight,
-                "$name $cause" + if (d.resurrected) " (later resurrected)" else "",
-            )
-        }
-        for (n in state.nominations) {
-            val nominator = state.player(n.nominatorId)?.name ?: "?"
-            val nominee = state.player(n.nomineeId)?.name ?: "?"
-            val outcome = when (n.result) {
-                NominationResult.ABOUT_TO_DIE -> "reached the block"
-                NominationResult.TIED -> "tied"
-                NominationResult.SAFE -> "safe"
-                NominationResult.WITHDRAWN -> "withdrawn"
-            }
-            list += Entry(
-                n.day, false,
-                "$nominator nominated $nominee${if (n.isExile) " (exile)" else ""} — ${n.votes} votes, $outcome",
-            )
-        }
-        list.sortedWith(compareBy({ it.day }, { !it.atNight }))
-    }
+fun GameLogDialog(
+    state: GameState,
+    /**
+     * Character lookup, so rows can name the Empath rather than print "empath".
+     * Defaulted to the script's own homebrew, because the shell owns the call
+     * site; pass `viewModel::characterById` from there for the official names.
+     */
+    lookup: (String) -> Character? = { id -> state.script.customCharacters.find { it.id == id } },
+    onDismiss: () -> Unit,
+) {
+    val rows = remember(state) { GameLog.rows(state, lookup) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Game log") },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (entries.isEmpty()) {
-                    item { Text("Nothing has happened yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-                items(entries.size) { i ->
-                    val e = entries[i]
-                    Row {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.heightIn(max = LOG_MAX_HEIGHT_DP.dp),
+            ) {
+                if (rows.isEmpty()) {
+                    item {
                         Text(
-                            text = (if (e.atNight) "N" else "D") + "${e.day}",
+                            "Nothing has happened yet.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                items(rows.size) { i ->
+                    val row = rows[i]
+                    // One heading per phase, so a day's business reads as a
+                    // block rather than as a column of N2/D2/D2/D2 stamps.
+                    val first = i == 0 ||
+                        rows[i - 1].cycle != row.cycle ||
+                        rows[i - 1].atNight != row.atNight
+                    if (first) {
+                        Spacer(Modifier.height(if (i == 0) 0.dp else 8.dp))
+                        Text(
+                            if (row.atNight) "NIGHT ${row.cycle}" else "DAY ${row.cycle}",
                             style = MaterialTheme.typography.labelMedium,
                             color = AgedGold,
-                            modifier = Modifier.width(32.dp),
                         )
-                        Text(e.text, style = MaterialTheme.typography.bodyMedium)
                     }
+                    Text(row.text, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }
+
+/** Cap the log like the shell's other list dialogs (ux/day-screen §K). */
+private const val LOG_MAX_HEIGHT_DP = 420
 
 /** Up/down seat reordering, wrapping around the circle. */
 @Composable
