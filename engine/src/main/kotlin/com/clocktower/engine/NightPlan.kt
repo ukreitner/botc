@@ -2378,11 +2378,19 @@ object Gates {
                 !expected -> StepGate.Skip("someone died today")
                 deaths.isEmpty() -> StepGate.Skip("nobody died today")
                 else -> StepGate.Conditional(
-                    question = "Did a ${team?.displayName ?: "player"} die today?",
+                    question = "Did ${article(team?.displayName ?: "player")} die today?",
                     yesLabel = "Yes — they act tonight",
                     noLabel = "No — skip",
                 )
             }
+        }
+
+    /** "a player" / "an Outsider" — the gate question read "Did a Outsider…" (P2-14). */
+    private fun article(noun: String): String =
+        if (noun.firstOrNull()?.lowercaseChar() in setOf('a', 'e', 'i', 'o', 'u')) {
+            "an $noun"
+        } else {
+            "a $noun"
         }
 
     /** Undertaker: only when the day closed with an execution. */
