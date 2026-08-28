@@ -136,14 +136,14 @@ private fun ExecutionSheetBody(
             if (consequence.detail.isNotBlank()) {
                 Text(
                     consequence.detail,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = FadedInk,
                 )
             }
             if (consequence.impaired) {
                 Text(
                     "The ability may not work — you decide anyway.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = PoisonGreen,
                 )
             }
@@ -213,7 +213,7 @@ private fun ExecutionSheetBody(
         Text(
             "If they don't die, say \"${target.name} is executed\", then " +
                 "\"${target.name} is still alive.\" Never say why.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = FadedInk,
         )
 
@@ -260,7 +260,7 @@ fun ExileSheet(
             Text(
                 "An exile is not an execution: today's execution stays available, " +
                     "no vote token is spent, and no ability changes the result.",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = FadedInk,
             )
             PreviewLine(preview)

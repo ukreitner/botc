@@ -239,6 +239,7 @@ object Briefings {
             // 3. Everything else the storyteller still owes the table.
             for (entry in pending) {
                 if (entry.id in consumed) continue
+                if (entry.cycle < night) continue
                 add(announcement(entry))
             }
 
@@ -299,8 +300,15 @@ object Briefings {
         buildList {
             val day = state.cycle
 
-            // Anything still unsaid from dawn stays on the card until it is said.
-            for (entry in Memory.pendingAnnouncements(state)) add(announcement(entry))
+            // Anything still unsaid from dawn stays on the card until it is
+            // said — but only TODAY's. "Announce: Begg joins the game" was
+            // still on the day-5 card for a traveller who joined and was exiled
+            // on day 3: a line nobody ticked two days ago is not still owed to
+            // a table that has moved on (playtest C-12).
+            for (entry in Memory.pendingAnnouncements(state)) {
+                if (entry.cycle < day) continue
+                add(announcement(entry))
+            }
 
             for (seat in state.seats) {
                 // Madness, and the character they are mad about (§2.12).

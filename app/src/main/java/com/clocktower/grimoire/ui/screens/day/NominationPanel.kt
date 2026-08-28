@@ -276,7 +276,7 @@ private fun SeatRing(
                                     SeatPick.NONE -> Unit
                                 }
                             },
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelMedium,
                             color = if (seat.allowed) FadedInk else FadedInk.copy(alpha = 0.7f),
                         )
                     }
@@ -346,35 +346,39 @@ fun NominationCheckCard(
             if (force && check.blockers.isNotEmpty()) {
                 Text(
                     "Allowed anyway — the storyteller always wins.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = PoisonGreen,
                 )
             }
             for (caution in check.cautions) {
                 Text(
                     caution,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = PaleGold,
                 )
             }
             for (trigger in check.triggers) {
                 TriggerCard(viewModel, trigger)
             }
-            // Anything the NOMINATION briefing adds beyond the raw triggers.
-            val extra = briefing.items.filter { item ->
-                check.triggers.none { it.headline == item.text }
-            }
+            // Anything the NOMINATION briefing adds beyond what is already on
+            // this card. Every reason used to be rendered twice — once as a
+            // card, once as a `·` bullet under it (finding 8) — because only
+            // the triggers were de-duplicated, never the blockers or cautions.
+            val said = (check.blockers + check.cautions + check.triggers.map { it.headline })
+                .map { it.trim() }
+                .toSet()
+            val extra = briefing.items.filterNot { it.text.trim() in said }
             for (item in extra) {
                 Text(
                     "• ${item.text}",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = FadedInk,
                 )
             }
             if (check.blockers.isEmpty() && check.cautions.isEmpty() && check.triggers.isEmpty()) {
                 Text(
                     "Nothing fires on this nomination.",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = FadedInk,
                 )
             }
@@ -399,12 +403,12 @@ private fun TriggerCard(viewModel: GameViewModel, trigger: NominationTrigger) {
             color = tone,
         )
         if (trigger.detail.isNotBlank()) {
-            Text(trigger.detail, style = MaterialTheme.typography.bodySmall, color = FadedInk)
+            Text(trigger.detail, style = MaterialTheme.typography.bodyMedium, color = FadedInk)
         }
         if (trigger.impaired) {
             Text(
                 "The ability may not work — you decide anyway.",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = PoisonGreen,
             )
         }
@@ -528,7 +532,7 @@ private fun VotePanel(
 
     Text(
         "Votes for ${view.nomineeName}, starting now — clockwise from their left.",
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         color = FadedInk,
     )
 
@@ -565,7 +569,7 @@ private fun VotePanel(
                     )
                 },
                 leadingIcon = if (blocked != null) {
-                    { Text("⊘", style = MaterialTheme.typography.labelSmall, color = FadedInk) }
+                    { Text("⊘", style = MaterialTheme.typography.labelMedium, color = FadedInk) }
                 } else {
                     null
                 },
@@ -577,20 +581,20 @@ private fun VotePanel(
         Text("⊘ $line", style = MaterialTheme.typography.bodyMedium, color = FadedInk)
     }
     for ((_, reason) in view.uncounted) {
-        Text("! $reason", style = MaterialTheme.typography.bodySmall, color = PaleGold)
+        Text("! $reason", style = MaterialTheme.typography.bodyMedium, color = PaleGold)
     }
     for (id in view.mustVote) {
         if (id !in voters) {
             val name = state.player(id)?.name ?: "That seat"
             Text(
                 "! $name must vote for every nomination.",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = PaleGold,
             )
         }
     }
     for (reason in view.reasons) {
-        Text("· $reason", style = MaterialTheme.typography.bodySmall, color = FadedInk)
+        Text("· $reason", style = MaterialTheme.typography.bodyMedium, color = FadedInk)
     }
 
     if (!hidden) {

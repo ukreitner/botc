@@ -121,7 +121,13 @@ object DayModel {
             // The tally to beat is part of the secret an Organ Grinder keeps.
             if (!secret && highest > 0) append(" · $highest to beat")
         }
+        // Once the day's execution is settled the block is history: leaving
+        // "On the block: Fay — 6 votes" up for the rest of the day is a live
+        // instruction to execute someone who has already been executed
+        // (finding 13).
+        val settled = DayRules.nominationsClosedReason(state, lookup)
         val blockLine = when {
+            settled.isNotBlank() -> settled
             onBlock != null && secret -> "Someone is about to die."
             onBlock != null -> "On the block: ${onBlock.name}" +
                 (highest.takeIf { it > 0 }?.let { " — $it votes" } ?: "")
@@ -140,14 +146,25 @@ object DayModel {
         )
     }
 
-    /** Finding 24: name the tie and the number needed to beat it. */
-    fun tieLine(state: GameState): String {
+    /**
+     * Finding 24: name the tie and the number needed to beat it.
+     *
+     * [alsoTied] is the nominee of the nomination being counted RIGHT NOW,
+     * which is not on the record yet — without it the vote panel named one of
+     * the two tied players and the stat strip named both (finding 21).
+     */
+    fun tieLine(state: GameState, alsoTied: String? = null): String {
         val highest = DayRules.highestVotesToday(state)
         if (highest <= 0) return "No one is about to die."
-        val tied = state.nominations
-            .filter { it.day == state.cycle && !it.isExile && it.votes == highest }
-            .filter { it.result == NominationResult.TIED || it.result == NominationResult.ABOUT_TO_DIE }
-            .mapNotNull { state.player(it.nomineeId)?.name }
+        val tied = (
+            state.nominations
+                .filter { it.day == state.cycle && !it.isExile && it.votes == highest }
+                .filter {
+                    it.result == NominationResult.TIED ||
+                        it.result == NominationResult.ABOUT_TO_DIE
+                }
+                .mapNotNull { state.player(it.nomineeId)?.name } + listOfNotNull(alsoTied)
+            )
             .distinct()
         val who = when (tied.size) {
             0 -> ""
@@ -218,7 +235,9 @@ object DayModel {
             },
             badge = today,
             tone = if (owed > 0) StageTone.ACTION else StageTone.QUIET,
-            complete = owed == 0,
+            // A tick on an empty list reads as "done", not as "nothing owed"
+            // (finding 22): nothing has been said yet, so nothing is finished.
+            complete = owed == 0 && today > 0,
         )
     }
 

@@ -290,7 +290,7 @@ object NominationModel {
             NominationResult.ABOUT_TO_DIE ->
                 if (isExile) "$who is exiled — $tally of $threshold." else "$who is about to die."
 
-            NominationResult.TIED -> DayModel.tieLine(state)
+            NominationResult.TIED -> DayModel.tieLine(state, nomineeName)
             NominationResult.WITHDRAWN -> "Withdrawn."
             NominationResult.SAFE -> "$who is safe — $tally of $threshold."
         }

@@ -616,6 +616,79 @@ class DayScreenTest {
         assertNull("nobody is on the block after a tie", DayRules.aboutToDie(state))
     }
 
+    @Test
+    fun `the vote panel names both tied players before the tie is recorded`() {
+        // Finding 21: in-panel it read "Tie at 4 — Player 10", the stat strip
+        // read "Tie at 4 — Player 10 and Player 5". The nomination being
+        // counted is not on the record yet, so the panel has to add it.
+        var state = day()
+        val fay = seat(state, "Fay")
+        val voters = state.alivePlayers.take(6).map { it.id }
+        state = DayRules.record(
+            state,
+            lookup,
+            Nomination(
+                day = state.cycle,
+                nominatorId = seat(state, "Ana"),
+                nomineeId = fay,
+                voterIds = voters,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Bo"),
+            seat(state, "Gus"),
+            voters.toSet(),
+        )
+        assertEquals(NominationResult.TIED, view.result)
+        assertTrue(
+            "both names, in the panel too: '${view.outcomeLine}'",
+            view.outcomeLine.contains("Fay") && view.outcomeLine.contains("Gus"),
+        )
+    }
+
+    @Test
+    fun `the block line stops instructing an execution that already happened`() {
+        // Finding 13: "On the block: Fay — 6 votes" survived Fay's execution
+        // and stood for the rest of the day.
+        var state = day()
+        val fay = seat(state, "Fay")
+        state = DayRules.record(
+            state,
+            lookup,
+            Nomination(
+                day = state.cycle,
+                nominatorId = seat(state, "Ana"),
+                nomineeId = fay,
+                voterIds = state.alivePlayers.take(6).map { it.id },
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+        assertTrue(DayModel.stats(state, lookup).blockLine.startsWith("On the block"))
+
+        state = Execution.execute(state, lookup, fay)
+        val after = DayModel.stats(state, lookup).blockLine
+        assertFalse("the block is history: '$after'", after.startsWith("On the block"))
+        assertTrue("and the strip says what happened: '$after'", after.contains("the day is over"))
+    }
+
+    @Test
+    fun `an empty What was said is not ticked as done`() {
+        // Finding 22: a ✓ on an empty list reads as "done", not "nothing owed".
+        val state = day()
+        val fresh = DayModel.stages(state, lookup, null, emptyBriefing(), emptySet())
+            .first { it.stage == DayStage.SAID }
+        assertFalse("nothing has been said yet", fresh.complete)
+
+        val said = Ledger.statement(state, seat(state, "Bo"), Ledger.Sources.CLAIM, "I am the Chef")
+        val ticked = DayModel.stages(said, lookup, null, emptyBriefing(), emptySet())
+            .first { it.stage == DayStage.SAID }
+        assertTrue("one line recorded, nothing owed", ticked.complete)
+    }
+
     // ------------------------------------------------------------------
     // The timeline and the dusk hand-off
     // ------------------------------------------------------------------

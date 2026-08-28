@@ -325,7 +325,9 @@ private fun DayStatStrip(stats: DayStats) {
                 Spacer(Modifier.width(10.dp))
                 Text(
                     stats.detail,
-                    style = MaterialTheme.typography.bodySmall,
+                    // 14 sp, not 12: the storyteller reads this with their eyes
+                    // on the table, not on the phone (§0, finding 14).
+                    style = MaterialTheme.typography.bodyMedium,
                     color = FadedInk,
                     modifier = Modifier.padding(bottom = 3.dp),
                 )
@@ -340,9 +342,9 @@ private fun DayStatStrip(stats: DayStats) {
             if (stats.voteNote.isNotBlank()) {
                 Text(
                     stats.voteNote,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = AgedGold,
-                    maxLines = 2,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -571,7 +573,7 @@ private fun SaidRowView(viewModel: GameViewModel, row: SaidRow) {
             if (row.kind == LedgerKind.ANNOUNCE && row.announcePending) {
                 Text(
                     "still owed to the table",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = EmberRed,
                 )
             }
@@ -678,7 +680,7 @@ private fun NominationRow(
                         } else {
                             "${nomination.votes} votes · " + resultLabel(nomination.result)
                         },
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = FadedInk,
                     )
                 }
@@ -768,7 +770,7 @@ private fun DuskBody(
                 if (consequence.detail.isNotBlank()) {
                     Text(
                         consequence.detail,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = FadedInk,
                     )
                 }
@@ -788,7 +790,7 @@ private fun DuskBody(
             if (preview !is KillOutcome.Dies) {
                 Text(
                     previewNote(preview),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = PaleGold,
                 )
             }
