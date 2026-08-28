@@ -59,9 +59,15 @@ data class VoteView(
     val weights: Map<Long, Int>,
     /** One line per modifier the snapshot applied. */
     val reasons: List<String>,
-    /** A sober living Organ Grinder: the count, the verdict and the block are secret. */
+    /** A sober living Organ Grinder — or the house rule: the count is secret. */
     val secret: Boolean,
     val rules: VoteRules,
+    /**
+     * What to say while the eyes are closed. Never names the Organ Grinder when
+     * the secrecy is only a house rule — the storyteller would be handing the
+     * table a bluff they cannot back up.
+     */
+    val secretLine: String = "",
 )
 
 object NominationModel {
@@ -258,8 +264,17 @@ object NominationModel {
             reasons = rules.reasons,
             secret = secret,
             rules = rules,
+            secretLine = if (!secret) "" else secretLine(state, lookup),
         )
     }
+
+    /** The eyes-closed line, sourced from whatever actually closed the eyes. */
+    fun secretLine(state: GameState, lookup: (String) -> Character?): String =
+        if (DayRules.organGrinder(state, lookup) != null) {
+            "Eyes closed, everyone. (If asked: an Organ Grinder is in play.)"
+        } else {
+            "Eyes closed, everyone. (House rule: every vote is secret.)"
+        }
 
     /** The "Lock in" label states the RESULT, never an abstraction (§F). */
     fun lockInLabel(view: VoteView): String = when {

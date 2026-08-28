@@ -13,6 +13,7 @@ import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
+import com.clocktower.engine.HouseRules
 import com.clocktower.engine.Ledger
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Nomination
@@ -545,6 +546,51 @@ class DayScreenTest {
         )
         assertTrue(view.secret)
         assertEquals("Lock in silently", NominationModel.lockInLabel(view))
+    }
+
+    @Test
+    fun `the secret-vote house rule closes the same eyes with no Organ Grinder`() {
+        // The Organ Grinder is on no base script, so this path only ever runs
+        // for a table that turned the house rule on (ux/day-screen §F, C).
+        val state = day().copy(houseRules = HouseRules(secretVotes = true))
+        assertTrue(DayRules.secretVoting(state, lookup))
+
+        val stats = DayModel.stats(state, lookup)
+        assertTrue("the stat strip goes secret", stats.secret)
+        assertFalse("no tally to beat is printed: '${stats.detail}'", stats.detail.contains("to beat"))
+        assertTrue("and the strip says why: '${stats.voteNote}'", stats.voteNote.contains("house rule"))
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Ana"),
+            seat(state, "Fay"),
+            setOf(seat(state, "Bo"), seat(state, "Cai")),
+        )
+        assertTrue(view.secret)
+        assertEquals("Lock in silently", NominationModel.lockInLabel(view))
+        assertEquals("the storyteller still counts the hands they saw", 2, view.tally)
+        assertTrue(
+            "the eyes-closed line does not invent an Organ Grinder: '${view.secretLine}'",
+            view.secretLine.contains("House rule"),
+        )
+        assertFalse(view.secretLine.contains("Organ Grinder"))
+    }
+
+    @Test
+    fun `an Organ Grinder still names itself, house rule or not`() {
+        var state = day().copy(houseRules = HouseRules(secretVotes = false))
+        state = Seats.assignCharacter(state, seat(state, "Dee"), "organgrinder")
+        assertTrue("a rule switched off never opens the eyes", DayRules.secretVoting(state, lookup))
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            seat(state, "Ana"),
+            seat(state, "Fay"),
+            emptySet(),
+        )
+        assertTrue(view.secretLine, view.secretLine.contains("an Organ Grinder is in play"))
     }
 
     @Test

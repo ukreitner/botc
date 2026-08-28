@@ -878,7 +878,11 @@ object DayRules {
             if (weight != 1) weights[seat.id] = weight
         }
         if (secretVoting(state, lookup)) {
-            reasons += "Secret voting — the Organ Grinder is sober; close eyes for the tally."
+            reasons += if (organGrinder(state, lookup) != null) {
+                "Secret voting — the Organ Grinder is sober; close eyes for the tally."
+            } else {
+                "Secret voting — a house rule for this game; close eyes for the tally."
+            }
         }
         return VoteRules(
             eligibleVoterIds = eligible,
@@ -972,9 +976,20 @@ object DayRules {
             .map { it.id }
     }
 
-    /** A sober living Organ Grinder: eyes-closed voting, tally and block hidden. */
+    /**
+     * Eyes-closed voting: the tally, the verdict and the block are hidden.
+     *
+     * Armed by a sober living Organ Grinder, and — because the Organ Grinder is
+     * on no base script and some tables play this way anyway (ux/day-screen §F)
+     * — by the `secretVotes` house rule. The two are ORed: turning the house
+     * rule off never opens the eyes of a table that has an Organ Grinder in it.
+     */
     fun secretVoting(state: GameState, lookup: (String) -> Character?): Boolean =
-        holderOfWithAbility(state, lookup, "organgrinder") != null
+        state.houseRules.secretVotes || organGrinder(state, lookup) != null
+
+    /** The seat whose working Organ Grinder ability is closing every eye, if any. */
+    fun organGrinder(state: GameState, lookup: (String) -> Character?): Player? =
+        holderOfWithAbility(state, lookup, "organgrinder")
 
     /** Legion: an execution fails if only evil players voted. */
     fun executionFailsOnlyEvilVoted(

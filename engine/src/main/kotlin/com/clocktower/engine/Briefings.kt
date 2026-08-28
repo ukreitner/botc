@@ -399,13 +399,19 @@ object Briefings {
 
             // Voting and nomination rules in force today.
             if (DayRules.secretVoting(state, lookup)) {
+                // The house rule closes the same eyes with no Organ Grinder in
+                // the game, so the fact must not name a character that is not
+                // there — "if asked, an Organ Grinder is in play" is a lie the
+                // storyteller would then have to tell.
+                val grinder = DayRules.organGrinder(state, lookup) != null
                 add(
                     BriefingItem(
                         key = "day:$day:secret-voting",
                         kind = BriefingKind.STANDING_FACT,
                         severity = BriefingSeverity.ACTION,
-                        sourceId = "organgrinder",
-                        text = "Eyes closed for every vote today — the tally is secret.",
+                        sourceId = if (grinder) "organgrinder" else "",
+                        text = "Eyes closed for every vote today — the tally is secret." +
+                            if (grinder) "" else " (House rule.)",
                     ),
                 )
             }
