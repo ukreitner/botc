@@ -236,11 +236,14 @@ object Briefings {
                 )
             }
 
-            // 3. Everything else the storyteller still owes the table.
+            // 3. Everything else the storyteller still owes the table — carried
+            //    over from an earlier dawn if it was never ticked, and SAID SO:
+            //    "Erin is alive again." re-listed at dawn 3 with nothing to
+            //    distinguish it from tonight's news is a line a storyteller
+            //    reads out twice (playtest D, P2-17).
             for (entry in pending) {
                 if (entry.id in consumed) continue
-                if (entry.cycle < night) continue
-                add(announcement(entry))
+                add(announcement(entry, staleSince = entry.cycle.takeIf { it < night }))
             }
 
             // 4. The silent saves. A prevented death is a ledger RULING (lead D24),
@@ -888,16 +891,29 @@ object Briefings {
         }
 
     /** One still-owed sentence, in the voice it must be said in. */
-    private fun announcement(entry: LedgerEntry): BriefingItem = BriefingItem(
-        key = "announce:${entry.id}",
-        kind = BriefingKind.ANNOUNCE,
-        severity = BriefingSeverity.ACTION,
-        sourceId = entry.sourceId,
-        text = "Announce: ${entry.text}",
-        playerId = entry.actorId,
-        ledgerId = entry.id,
-        actionId = "$ACTION_MARK_ANNOUNCED${entry.id}",
-    )
+    /**
+     * One line the storyteller still owes the table.
+     *
+     * [staleSince] is the cycle it was first owed, when that is not this one:
+     * an un-ticked announcement is re-listed every dawn until it is ticked, and
+     * without the note it reads as fresh news each time (playtest D, P2-17).
+     */
+    private fun announcement(entry: LedgerEntry, staleSince: Int? = null): BriefingItem =
+        BriefingItem(
+            key = "announce:${entry.id}",
+            kind = BriefingKind.ANNOUNCE,
+            severity = BriefingSeverity.ACTION,
+            sourceId = entry.sourceId,
+            text = if (staleSince == null) {
+                "Announce: ${entry.text}"
+            } else {
+                "Announce: ${entry.text} (still owed from dawn $staleSince — " +
+                    "tick it if you already said it)"
+            },
+            playerId = entry.actorId,
+            ledgerId = entry.id,
+            actionId = "$ACTION_MARK_ANNOUNCED${entry.id}",
+        )
 
     /**
      * Everything the sweep at [at] is about to remove. Mirrors `Phases.sweep`:

@@ -41,6 +41,13 @@ data class PlacedReminder(
     val note: String = "",
     /** `state.cycle` when placed — powers "placed N3" and homebrew countdowns. */
     val placedCycle: Int = 0,
+    /**
+     * Turned over: the physical token stays on the seat, the rule it projects
+     * stops applying (wiki, Abilities). The effect-backed half of this lives on
+     * [Effect.suspended]; a hand-placed token had nowhere to record it, so the
+     * seat sheet's `Suspend` was a no-op for one (playtest D, P1-5).
+     */
+    val suspended: Boolean = false,
 )
 
 /** One seat in the grimoire circle. */

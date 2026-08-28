@@ -176,16 +176,17 @@ object Execution {
         val resolved = resolve(record, attempt)
         next = replaceLast(next, resolved)
 
-        // 6. The Undertaker learns whoever actually died.
+        // 6. Whoever reads "died today" learns who actually did.
         val diedId = resolved.diedInsteadId ?: resolved.playerId
-        if (resolved.outcome == ExecutionOutcome.DIED && diedId != null) {
+        val owner = diedTodayOwner(next)
+        if (resolved.outcome == ExecutionOutcome.DIED && diedId != null && owner != null) {
             next = Effects.place(
                 state = next,
                 target = diedId,
                 kind = EffectKind.MARKER,
-                sourceCharacterId = "undertaker",
+                sourceCharacterId = owner,
                 sourcePlayerId = null,
-                until = Tokens.rule("undertaker", DIED_TODAY)?.until ?: Until.DAWN,
+                until = Tokens.rule(owner, DIED_TODAY)?.until ?: Until.DAWN,
                 label = DIED_TODAY,
                 note = "Executed on day ${next.cycle}.",
             ).state
@@ -361,8 +362,26 @@ object Execution {
 
     // ---- internals ----
 
-    /** The official Undertaker mark. */
+    /** The official Undertaker mark. The Godfather and the Zombuul own one too. */
     private const val DIED_TODAY = "Died Today"
+
+    /**
+     * Which character on THIS script owns the `Died Today` marker.
+     *
+     * The mark is pure memory — nothing branches on it — but the grimoire names
+     * its source, and sourcing it at the Undertaker in a game with no Undertaker
+     * put "Removed: Died Today (Undertaker) from Erin." in a Bad Moon Rising
+     * dusk sheet (playtest D, P2-16). Read off the token registry rather than
+     * named here, so a script with none of the three simply gets no marker.
+     */
+    private fun diedTodayOwner(state: GameState): String? {
+        val script = state.script.characterIds.map(Character::normalizeId).toSet()
+        return Tokens.all
+            .asSequence()
+            .filter { it.label.equals(DIED_TODAY, ignoreCase = true) }
+            .map { Character.normalizeId(it.sourceId) }
+            .firstOrNull { it in script }
+    }
 
     private fun append(state: GameState, record: ExecutionRecord): GameState = state.copy(
         // A declared "no execution" is replaced the moment a real one happens.

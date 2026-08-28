@@ -2,6 +2,7 @@ package com.clocktower.engine.rules
 
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.ChosenContext
+import com.clocktower.engine.Character
 import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChooseCharacter
@@ -719,31 +720,46 @@ private fun goonAlreadyTriggered(ctx: ChosenContext): Boolean {
  * Demon's row and on `DEMON_INFO`.
  */
 private fun lunatic(): CharacterRule {
-    val rule = NightRule(
+    val choice: (NightContext) -> NightAction? = {
+        ChoosePlayers(
+            sourceId = "lunatic",
+            prompt = "WHO DID THEY CHOOSE? (nothing happens)",
+            min = 0,
+            max = 3,
+            constraints = listOf(
+                TargetConstraint.ANY_LIVING_STATE,
+                TargetConstraint.SELF_ALLOWED,
+            ),
+            sort = TargetSort.ALIVE_FIRST,
+            allowNone = true,
+            noneLabel = "They chose nobody",
+            perTarget = listOf(NightEffect.PlaceToken("lunatic", "Chosen", Ref.Target)),
+        )
+    }
+    val otherNight = NightRule(
         gate = Gates.aliveHolder,
         prompt = "Let the Lunatic act as the Demon they believe they are. Place their " +
             "Chosen markers. Nobody dies from this — nothing they do has any effect.",
-        action = {
-            ChoosePlayers(
-                sourceId = "lunatic",
-                prompt = "WHO DID THEY CHOOSE? (nothing happens)",
-                min = 0,
-                max = 3,
-                constraints = listOf(
-                    TargetConstraint.ANY_LIVING_STATE,
-                    TargetConstraint.SELF_ALLOWED,
-                ),
-                sort = TargetSort.ALIVE_FIRST,
-                allowNone = true,
-                noneLabel = "They chose nobody",
-                perTarget = listOf(NightEffect.PlaceToken("lunatic", "Chosen", Ref.Target)),
-            )
-        },
+        action = choice,
+    )
+    // The almanac's first night, verbatim: "wake the Lunatic and act as if they
+    // are the Demon. Show them the THESE ARE YOUR MINIONS info token … Then show
+    // three good character tokens as bluffs." The Po and the Zombuul have no
+    // first-night action at all, so this row IS the whole of their night 1 —
+    // `NightPlan` merges it into the believed Demon's row (playtest D, P0-2).
+    val firstNight = NightRule(
+        gate = Gates.aliveHolder,
+        prompt = "Wake the Lunatic and act as if they are the Demon. Show the THESE ARE " +
+            "YOUR MINIONS token and point at their fake Minions, then show their three " +
+            "bluffs. Nothing they choose tonight has any effect.",
+        banner = { ctx -> lunaticHandOver(ctx, short = true) },
+        detail = { ctx -> lunaticHandOver(ctx, short = false) },
+        action = choice,
     )
     return CharacterRule(
         id = "lunatic",
-        firstNight = rule,
-        otherNight = rule,
+        firstNight = firstNight,
+        otherNight = otherNight,
         // Three official Chosen tokens, swept at dawn (Tokens.BASE).
         illusionToken = TokenRule("lunatic", "Chosen", null, Until.DAWN, copies = 3),
         // "The Demon knows who you are & who you choose at night."
@@ -941,7 +957,10 @@ private fun godfather() = CharacterRule(
                 ),
             )
         },
-        infoId = "godfather",
+        // "You START knowing which Outsiders are in play": the info block is the
+        // first night's and nothing else's. Shown again on night 2 and night 3 it
+        // hands evil the Outsider list two more times (playtest D, P0-4).
+        infoId = "",
     ),
 )
 
@@ -1114,6 +1133,18 @@ private fun zombuul() = CharacterRule(
 private fun pukka(): CharacterRule {
     val rule = NightRule(
         gate = Gates.all(Gates.aliveHolder, Gates.notExorcised),
+        // The deferred kill is in `pending`, not in the action, so nothing on the
+        // card named the victim: the storyteller tapped `DEV — POISONED` and Ben
+        // died silently (playtest D, P1-9). It rides in ember, and it survives an
+        // Exorcised night, which is exactly the night it matters (lead D24/D63).
+        banner = { ctx ->
+            val victims = standingVictims(ctx).mapNotNull { ctx.state.player(it)?.name }
+            when {
+                victims.isEmpty() -> ""
+                else -> "${victims.joinToString(" and ")} dies now — poisoned by the Pukka " +
+                    "last night. Shroud them and announce the death at dawn."
+            }
+        },
         prompt = "The Pukka points at a player: that player is POISONED. The player " +
             "poisoned on the previous night dies now, still poisoned, then becomes healthy.",
         action = {
@@ -1373,6 +1404,44 @@ private fun standingVictims(ctx: NightContext): List<Long> {
             }
         }
         .map { it.id }
+}
+
+/**
+ * The Lunatic's first-night hand-over, in one sentence.
+ *
+ * [short] is the ember banner on the row; the long form goes in the detail. The
+ * believed Demon is read off the acting role — a Lunatic whose Demon token has
+ * not been chosen yet runs their own row, and the sentence says so instead of
+ * naming a character that is not there.
+ */
+private fun lunaticHandOver(ctx: NightContext, short: Boolean): String {
+    val holder = ctx.holder ?: return ""
+    val believedId = ctx.role?.abilityId
+        ?.let(Character::normalizeId)
+        ?.takeIf { it != "lunatic" }
+        ?: holder.shownCharacterId?.let(Character::normalizeId)?.takeIf { it != "lunatic" }
+    val believed = believedId?.let { ctx.lookup(it)?.name ?: it }
+    val fakeMinions = ctx.state.seats
+        .filter { seat ->
+            seat.reminders.any { Tokens.key(it) == Tokens.key("lunatic", "Fake Minion") }
+        }
+        .map { it.name }
+    val minions = when {
+        fakeMinions.isEmpty() ->
+            "point out players as their Minions (none marked yet — the setup checklist has the row)"
+
+        else -> "point at ${fakeMinions.joinToString()}"
+    }
+    val asDemon = believed?.let { "act as if they are the $it" }
+        ?: "act as if they are the Demon (no Demon token chosen for them yet)"
+    return if (short) {
+        "HAND OVER THE ILLUSION — wake ${holder.name}, $asDemon: " +
+            "THESE ARE YOUR MINIONS, $minions, then their three bluffs."
+    } else {
+        "First night: wake ${holder.name} and $asDemon. Show the THESE ARE YOUR MINIONS " +
+            "info token and $minions, then show three good character tokens as their " +
+            "bluffs. Nothing they choose tonight has any effect."
+    }
 }
 
 /** Dead seats the Shabaloth chose on its previous wake — tomorrow's menu. */

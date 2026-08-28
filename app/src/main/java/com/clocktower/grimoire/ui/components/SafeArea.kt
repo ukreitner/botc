@@ -1,6 +1,7 @@
 package com.clocktower.grimoire.ui.components
 
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -94,6 +95,31 @@ fun bottomActionClearance(
     gap: Dp = ActionRowGap,
     margin: Dp = BottomActionMargin,
 ): Dp = bottomActionPadding(safeBottom, margin) + rowHeight + gap
+
+/**
+ * Extra bottom clearance a FULL-SCREEN `Dialog` needs, on top of everything
+ * else — read in the shell's own composition, so call it *outside* the
+ * `Dialog { }` lambda and pass the result in.
+ *
+ * An Android dialog window fits system windows by default: it is positioned
+ * below the status bar and still sized to the whole display, so its content
+ * runs exactly `statusBars` pixels past the bottom of the screen — and reports
+ * ZERO insets inside, which makes `windowInsetsPadding` there a no-op. That is
+ * how the read-only grimoire ended up with its only button 4 px tall, under the
+ * home indicator (playtest D, P1-7). `decorFitsSystemWindows = false` is the
+ * platform's own answer and does not exist in the multiplatform
+ * `DialogProperties`, so the shell measures the offset instead.
+ *
+ * Zero on the web, where a dialog is hosted at the scene root with no offset
+ * and [overlaySafeAreaPadding] already carries the measured safe area. Adding
+ * it when the window turns out NOT to be offset costs a little empty space at
+ * the bottom and never pushes anything off-screen, which is the trade to make.
+ */
+@Composable
+fun dialogWindowBottomFix(): Dp {
+    val bars = WindowInsets.systemBars.asPaddingValues()
+    return bars.calculateTopPadding() + bars.calculateBottomPadding()
+}
 
 /** The bottom safe-area inset an overlay layer has to apply for itself. */
 @Composable

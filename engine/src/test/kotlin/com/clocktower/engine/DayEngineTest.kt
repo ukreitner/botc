@@ -826,6 +826,28 @@ class DayEngineTest {
     }
 
     @Test
+    fun `the Died Today mark is sourced at a character this script actually has`() {
+        // Playtest D P2-16: a Bad Moon Rising dusk sheet read
+        // "Removed: Died Today (Undertaker) from Erin." with no Undertaker in
+        // the game — the mark was hard-sourced at the Undertaker.
+        val bmr = data.builtInScripts().first { it.id == "bmr" }
+        var state = GameActions.newGame(bmr, (1..8).map { "P$it" })
+        state = GameActions.advancePhase(GameActions.advancePhase(state))
+        state = assign(state, 2L, "godfather")
+        state = assign(state, 3L, "chambermaid")
+        state = Execution.execute(state, lookup, playerId = 3L)
+
+        val marks = Status.effectsOn(state, lookup, 3L).filter { it.label == "Died Today" }
+        assertEquals(1, marks.size, "exactly one mark: $marks")
+        val source = Character.normalizeId(marks.single().sourceCharacterId)
+        assertTrue(
+            source in bmr.characterIds.map(Character::normalizeId),
+            "the mark names $source, which is not on this script",
+        )
+        assertFalse("undertaker" == source, "and never a character the script has never heard of")
+    }
+
+    @Test
     fun `the execution snapshots character, alignment, impairment, tally and threshold`() {
         var state = day1()
         state = assign(state, 3L, "recluse")

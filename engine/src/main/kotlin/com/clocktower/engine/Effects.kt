@@ -230,6 +230,17 @@ data class RenderedToken(
     /** No Dashii-style: no physical token, dotted ring. */
     val derived: Boolean = false,
     val suspended: Boolean = false,
+    /**
+     * On the board, but its rule is NOT in force: the ability sustaining it has
+     * stopped working (`StatusQuery.active` is false).
+     *
+     * A Sailor's `Drunk` on a seat, with the Sailor poisoned, is the case the
+     * playtest caught: the engine was right that the seat was not impaired, and
+     * the grimoire still drew a solid IMPAIRED pip, so a storyteller reading the
+     * circle would have fed the Chambermaid false information (playtest D,
+     * P2-12). Distinct from [suspended], which the storyteller chose.
+     */
+    val inert: Boolean = false,
     val note: String = "",
 )
 
@@ -820,6 +831,8 @@ internal object Standing {
                     createdCycle = r.placedCycle.takeIf { it > 0 } ?: state.cycle,
                     createdAtNight = state.phase != Phase.DAY,
                     suppression = rule.suppression,
+                    // A turned-over token still draws; its rule does not apply.
+                    suspended = r.suspended,
                 )
             }
         }
@@ -985,6 +998,46 @@ object Effects {
             },
         )
 
+    /**
+     * True when [effectId] names a STORED effect.
+     *
+     * A rendered token can be backed by an effect that is not in [GameState]
+     * at all: a standing rule, or a hand-placed reminder projected through the
+     * token registry ([Standing.projectTokens]). Those ids are handed out from
+     * `nextEffectId` on every query, so [remove] and [suspend] silently do
+     * nothing to them and the reminder re-projects the token straight back
+     * (playtest D, P1-5). Ask this before acting on an id from the grimoire.
+     */
+    fun isStored(state: GameState, effectId: Long): Boolean =
+        state.effects.any { it.id == effectId }
+
+    /** Index of the first reminder on [playerId] drawing `(sourceId, label)`, or -1. */
+    fun reminderIndex(state: GameState, playerId: Long, sourceId: String, label: String): Int {
+        val key = Tokens.key(sourceId, label)
+        return state.player(playerId)?.reminders?.indexOfFirst { Tokens.key(it) == key } ?: -1
+    }
+
+    /**
+     * Turns one hand-placed token over, or back — the physical gesture, on the
+     * reminder rather than on the effect it projects into.
+     */
+    fun suspendReminder(
+        state: GameState,
+        playerId: Long,
+        index: Int,
+        suspended: Boolean,
+    ): GameState = state.updatePlayer(playerId) { player ->
+        if (index !in player.reminders.indices) {
+            player
+        } else {
+            player.copy(
+                reminders = player.reminders.mapIndexed { i, r ->
+                    if (i == index) r.copy(suspended = suspended) else r
+                },
+            )
+        }
+    }
+
     /** Drops every effect whose `sourceCharacterId` is [characterId] on any seat. */
     fun removeBySource(state: GameState, characterId: String): GameState {
         val id = Character.normalizeId(characterId)
@@ -1115,6 +1168,7 @@ object Effects {
                     expiryText = expiryText(state, it),
                     derived = it.derived,
                     suspended = it.suspended,
+                    inert = !it.suspended && !q.active(it),
                     note = it.note,
                 )
             }
@@ -1130,6 +1184,7 @@ object Effects {
                     label = r.label,
                     group = Tokens.rule(r)?.effect?.group ?: EffectGroup.MARKER,
                     expiryText = if (r.placedCycle > 0) "placed N${r.placedCycle}" else "",
+                    suspended = r.suspended,
                     note = r.note,
                 )
             }

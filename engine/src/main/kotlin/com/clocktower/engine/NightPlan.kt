@@ -276,8 +276,36 @@ data class NightPlan(
             return NightPlan(
                 cycle = state.cycle,
                 isFirstNight = ctx.isFirstNight,
-                steps = restamp(ctx, base, base + inserted).sortedBy { it.order },
+                steps = beforeDawn(restamp(ctx, base, base + inserted)).sortedBy { it.order },
             )
+        }
+
+        /**
+         * Dawn closes the night, so nothing may sort after it.
+         *
+         * Two paths could put a row there. `restamp` stamps an out-of-order row
+         * at `cursor + 0.5`, and the cursor is the Dawn marker itself once
+         * everything before it is done or skipped; and `positionOf` falls back to
+         * "past the end of the list" for a slot tonight's order does not carry.
+         * Either way the Professor's re-run of a resurrected Grandmother's first
+         * night landed AFTER the Dawn card, which is also the card whose primary
+         * button opens the day (playtest D, P1-8).
+         *
+         * Relative order among the moved rows is kept; they land just before Dawn
+         * and after every base row, which is where "insert after the cursor"
+         * meant to put them.
+         */
+        private fun beforeDawn(steps: List<NightStep>): List<NightStep> {
+            val dawn = steps.firstOrNull { it.slotId == NightMarkers.DAWN } ?: return steps
+            val over = steps
+                .filter { it.slotId != NightMarkers.DAWN && it.order >= dawn.order }
+                .sortedBy { it.order }
+            if (over.isEmpty()) return steps
+            val gap = 0.5 / (over.size + 1)
+            val moved = over
+                .mapIndexed { n, step -> step.key.token to (dawn.order - 0.5 + gap * (n + 1)) }
+                .toMap()
+            return steps.map { step -> moved[step.key.token]?.let { step.copy(order = it) } ?: step }
         }
 
         // ---- resolution ---------------------------------------------------
@@ -422,6 +450,36 @@ data class NightPlan(
                 )
             }
             return next
+        }
+
+        /**
+         * Whether the row for [characterId] on [holderId]'s seat gives its
+         * information TONIGHT.
+         *
+         * `NightRule.infoId = ""` says "this step computes no information" and
+         * the planner has always honoured it for the cards it builds itself. A
+         * screen that derives the calculator key from the ability alone does not
+         * — which is why the Godfather's first-night "these Outsiders are in
+         * play" block, plus its four SHOW buttons, was rendered again on every
+         * later night (playtest D, P0-4). The engine is the authority; ask it.
+         *
+         * Deliberately conservative: only an explicit `infoId = ""` on the rule
+         * that runs tonight suppresses anything. No row, no rule, or a rule that
+         * leaves `infoId` at its default keeps whatever the caller asked for.
+         */
+        fun givesInfoTonight(
+            state: GameState,
+            lookup: (String) -> Character?,
+            characterId: String,
+            holderId: Long? = null,
+        ): Boolean {
+            val id = Character.normalizeId(characterId)
+            val step = build(state, lookup).steps.firstOrNull {
+                it.abilityId == id && (holderId == null || it.holderId == holderId)
+            } ?: return true
+            val rule = CharacterRules.of(step.abilityId, lookup(step.abilityId))
+            val nightRule = rule.nightRule(step.style == WakeStyle.FIRST_NIGHT) ?: return true
+            return nightRule.infoId != ""
         }
 
         fun toggleDone(state: GameState, token: String): GameState = toggleDone(state, token, false)
@@ -627,9 +685,22 @@ data class NightPlan(
             val nightRule = jinxOver(rule.nightRule(firstNightRules), rule, jinxed)
             val holder = ctx.holder(role)
             val nightCtx = ctx.nightContext(role, holder, firstNightRules)
+            // The BELIEVER'S own registry row, for a seat running an ability it
+            // does not have (lead D70). A Lunatic shown the Po believes in an
+            // ability with no first night at all, and before this the row was
+            // gated "no ability on this night" and auto-ticked — which threw the
+            // whole hand-over away (playtest D, P0-2). Night 1 is when the
+            // illusion is handed over: the Demon token, the fake Minions and the
+            // Lunatic's own bluffs. What to say is per-character knowledge and
+            // stays in the registry (§3.4.3); the planner only merges it in.
+            val believerRule = role.sourceId
+                ?.takeIf { role.alwaysFalse }
+                ?.let { CharacterRules.of(it, ctx.lookup(it)).nightRule(firstNightRules) }
             val gate = when {
-                nightRule == null -> StepGate.Skip("no ability on this night")
-                else -> nightRule.gate.gate(ctx.wakeContext(role, holder))
+                nightRule != null -> nightRule.gate.gate(ctx.wakeContext(role, holder))
+                // A believer's row is never "nothing to do".
+                believerRule != null -> believerRule.gate.gate(ctx.wakeContext(role, holder))
+                else -> StepGate.Skip("no ability on this night")
             }
             val chosen = nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
             // The picker shape is kept — a believed Shabaloth still takes two,
@@ -674,8 +745,11 @@ data class NightPlan(
                 },
                 detail = withEvidence(
                     withEvidence(
-                        detailFor(character, firstNightRules),
-                        nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                        withEvidence(
+                            detailFor(character, firstNightRules),
+                            nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                        ),
+                        believerRule?.detail?.invoke(nightCtx).orEmpty(),
                     ),
                     briefing,
                 ),
@@ -684,16 +758,27 @@ data class NightPlan(
                 style = style,
                 gate = gate,
                 // The planner's own banner (impaired, silenced, dead-but-acts)
-                // always wins: a row must never hide the reason its ability will
-                // not work tonight behind the registry's evidence quote. The
-                // briefing is appended rather than merged away — the real Demon
-                // must see the Lunatic's picks even on a night they are silenced.
+                // comes FIRST: a row must never hide the reason its ability will
+                // not work tonight. Everything else is appended rather than
+                // merged away — the real Demon must see the Lunatic's picks even
+                // on a night they are silenced, and an Exorcised Pukka's standing
+                // victim still dies, so the row still has to name them (P1-9).
                 banner = withEvidence(
-                    bannerFor(ctx, role, holder, gate)
-                        .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
+                    withEvidence(
+                        withEvidence(
+                            bannerFor(ctx, role, holder, gate),
+                            nightRule?.banner?.invoke(nightCtx).orEmpty(),
+                        ),
+                        // The hand-over is the point of a believer's first night,
+                        // so it goes in ember rather than in the drawer nobody
+                        // opens — even when the believed ability has a row of its
+                        // own to run underneath it.
+                        believerRule?.banner?.invoke(nightCtx).orEmpty(),
+                    ),
                     briefing,
                 ),
                 prompt = nightRule?.prompt.orEmpty()
+                    .ifEmpty { believerRule?.prompt.orEmpty() }
                     .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() },
                 action = action,
                 badges = badges,
@@ -2314,11 +2399,19 @@ object Gates {
                 !expected -> StepGate.Skip("someone died today")
                 deaths.isEmpty() -> StepGate.Skip("nobody died today")
                 else -> StepGate.Conditional(
-                    question = "Did a ${team?.displayName ?: "player"} die today?",
+                    question = "Did ${article(team?.displayName ?: "player")} die today?",
                     yesLabel = "Yes — they act tonight",
                     noLabel = "No — skip",
                 )
             }
+        }
+
+    /** "a player" / "an Outsider" — the gate question read "Did a Outsider…" (P2-14). */
+    private fun article(noun: String): String =
+        if (noun.firstOrNull()?.lowercaseChar() in setOf('a', 'e', 'i', 'o', 'u')) {
+            "an $noun"
+        } else {
+            "a $noun"
         }
 
     /** Undertaker: only when the day closed with an execution. */

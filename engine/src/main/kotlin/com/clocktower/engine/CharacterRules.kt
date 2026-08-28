@@ -605,12 +605,7 @@ internal object NightInfo {
                         "confusion fools nobody — the Vizier may say so out loud.",
                 )
             }
-            if (lunatics.isNotEmpty()) {
-                append(
-                    " Also show the Demon who the LUNATIC is " +
-                        "(${lunatics.joinToString { it.name }}) — the Demon can mirror their fake kills.",
-                )
-            }
+            if (lunatics.isNotEmpty()) append(" ").append(lunaticLine(lunatics))
             // …and, when the informer's slot comes BEFORE this one on the
             // nightsheet, what they chose tonight. The Lunatic's first-night
             // slot is 16 and DEMON_INFO is 17, so a believed Pukka has already
@@ -627,6 +622,12 @@ internal object NightInfo {
                 slotId = if (bluffsOnly) NightMarkers.DEMON_BLUFFS_ONLY else NightMarkers.DEMON_INFO,
                 detail = detail,
                 gate = StepGate.Fire,
+                // The one thing on this row a storyteller must not walk past.
+                // It was in the detail already, and the detail only reaches the
+                // collapsed drawer on a row that has a prompt of its own — which
+                // is how a whole playtest ran without the Demon ever being told
+                // (playtest D, P0-3).
+                banner = if (lunatics.isEmpty()) "" else lunaticLine(lunatics),
                 holderIds = demons.map { it.id },
                 cards = buildList {
                     if (!bluffsOnly) {
@@ -647,11 +648,33 @@ internal object NightInfo {
                             ),
                         )
                     }
+                    // "Show them the THIS PLAYER IS info token, then the Lunatic
+                    // token, then point at the Lunatic player" (almanac, verbatim).
+                    if (lunatics.isNotEmpty()) {
+                        add(
+                            CardOffer(
+                                label = "SHOW: THE LUNATIC IS " +
+                                    lunatics.joinToString { it.name.uppercase() },
+                                card = ShowCardSpec.PointCard(
+                                    prefix = ShowCardSpec.pointPrefix(true, lunatics.size),
+                                    playerNames = lunatics.map { it.name },
+                                    seatNumbers = lunatics.map { seatIndex(ctx, it) + 1 },
+                                    characterId = LUNATIC,
+                                ),
+                                truthful = true,
+                            ),
+                        )
+                    }
                 },
                 wakeCounts = WakeCount.INFORMED,
             ),
         )
     }
+
+    /** "Also show the Demon who the LUNATIC is (Jonas)" — one line, storyteller voice. */
+    private fun lunaticLine(lunatics: List<Player>): String =
+        "Also show the Demon who the LUNATIC is (${lunatics.joinToString { it.name }}) — " +
+            "the Demon can mirror their fake kills."
 
     /**
      * Teensyville only: with no Demon info step, the Demon is still shown who the
@@ -842,6 +865,7 @@ internal object NightInfo {
         detail: String,
         gate: StepGate,
         slotId: String = ctx.slot,
+        banner: String = "",
         holderIds: List<Long> = emptyList(),
         cards: List<CardOffer> = emptyList(),
         wakeCounts: WakeCount = WakeCount.NONE,
@@ -859,6 +883,7 @@ internal object NightInfo {
         holderIds = holderIds,
         style = ctx.style,
         gate = gate,
+        banner = banner,
         prompt = detail,
         cards = cards,
         badges = if (wakeCounts == WakeCount.INFORMED) {

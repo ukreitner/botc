@@ -213,6 +213,157 @@ class LunaticTest {
     }
 
     // ==================================================================
+    // Night 1: the hand-over (playtest D, P0-2)
+    // ==================================================================
+
+    /** The user's own table: a Lunatic shown the Po, which has no first night. */
+    private fun poLunaticNightOne(): Pair<GameState, Long> {
+        var state = bmrGame(
+            "lunatic", "po", "godfather", "assassin",
+            "sailor", "fool", "gossip", "chambermaid",
+        )
+        val lunatic = seat(state, "lunatic")
+        state = GameActions.setShownCharacter(state, lunatic, "po")
+        return state to lunatic
+    }
+
+    @Test
+    fun `the first night of a Lunatic who believes in a Demon with no first night is not skipped`() {
+        val (state, lunatic) = poLunaticNightOne()
+        val row = illusionRow(state, "lunatic", lunatic)
+
+        assertEquals("po", row.abilityId, "they still run the believed Demon's row (D70)")
+        assertEquals(
+            StepGate.Fire,
+            row.gate,
+            "night 1 is the hand-over, not 'no ability on this night': ${row.gate}",
+        )
+        assertTrue(row.required, "so the sheet cannot auto-tick it away")
+        assertTrue(
+            NightPlan.build(state, lookup).steps.any { it.key == row.key && it.required },
+            "and it is a real row of tonight's sheet",
+        )
+        assertEquals(null, row.action, "the Po still does not act on night 1")
+    }
+
+    @Test
+    fun `the first-night row hands over the Demon token the fake Minions and the bluffs`() {
+        var (state, lunatic) = poLunaticNightOne()
+        val fake = seat(state, "godfather")
+        state = GameActions.addReminder(state, fake, PlacedReminder("lunatic", "Fake Minion"))
+        val fakeName = assertNotNull(state.player(fake)).name
+        val row = illusionRow(state, "lunatic", lunatic)
+        val text = row.banner + " " + row.detail + " " + row.prompt
+
+        assertTrue("illusion" in row.banner, "the row still says it is an illusion: ${row.banner}")
+        assertTrue(
+            "HAND OVER THE ILLUSION" in row.banner,
+            "and the hand-over is in ember, not buried in the drawer: ${row.banner}",
+        )
+        assertTrue("Po" in text, "the believed Demon is named: $text")
+        assertTrue("MINIONS" in text, "the THESE ARE YOUR MINIONS token is named: $text")
+        assertTrue(fakeName in text, "the fake Minions are pointed out: $text")
+        assertTrue("bluffs" in text, "and the bluffs are handed out: $text")
+    }
+
+    @Test
+    fun `with no fake Minions marked the row says the checklist still owes them`() {
+        val (state, lunatic) = poLunaticNightOne()
+        val row = illusionRow(state, "lunatic", lunatic)
+        assertTrue(
+            "none marked yet" in row.detail,
+            "the storyteller is told the row is outstanding: ${row.detail}",
+        )
+    }
+
+    @Test
+    fun `a believed Demon that does act on night one keeps its own row and the hand-over`() {
+        var state = bmrGame(
+            "lunatic", "pukka", "godfather", "assassin",
+            "sailor", "fool", "gossip", "chambermaid",
+        )
+        val lunatic = seat(state, "lunatic")
+        state = GameActions.setShownCharacter(state, lunatic, "pukka")
+        val row = illusionRow(state, "lunatic", lunatic)
+
+        assertEquals(StepGate.Fire, row.gate)
+        assertIs<ChoosePlayers>(row.action, "the believed Pukka's picker is still offered")
+        assertTrue(
+            "HAND OVER THE ILLUSION" in row.banner,
+            "and the hand-over rides along with it: ${row.banner}",
+        )
+    }
+
+    @Test
+    fun `the Lunatic's own row is used when no Demon token has been chosen yet`() {
+        val state = bmrGame(
+            "lunatic", "po", "godfather", "assassin",
+            "sailor", "fool", "gossip", "chambermaid",
+        )
+        val lunatic = seat(state, "lunatic")
+        val row = illusionRow(state, "lunatic", lunatic)
+        assertEquals("lunatic", row.abilityId, "no believed Demon: their own row runs")
+        assertEquals(StepGate.Fire, row.gate)
+        assertTrue(
+            "no Demon token chosen for them yet" in row.detail,
+            "and it says the checklist still owes the token: ${row.detail}",
+        )
+    }
+
+    // ==================================================================
+    // "Show them the THIS PLAYER IS token, then the Lunatic token" (P0-3)
+    // ==================================================================
+
+    private fun demonInfoRow(state: GameState): NightStep = assertNotNull(
+        NightPlan.build(state, lookup).steps.firstOrNull {
+            it.slotId == NightMarkers.DEMON_INFO
+        },
+        "no Demon info row: ${NightPlan.build(state, lookup).steps.map { it.slotId }}",
+    )
+
+    @Test
+    fun `the real Demon is told who the Lunatic is on the first night`() {
+        val (state, lunatic) = poLunaticNightOne()
+        val info = demonInfoRow(state)
+        val who = name(state, lunatic)
+
+        assertTrue(
+            "LUNATIC" in info.banner && who in info.banner,
+            "the Demon info row says it in ember, not only in the drawer: '${info.banner}'",
+        )
+        // Marker rows carry their own words in `banner`/`prompt` (Fix B-11 moved
+        // the seat-naming text out of `detail`, which is now always empty).
+        assertTrue(who in info.banner + " " + info.prompt, "and in the row text: ${info.banner} | ${info.prompt}")
+
+        val offer = assertNotNull(
+            info.cards.firstOrNull { it.card is ShowCardSpec.PointCard },
+            "a card to actually show it with: ${info.cards.map { it.label }}",
+        )
+        val card = assertIs<ShowCardSpec.PointCard>(offer.card)
+        assertEquals("lunatic", card.characterId, "the Lunatic token is on the card")
+        assertEquals(listOf(who), card.playerNames)
+        assertEquals(listOf(state.seats.indexOfFirst { it.id == lunatic } + 1), card.seatNumbers)
+        assertTrue(offer.truthful)
+        assertTrue(who.uppercase() in offer.label, "the button names them: ${offer.label}")
+    }
+
+    @Test
+    fun `a game with no Lunatic says nothing about one`() {
+        val state = bmrGame(
+            "po", "godfather", "assassin", "sailor",
+            "fool", "gossip", "chambermaid", "tealady",
+        )
+        val info = demonInfoRow(state)
+        assertEquals("", info.banner, "nothing to say: '${info.banner}'")
+        assertFalse("LUNATIC" in info.prompt, info.prompt)
+        // The Minion point card (Fix B-7) is still offered; only the Lunatic one is absent.
+        assertTrue(
+            info.cards.none { (it.card as? ShowCardSpec.PointCard)?.characterId == "lunatic" || "LUNATIC" in it.label },
+            "and no card to point at a Lunatic with: ${info.cards.map { it.label }}",
+        )
+    }
+
+    // ==================================================================
     // Every other believer — the Drunk, who owns no marker
     // ==================================================================
 

@@ -436,6 +436,79 @@ class NightPlanTest {
     }
 
     // ==================================================================
+    // Dawn closes the night (playtest D, P1-8)
+    // ==================================================================
+
+    @Test
+    fun `a first-night re-run inserted at the Dawn cursor still sorts before Dawn`() {
+        var state = game(
+            bmr, "professor", "grandmother", "pukka", "godfather",
+            "sailor", "gossip", "chambermaid", "fool",
+        )
+        val erin = assertNotNull(state.players.firstOrNull { it.characterId == "grandmother" }).id
+        state = Deaths.attempt(
+            state,
+            lookup,
+            erin,
+            KillCause(DeathCause.DEMON_KILL, "pukka"),
+        ).state
+        state = atNight(state, 2).copy(nightStepsDone = emptySet())
+
+        val professor = assertNotNull(step(state, "professor"), "the Professor acts on night 2")
+        state = NightPlan.resolve(state, lookup, professor.key, NightInput(playerIds = listOf(erin)))
+        assertTrue(assertNotNull(state.player(erin)).alive, "the Grandmother is back")
+
+        // The storyteller has worked the whole sheet down to the Dawn card, so
+        // the cursor IS Dawn — which used to stamp the re-run at `Dawn + 0.5`.
+        state = state.copy(
+            nightStepsDone = plan(state).steps
+                .filter { it.key.variant == StepVariant.NORMAL && it.slotId != NightMarkers.DAWN }
+                .map { it.key.token }
+                .toSet(),
+        )
+
+        val steps = plan(state).steps
+        val rerun = assertNotNull(
+            steps.firstOrNull { it.key.variant == StepVariant.FIRST },
+            "the resurrection re-runs a first night: ${steps.map { it.key.token }}",
+        )
+        val dawn = assertNotNull(steps.firstOrNull { it.slotId == NightMarkers.DAWN })
+        assertTrue(
+            NightPlan.OUT_OF_ORDER in rerun.badges,
+            "the row really is being re-stamped at the cursor: ${rerun.badges}",
+        )
+        assertTrue(rerun.order < dawn.order, "${rerun.order} must come before Dawn at ${dawn.order}")
+        assertEquals(
+            steps.size - 1,
+            steps.indexOf(dawn),
+            "Dawn is the last row of the sheet: ${steps.map { it.slotId }}",
+        )
+    }
+
+    @Test
+    fun `nothing the planner inserts ever sorts after Dawn`() {
+        // The general invariant, not just the Professor's case.
+        var state = game(
+            bmr, "professor", "grandmother", "pukka", "godfather",
+            "sailor", "gossip", "chambermaid", "fool",
+        )
+        val erin = assertNotNull(state.players.firstOrNull { it.characterId == "grandmother" }).id
+        state = Deaths.attempt(state, lookup, erin, KillCause(DeathCause.DEMON_KILL, "pukka")).state
+        state = atNight(state, 2).copy(nightStepsDone = emptySet())
+        val professor = assertNotNull(step(state, "professor"))
+        state = NightPlan.resolve(state, lookup, professor.key, NightInput(playerIds = listOf(erin)))
+
+        for (done in listOf(emptySet<String>(), plan(state).steps.map { it.key.token }.toSet())) {
+            val steps = plan(state.copy(nightStepsDone = done)).steps
+            val dawn = assertNotNull(steps.firstOrNull { it.slotId == NightMarkers.DAWN })
+            assertTrue(
+                steps.none { it.slotId != NightMarkers.DAWN && it.order >= dawn.order },
+                "rows after Dawn: ${steps.filter { it.order >= dawn.order }.map { it.key.token }}",
+            )
+        }
+    }
+
+    // ==================================================================
     // W7H — the scaffolding is gone
     // ==================================================================
 

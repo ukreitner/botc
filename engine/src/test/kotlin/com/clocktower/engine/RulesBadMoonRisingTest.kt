@@ -257,6 +257,54 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Pukka's row names the standing victim, and dawn announces the death`() {
+        // Playtest D P1-9: the deferred kill lives in `pending`, so nothing on
+        // the card mentioned the victim — the storyteller tapped the poison
+        // button and somebody died silently.
+        var state = game("pukka", "gossip", "chambermaid", "professor", "gambler", "courtier")
+        val victim = seat(state, "gossip")
+        val victimName = assertNotNull(state.player(victim)).name
+
+        assertEquals("", require(state, "pukka").banner, "night 1 has nobody standing")
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(victim)))
+        state = nextNight(state)
+
+        val row = require(state, "pukka")
+        assertTrue(victimName in row.banner, "the row names them: '${row.banner}'")
+        assertTrue("dies now" in row.banner, "and says they die: '${row.banner}'")
+
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(seat(state, "chambermaid"))))
+        assertFalse(assertNotNull(state.player(victim)).alive)
+        val dawn = Briefings.at(state, lookup, BriefingSlot.DAWN)
+        assertTrue(
+            dawn.announce.any { victimName in it.text },
+            "and dawn announces it out loud: ${dawn.announce.map { it.text }}",
+        )
+    }
+
+    @Test
+    fun `an Exorcised Pukka still names the victim its silenced row will kill`() {
+        var state = game("pukka", "exorcist", "gossip", "chambermaid", "professor", "fool")
+        val pukka = seat(state, "pukka")
+        val victim = seat(state, "gossip")
+        val victimName = assertNotNull(state.player(victim)).name
+        state = resolve(state, "pukka", NightInput(playerIds = listOf(victim)))
+        state = nextNight(state)
+        state = resolve(state, "exorcist", NightInput(playerIds = listOf(pukka)))
+
+        val row = require(state, "pukka")
+        val reduced = assertIs<StepGate.Reduced>(row.gate)
+        assertTrue(
+            row.banner.startsWith(reduced.reason),
+            "the reason the ability is cut back still comes first: '${row.banner}'",
+        )
+        assertTrue(
+            victimName in row.banner,
+            "and the death it still carries is not hidden behind it: '${row.banner}'",
+        )
+    }
+
+    @Test
     fun `a protected Pukka victim lives and still becomes healthy`() {
         var state = game("pukka", "gossip", "chambermaid", "innkeeper", "professor", "gambler")
         val victim = seat(state, "gossip")
@@ -833,6 +881,62 @@ class RulesBadMoonRisingTest {
         val death = assertNotNull(after.deaths.lastOrNull { it.playerId == victim })
         assertEquals(DeathCause.EVIL_ABILITY, death.cause)
         assertTrue(holds(after, victim, "godfather", "Dead"))
+    }
+
+    @Test
+    fun `the Godfather's gate question reads "an Outsider", not "a Outsider"`() {
+        // Playtest D P2-14.
+        var state = game("godfather", "pukka", "tinker", "chambermaid", "professor", "gossip")
+        // Somebody died today, but nobody who registered as an Outsider: the
+        // storyteller is asked rather than overruled.
+        var day = Phases.advancePhase(state, lookup)
+        day = Deaths.attempt(
+            day,
+            lookup,
+            seat(day, "chambermaid"),
+            KillCause(DeathCause.EXECUTION),
+        ).state
+        state = Phases.advancePhase(day, lookup)
+
+        val gate = assertIs<StepGate.Conditional>(require(state, "godfather").gate)
+        assertEquals("Did an Outsider die today?", gate.question)
+    }
+
+    @Test
+    fun `the Godfather learns the Outsiders on the first night and never again`() {
+        // Playtest D P0-4: the "these Outsiders are in play" block, and its four
+        // SHOW buttons, were rendered again on night 2 and night 3.
+        val base = game("godfather", "pukka", "tinker", "chambermaid", "professor", "gossip")
+        val first = require(base, "godfather")
+        assertTrue(
+            first.cards.any { it.truthful && "TINKER" in it.label.uppercase() },
+            "night 1 shows the Outsider tokens: ${first.cards.map { it.label }}",
+        )
+        assertTrue(
+            NightPlan.givesInfoTonight(base, lookup, "godfather", first.holderId),
+            "and the engine says the row gives information tonight",
+        )
+
+        // Day 1: an Outsider is executed, so night 2's row does fire — with the
+        // kill only, and not one word about which Outsiders are in play.
+        var day = Phases.advancePhase(base, lookup)
+        day = Deaths.attempt(day, lookup, seat(base, "tinker"), KillCause(DeathCause.EXECUTION)).state
+        val armed = Phases.advancePhase(day, lookup)
+        val second = require(armed, "godfather")
+        assertEquals(StepGate.Fire, second.gate)
+        assertTrue(
+            second.cards.isEmpty(),
+            "no Outsider tokens to show a second time: ${second.cards.map { it.label }}",
+        )
+        assertFalse(
+            NightPlan.givesInfoTonight(armed, lookup, "godfather", second.holderId),
+            "and the screen is told not to compute the block either",
+        )
+
+        // Night 3, with nobody dead today, is skipped — and still says nothing.
+        val third = require(nextNight(armed), "godfather")
+        assertIs<StepGate.Skip>(third.gate)
+        assertTrue(third.cards.isEmpty(), "${third.cards.map { it.label }}")
     }
 
     @Test

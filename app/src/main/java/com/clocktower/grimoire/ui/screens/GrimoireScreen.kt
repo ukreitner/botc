@@ -408,7 +408,8 @@ private fun groupCounts(
 ): List<Pair<EffectGroup, Int>> {
     val counts = LinkedHashMap<EffectGroup, Int>()
     for (p in state.seats) {
-        for (group in tokens[p.id].orEmpty().filterNot { it.suspended }.map { it.group }.toSet()) {
+        val live = tokens[p.id].orEmpty().filterNot { it.suspended || it.inert }
+        for (group in live.map { it.group }.toSet()) {
             counts[group] = (counts[group] ?: 0) + 1
         }
     }
@@ -424,7 +425,11 @@ private fun seatMatches(
     search: String,
 ): Boolean {
     if (filter == FILTER_DEAD && player.alive) return false
-    if (filter != null && filter != FILTER_DEAD && tokens.none { !it.suspended && it.group.name == filter }) return false
+    if (filter != null && filter != FILTER_DEAD &&
+        tokens.none { !it.suspended && !it.inert && it.group.name == filter }
+    ) {
+        return false
+    }
     val q = search.trim()
     if (q.isEmpty()) return true
     return player.name.contains(q, ignoreCase = true) ||
@@ -940,6 +945,7 @@ private fun PipStrip(
                 ringColor = viewModel.characterById(token?.sourceId)?.team?.color ?: Color.Transparent,
                 suspended = token?.suspended == true,
                 derived = token?.derived == true,
+                inert = token?.inert == true,
             )
         }
         if (pips.hidden > 0) {
@@ -974,7 +980,15 @@ private fun seatDescription(
     if (Status.isImpaired(state, viewModel::characterById, player.id)) append(", drunk or poisoned")
     if (tokens.isNotEmpty()) {
         append(", tokens: ")
-        append(tokens.joinToString { "${it.label}${if (it.suspended) " (suspended)" else ""}" })
+        append(
+            tokens.joinToString {
+                it.label + when {
+                    it.suspended -> " (suspended)"
+                    it.inert -> " (not in force)"
+                    else -> ""
+                }
+            },
+        )
     }
 }
 
@@ -1121,12 +1135,16 @@ fun TokenLine(viewModel: GameViewModel, token: RenderedToken, modifier: Modifier
             ringColor = source?.team?.color ?: Color.Transparent,
             suspended = token.suspended,
             derived = token.derived,
+            inert = token.inert,
         )
         Spacer(Modifier.width(4.dp))
         Text(
             buildString {
                 append(token.label)
                 if (token.suspended) append(" (turned over)")
+                // Playtest D P2-12: the engine knew this token was doing
+                // nothing; the grimoire drew it at full strength anyway.
+                if (token.inert) append(" (not in force)")
                 source?.let { append(" · ${it.name}") }
                 if (token.expiryText.isNotEmpty()) append(" · ${token.expiryText}")
                 if (token.derived) append(" · no physical token")
@@ -1182,8 +1200,18 @@ private fun TokenPeek(
                         Column {
                             TokenLine(viewModel, token)
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                token.effectId?.let { id ->
-                                    TextButton(onClick = { viewModel.suspendEffect(id, !token.suspended) }) {
+                                // A derived token has no physical counterpart to
+                                // turn over; everything else does (P1-5).
+                                if (!token.derived) {
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.suspendRenderedToken(
+                                                playerId,
+                                                token,
+                                                !token.suspended,
+                                            )
+                                        },
+                                    ) {
                                         Text(if (token.suspended) "Restore" else "Suspend")
                                     }
                                 }
