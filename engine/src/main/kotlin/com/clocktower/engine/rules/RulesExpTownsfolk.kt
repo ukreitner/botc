@@ -35,6 +35,7 @@ import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
 import com.clocktower.engine.RequirementKind
+import com.clocktower.engine.SeatPredicate
 import com.clocktower.engine.SetupRequirement
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.StandingRule
@@ -137,16 +138,25 @@ internal val SUPPRESSED_INFO_IDS: List<String> = listOf(
  * tonight, you die."
  *
  * The death is a HIGH-WATER MARK over the whole night, not a point-in-time
- * query, and the engine has no `GameState.nightImpaired` watermark yet
- * (digest §group 9). The nearest expressible thing is a dawn obligation the
- * storyteller discharges, so the ruling is never lost between here and dawn.
+ * query. W7b gave the engine one: `GameState.nightImpaired` (lead D72) is
+ * seeded at dusk, added to every time the night applies an impairment, and
+ * cleared at dawn — so `SeatPredicate.WAS_IMPAIRED_TONIGHT` answers the card's
+ * real question and the dawn obligation is gone.
+ *
+ * The Acrobat sits at night-order 22, after the Poisoner, Widow, Courtier and
+ * Innkeeper, so the mark already covers every impairer that acts before them.
+ * An impairment that lands LATER (a No Dashii's poison moving as a Townsfolk
+ * dies, a Sweetheart's drunkenness) is a hand-ruling; the `Chosen` token stays
+ * on the board until dawn and the prompt line says so.
  */
 private fun acrobat() = CharacterRule(
     id = "acrobat",
     killCause = DeathCause.GOOD_ABILITY,
     otherNight = NightRule(
         gate = Gates.aliveHolder,
-        prompt = "The Acrobat points at a player. They learn nothing — show them nothing.",
+        prompt = "The Acrobat points at a player. They learn nothing — show them nothing. " +
+            "If that player has been drunk or poisoned at any point tonight the Acrobat dies " +
+            "now; Chosen stays on the board until dawn, so a LATER impairment still counts.",
         infoId = "",
         action = {
             ChoosePlayers(
@@ -164,18 +174,23 @@ private fun acrobat() = CharacterRule(
                         kind = EffectKind.MARKER,
                         until = Until.DAWN,
                     ),
-                ),
-                onResolve = listOf(
-                    NightEffect.QueuePrompt(
-                        at = BriefingSlot.DAWN,
-                        kind = PromptKind.RESOLVE_KILL,
-                        sourceId = "acrobat",
-                        on = Ref.Source,
-                        title = "Acrobat: if the player they chose IS or BECAME drunk or " +
-                            "poisoned at any point tonight, the Acrobat dies now.",
+                    NightEffect.When(
+                        predicate = SeatPredicate.WAS_IMPAIRED_TONIGHT,
+                        on = Ref.Target,
+                        then = listOf(
+                            NightEffect.Attack(on = Ref.Source, cause = DeathCause.GOOD_ABILITY),
+                        ),
                     ),
                 ),
             )
+        },
+        // Names the seats the mark already covers, so the storyteller can see
+        // the answer before they tap rather than after.
+        banner = { ctx ->
+            val marked = ctx.state.nightImpaired
+                .mapNotNull { ctx.state.player(it)?.name }
+                .sorted()
+            if (marked.isEmpty()) "" else "Drunk or poisoned so far tonight: ${marked.joinToString()}."
         },
     ),
 )

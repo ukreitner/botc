@@ -1709,6 +1709,7 @@ data class NightPlan(
                 SeatPredicate.REGISTERS_EVIL -> Registration.registersEvil(state, lookup, seat)
                 SeatPredicate.HAS_ABILITY -> Status.hasAbility(state, lookup, seatId)
                 SeatPredicate.IS_IMPAIRED -> Status.isImpaired(state, lookup, seatId)
+                SeatPredicate.WAS_IMPAIRED_TONIGHT -> seatId in state.nightImpaired
                 SeatPredicate.IS_SOURCE -> seatId == scope.sourceId
             }
         }

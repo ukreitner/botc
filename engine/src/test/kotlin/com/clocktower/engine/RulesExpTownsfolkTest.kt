@@ -228,21 +228,53 @@ class RulesExpTownsfolkTest {
     // ==================================================================
 
     @Test
-    fun `acrobat marks the chosen seat and owes a dawn ruling`() {
+    fun `acrobat marks the chosen seat and survives a healthy one`() {
         // Given an Acrobat on night 2 (they never act on the first night)
         val state = atNight(game("acrobat", "imp", "poisoner", "chef", "mayor"), 2)
         assertNull(step(game("acrobat", "imp", "poisoner", "chef", "mayor"), "acrobat"))
         assertEquals(StepGate.Fire, gate(state, "acrobat"))
 
-        // When they point at the seat the Poisoner is about to poison
+        // When they point at a seat nothing has touched tonight
         val next = run(state, "acrobat", NightInput(playerIds = listOf(3L)))
 
-        // Then the seat is marked, and the death is a dawn obligation, not a guess
+        // Then the seat is marked and the Acrobat lives. The dawn obligation of
+        // wave 7 is gone: `nightImpaired` answers the question outright.
         assertTrue(has(next, 3L, "acrobat", "Chosen"))
-        val owed = next.prompts.single { it.sourceId == "acrobat" }
-        assertEquals(BriefingSlot.DAWN, owed.at)
-        assertEquals(PromptKind.RESOLVE_KILL, owed.kind)
-        assertEquals(0L, owed.subjectPlayerId, "the Acrobat is the one who dies")
+        assertTrue(next.prompts.none { it.sourceId == "acrobat" })
+        assertTrue(assertNotNull(next.player(0L)).alive)
+    }
+
+    @Test
+    fun `acrobat dies for a seat that was impaired at any point tonight`() {
+        var state = atNight(game("acrobat", "imp", "poisoner", "chef", "mayor"), 2)
+
+        // The Poisoner acts first (night-order 17 vs the Acrobat's 22).
+        state = run(state, "poisoner", NightInput(playerIds = listOf(3L)))
+        assertTrue(3L in state.nightImpaired)
+
+        state = run(state, "acrobat", NightInput(playerIds = listOf(3L)))
+        val acrobat = assertNotNull(state.player(0L))
+        assertFalse(acrobat.alive, "the player they chose is poisoned, so the Acrobat dies")
+        assertEquals(
+            DeathCause.GOOD_ABILITY,
+            state.deaths.last { it.playerId == 0L }.cause,
+            "the Acrobat's own ability kills them — never a Demon kill",
+        )
+    }
+
+    @Test
+    fun `the Acrobat's watermark survives the impairment being lifted mid-night`() {
+        var state = atNight(game("acrobat", "imp", "poisoner", "chef", "mayor"), 2)
+        state = run(state, "poisoner", NightInput(playerIds = listOf(3L)))
+
+        // The Poisoner dies before the Acrobat's slot: the Chef is sober again…
+        state = Deaths.attempt(state, lookup, 2L, KillCause(DeathCause.STORYTELLER)).state
+        assertFalse(Status.isImpaired(state, lookup, 3L))
+        // …but they WERE poisoned tonight, which is what the card asks.
+        assertTrue(3L in state.nightImpaired)
+
+        state = run(state, "acrobat", NightInput(playerIds = listOf(3L)))
+        assertFalse(assertNotNull(state.player(0L)).alive)
     }
 
     // ==================================================================

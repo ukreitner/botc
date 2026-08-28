@@ -157,6 +157,16 @@ enum class SeatPredicate {
     /** The seat is drunk, poisoned or has no ability. */
     IS_IMPAIRED,
 
+    /**
+     * The seat has been drunk, poisoned or ability-less at ANY moment tonight —
+     * `GameState.nightImpaired` (lead D72).
+     *
+     * "…if they ARE OR BECOME drunk or poisoned tonight" is a high-water mark,
+     * not a point-in-time query: a Courtier's target who sobered up by the time
+     * the step resolves still answers yes.
+     */
+    WAS_IMPAIRED_TONIGHT,
+
     /** This seat is the one holding the step (Barber's self-swap whitelist). */
     IS_SOURCE,
 }
