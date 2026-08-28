@@ -447,7 +447,8 @@ class PersistenceTest {
      *
      * MAINTENANCE: a field added to `GameState` or `Player` belongs here and in
      * the assertions below. A round trip that silently ignores it proves
-     * nothing about it.
+     * nothing about it. Every serialised element of both types is covered as of
+     * the D72 additions (`counters`, `nightImpaired`, `Player.voteTokens`).
      */
     private fun everyFieldPopulated(): GameState {
         val tb = data.builtInScripts().first { it.id == "tb" }
@@ -575,6 +576,13 @@ class PersistenceTest {
                 Decisions.XAAN_X to "2",
                 Decisions.COUNT_TRAVELLERS_FOR_INFO to "true",
             ),
+            counters = mapOf(
+                Counters.YAGGABABBLE_SAID to 3,
+                "homebrew.tally" to 7,
+            ),
+            // Whatever the played night already recorded, plus two seats the
+            // fixture impairs by hand, so the field is non-default either way.
+            nightImpaired = state.nightImpaired + setOf(0L, 2L),
             finalDayCycle = 5,
             mastermindDayActive = true,
             storytellerNotes = "Bo is running the table. Watch the Butler.",
@@ -586,6 +594,9 @@ class PersistenceTest {
                     shownCharacterId = player.shownCharacterId ?: "saint",
                     alignment = Alignment.GOOD,
                     ghostVoteUsed = true,
+                    // Distinct per seat, none of them the default 1, so a
+                    // round trip that shuffled the seats would be caught too.
+                    voteTokens = player.id.toInt() + 2,
                     isTraveller = player.id == 3L,
                     leftGame = player.id == 3L,
                     reminders = player.reminders + PlacedReminder(
@@ -626,6 +637,8 @@ class PersistenceTest {
         // Nothing in the fixture is left at its default — a round trip that
         // carries only defaults would pass while proving nothing.
         assertTrue(state.id.isNotBlank())
+        assertEquals("tb", state.script.id)
+        assertTrue(state.script.characterIds.isNotEmpty())
         assertEquals(6, state.players.size)
         assertEquals(Phase.NIGHT, state.phase)
         assertEquals(2, state.cycle)
@@ -646,8 +659,11 @@ class PersistenceTest {
         assertTrue(state.fabled.isNotEmpty())
         assertTrue(state.bluffSets.isNotEmpty())
         assertTrue(state.decisions.isNotEmpty())
+        assertEquals(3, Counters.get(state, Counters.YAGGABABBLE_SAID))
+        assertEquals(7, Counters.get(state, "homebrew.tally"))
         assertNotNull(state.finalDayCycle)
         assertTrue(state.nightStepsDone.isNotEmpty())
+        assertTrue(state.nightImpaired.containsAll(setOf(0L, 2L)))
         assertNotNull(state.lastDawn)
         assertNotNull(state.lastDusk)
         assertTrue(state.mastermindDayActive)
@@ -656,10 +672,13 @@ class PersistenceTest {
         assertTrue(state.legacyDemonBluffIds.isNotEmpty())
         assertTrue(state.legacyFabledIds.isNotEmpty())
         val seat = assertNotNull(state.player(0))
+        assertTrue(state.players.all { it.name.isNotBlank() })
+        assertTrue(state.players.any { !it.alive }, "the executed seat must be stored dead")
         assertNotNull(seat.characterId)
         assertNotNull(seat.shownCharacterId)
         assertNotNull(seat.alignment)
         assertTrue(seat.ghostVoteUsed)
+        assertEquals(listOf(2, 3, 4, 5, 6, 7), state.players.map { it.voteTokens })
         assertTrue(assertNotNull(state.player(3)).isTraveller)
         assertTrue(assertNotNull(state.player(3)).leftGame)
         assertTrue(seat.reminders.isNotEmpty())

@@ -142,10 +142,10 @@ fun ReorderSeatsDialog(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        IconButton(onClick = { viewModel.update { s -> com.clocktower.engine.GameActions.moveSeat(s, p.id, -1) } }) {
+                        IconButton(onClick = { viewModel.moveSeat(p.id, -1) }) {
                             Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Move up")
                         }
-                        IconButton(onClick = { viewModel.update { s -> com.clocktower.engine.GameActions.moveSeat(s, p.id, +1) } }) {
+                        IconButton(onClick = { viewModel.moveSeat(p.id, +1) }) {
                             Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Move down")
                         }
                     }
