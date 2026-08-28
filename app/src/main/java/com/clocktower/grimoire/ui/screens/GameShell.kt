@@ -461,7 +461,7 @@ fun GameShell(
             onDismiss = { showCardTool = false },
         )
     }
-    if (showLog) GameLogDialog(state, onDismiss = { showLog = false })
+    if (showLog) GameLogDialog(state, viewModel.lookup, onDismiss = { showLog = false })
     if (showFabled) FabledSheet(viewModel, state, onDismiss = { showFabled = false })
     if (showJinxes) ActiveJinxesDialog(viewModel, state, onDismiss = { showJinxes = false })
     if (showReorder) ReorderSeatsDialog(viewModel, state, onDismiss = { showReorder = false })
