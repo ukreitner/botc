@@ -88,6 +88,7 @@ compressor, you are past the useful limit no matter what RSS says.
 |---|---|
 | `dump` | compact semantics tree; raw XML written to `out/<serial>-dump.xml` |
 | `find <regex>` | every match with its centre coords, flagged if untappable |
+| `absent <regex>` | the inverse of `find`: exits 0 only when NOTHING matches, and lists the offenders when something does. A scenario asserting a control was *taken away* (the day's top-bar Dusk button, C-18) cannot use `find`, because a step that is meant to fail looks exactly like a broken one |
 | `tap <regex>` | taps the centre of the best match — **refuses off-screen taps**, see below |
 | `tapxy <x> <y>` | raw coordinate tap |
 | `hold <regex> [ms]` | press-and-hold, default 800 ms |
@@ -171,10 +172,20 @@ y=2316 is the bug this catches.** Sample output:
       - bottom 39px under the navigation/gesture inset (home indicator)
 ```
 
-Full-bleed backdrops (sheet scrims, ≥40 % of the screen) are excluded from the
-clipping check — they are *supposed* to run edge to edge — but are still flagged
-if their own centre is untappable. `audit` exits 1 when it finds anything, so it
-works as a gate; inside a scenario a finding is recorded and the run continues.
+Full-bleed backdrops are excluded from the clipping check — they are *supposed*
+to run edge to edge. Two things count as one:
+
+- a **scrim**: a clickable box drawn from the physical top-left corner across
+  the full width of the display (the "tap outside to dismiss" surface of a sheet
+  or dialog). It is exempt from the centre check too: its centre is wherever the
+  sheet below it happened to leave room, and any point in it dismisses. Size is
+  not the test — a sheet that finally *fits* leaves a thin strip of scrim, which
+  the old ≥40 % rule read as a clipped control;
+- anything covering **≥40 % of the screen**, which is still flagged if its own
+  centre is untappable.
+
+`audit` exits 1 when it finds anything, so it works as a gate; inside a scenario
+a finding is recorded and the run continues.
 
 `audit --xml <saved-dump.xml>` re-checks a dump you already captured, so you can
 re-examine a screen without navigating back to it.
