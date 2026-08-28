@@ -488,7 +488,7 @@ private fun lilMonstaExecution(
     executedId: Long?,
 ): List<ExecutionConsequence> {
     val executed = executedId?.let { state.player(it) } ?: return emptyList()
-    if (!holdsLilMonsta(executed)) return emptyList()
+    if (!holdsLilMonsta(state, executed)) return emptyList()
     return buildList {
         add(
             ExecutionConsequence(
@@ -1193,8 +1193,9 @@ private fun hasToken(state: GameState, player: Player, sourceId: String, label: 
         }
 }
 
-private fun holdsLilMonsta(player: Player): Boolean =
-    player.reminders.any { Tokens.key(it) == Tokens.key("lilmonsta", "Is The Demon") }
+/** Both spellings count: a hand-placed token and the effect the pipeline places. */
+private fun holdsLilMonsta(state: GameState, player: Player): Boolean =
+    hasToken(state, player, "lilmonsta", "Is The Demon")
 
 /** How many "Good Player Executed" marks the Leviathan already has. */
 private fun goodExecutedMarks(state: GameState): Int {

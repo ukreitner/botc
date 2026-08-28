@@ -221,7 +221,14 @@ data class NightPlan(
                 }
                 val slotRoles = bySlot[slot].orEmpty()
                 if (slotRoles.isEmpty()) {
-                    if (slot in state.fabledIds) steps += fabledStep(ctx, slot, at)
+                    if (slot in state.fabledIds) {
+                        steps += seatlessStep(ctx, slot, at, ctx.fabledHolders(slot), WakeCount.NONE)
+                    } else if (slot in ctx.seatless) {
+                        // In play, but the bag seated nobody: a Lil' Monsta game
+                        // has no Demon seat at all (lead D18). One group row, no
+                        // holder — the registry row does the waking.
+                        steps += seatlessStep(ctx, slot, at, emptyList(), WakeCount.ACT)
+                    }
                     continue
                 }
                 val rule = CharacterRules.of(slotRoles.first().abilityId, lookup(slotRoles.first().abilityId))
@@ -442,6 +449,15 @@ data class NightPlan(
 
             val bluffs: List<BluffRequirement> by lazy { Bluffs.requirements(state, lookup) }
 
+            /** In play, but the bag seated nobody — a Lil' Monsta game (lead D18). */
+            val seatless: Set<String> by lazy { Setup.seatlessInPlayIds(state).toSet() }
+
+            /** The seats an in-play Fabled points at, if it points at any. */
+            fun fabledHolders(slot: String): List<Long> = state.fabled
+                .firstOrNull { Character.normalizeId(it.id) == slot }
+                ?.playerIds
+                .orEmpty()
+
             /** Seats whose character changed tonight — the Pit-Hag's victim, an heir. */
             val changedTonight: List<IdentityRecord> = state.identityLog
                 .filter { it.cycle == state.cycle && it.atNight }
@@ -633,17 +649,25 @@ data class NightPlan(
         }
 
         /**
-         * An in-play Fabled with a night-order slot but no seat of its own.
+         * A character that is in play with a night-order slot but no seat of its
+         * own: an in-play Fabled, and a `groupStep` character the bag never
+         * seated (`Setup.seatlessInPlayIds` — lead D18/D59).
          *
          * The registry row is honoured in full — gate, action, prompt, cards,
          * `infoId`, `wakeCounts` — exactly as for a seated row. The only
-         * difference is that `holder` is null: a Fabled holds no seat, so a
-         * gate like `Gates.aliveHolder` fires by construction and the Duchess's
-         * "3 visitors are marked" gate reads the board instead.
+         * difference is that `holder` is null, so a gate like `Gates.aliveHolder`
+         * fires by construction and a board-reading gate (the Duchess's "3
+         * visitors are marked", the Toymaker's "the attack could end the game")
+         * decides instead.
          */
-        private fun fabledStep(ctx: PlanContext, slot: String, at: Double): List<NightStep> {
+        private fun seatlessStep(
+            ctx: PlanContext,
+            slot: String,
+            at: Double,
+            holderIds: List<Long>,
+            wakeDefault: WakeCount,
+        ): List<NightStep> {
             val character = ctx.lookup(slot) ?: return emptyList()
-            val entry = ctx.state.fabled.firstOrNull { Character.normalizeId(it.id) == slot }
             val rule = CharacterRules.of(slot, character)
             val nightRule = rule.nightRule(ctx.isFirstNight)
             val nightCtx = ctx.nightContext(role = null, holder = null, firstNightRules = ctx.isFirstNight)
@@ -658,7 +682,7 @@ data class NightPlan(
                     order = at,
                     title = character.name,
                     detail = detailFor(character, ctx.isFirstNight),
-                    holderIds = entry?.playerIds.orEmpty(),
+                    holderIds = holderIds,
                     style = ctx.style,
                     gate = gate,
                     banner = (gate as? StepGate.Reduced)?.reason.orEmpty(),
@@ -666,18 +690,14 @@ data class NightPlan(
                         .ifEmpty { NightGuide.forStep(slot, ctx.style)?.instructions.orEmpty() },
                     action = action,
                     cards = nightRule?.cards?.invoke(nightCtx).orEmpty() +
-                        fabledInfoCards(ctx, slot, nightRule),
-                    wakeCounts = nightRule?.wakeCounts ?: WakeCount.NONE,
+                        seatlessInfoCards(ctx, nightRule),
+                    wakeCounts = nightRule?.wakeCounts ?: wakeDefault,
                 ),
             )
         }
 
-        /** Pre-filled cards for a seatless Fabled information step (the Duchess). */
-        private fun fabledInfoCards(
-            ctx: PlanContext,
-            slot: String,
-            nightRule: NightRule?,
-        ): List<CardOffer> {
+        /** Pre-filled cards for a seatless information step (the Duchess). */
+        private fun seatlessInfoCards(ctx: PlanContext, nightRule: NightRule?): List<CardOffer> {
             val infoId = nightRule?.infoId.orEmpty()
             if (infoId.isEmpty() || !InfoCalc.supports(infoId)) return emptyList()
             if (InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
@@ -795,8 +815,16 @@ data class NightPlan(
         private fun insertions(ctx: PlanContext, base: List<NightStep>): List<NightStep> {
             val out = mutableListOf<NightStep>()
             val taken = base.map { it.key.token }.toMutableSet()
+            // A group step is ONE row for every holder, and its key names only the
+            // first of them. Without this, converting three Minions to the Riot on
+            // night 3 produced the group row plus one duplicate per convert.
+            val grouped = base
+                .filter { CharacterRules.of(it.abilityId, ctx.lookup(it.abilityId)).groupStep }
+                .map { it.abilityId }
+                .toSet()
             for (prompt in Prompts.forTonight(ctx.state)) {
                 val step = promptStep(ctx, prompt, taken) ?: continue
+                if (step.abilityId in grouped) continue
                 out += step
                 taken += step.key.token
             }
@@ -804,6 +832,7 @@ data class NightPlan(
                 val holder = ctx.state.player(record.playerId) ?: continue
                 if (record.reason == ChangeReason.FARMER) continue // no first-night info
                 for (role in Identity.actingRoles(ctx.state, ctx.lookup, holder)) {
+                    if (role.abilityId in grouped) continue
                     val step = createdStep(ctx, role, record, taken) ?: continue
                     out += step
                     taken += step.key.token

@@ -498,12 +498,13 @@ class RulesExpDemonsTest {
         )
         // Their Minion steps are gone from tonight's sheet.
         assertTrue(steps(state, "poisoner").isEmpty())
-        // And all three Riot share ONE group row naming every holder.
-        // FOLLOWUPS(WP2): `insertions` also adds a "new character" row per seat
-        // converted tonight, which duplicates a groupStep row.
-        assertTrue(
-            steps(state, "riot").any { it.holderIds == listOf(0L, 1L, 2L) },
-            "the group row lists every Riot: ${steps(state, "riot").map { it.holderIds }}",
+        // And all three Riot share EXACTLY ONE group row naming every holder.
+        // W7B: `insertions` used to add a "new character" row per seat converted
+        // tonight, so night 3 rendered one group row plus two duplicates.
+        assertEquals(
+            listOf(listOf(0L, 1L, 2L)),
+            steps(state, "riot").map { it.holderIds },
+            "one group row, never one per convert",
         )
     }
 
@@ -766,14 +767,49 @@ class RulesExpDemonsTest {
             "the token moves, it does not accumulate",
         )
 
-        // And the babysitter registers as the Demon while keeping their own team.
-        // FOLLOWUPS(WP1): `Registration` reads `Player.reminders` only, so the
-        // EFFECT the night pipeline places does not reach it — a hand-placed
-        // token does. Both spellings must mean the same thing.
-        val physical = Effects.addReminder(state, 1L, PlacedReminder("lilmonsta", "Is The Demon"))
-        val teams = Registration.registersAs(physical, lookup, assertNotNull(physical.player(1L)))
+        // And the babysitter registers as the Demon while keeping their own team —
+        // from the EFFECT the pipeline placed, with no hand-placed token at all
+        // (W7B: `Registration` used to read `Player.reminders` only).
+        val teams = Registration.registersAs(state, lookup, assertNotNull(state.player(1L)))
         assertTrue(Team.DEMON in teams, "the babysitter IS the Demon")
         assertTrue(Team.MINION in teams, "…and keeps their own character's team")
+
+        // Both spellings mean the same thing: a hand-placed token still counts.
+        val physical = Effects.addReminder(state, 3L, PlacedReminder("lilmonsta", "Is The Demon"))
+        assertTrue(
+            Team.DEMON in Registration.registersAs(physical, lookup, assertNotNull(physical.player(3L))),
+        )
+    }
+
+    @Test
+    fun `a Lil Monsta game with no Demon seat still gets a seatless group row`() {
+        // Given a bag with no Demon at all — Lil' Monsta lives in the centre of
+        // the grimoire and the Minions babysit it (lead D18 / D59).
+        var state = game("poisoner", "baron", "chef", "empath", "undertaker", "washerwoman")
+        state = Decisions.set(state, SetupRequirements.LILMONSTA_NO_DEMON_SEAT, "true")
+        assertEquals(listOf("lilmonsta"), Setup.seatlessInPlayIds(state))
+        assertTrue(
+            state.seats.none { it.characterId?.let(lookup)?.team == Team.DEMON },
+            "the point of the fixture is that no seat holds the Demon",
+        )
+
+        // Then the planner emits ONE row with no holder…
+        val first = assertNotNull(step(state, "lilmonsta"), "night 1 must list Lil' Monsta")
+        assertNull(first.key.holderId, "a seatless group step has no holder")
+        assertIs<StepGate.Fire>(first.gate)
+        assertEquals(WakeCount.INFORMED, first.wakeCounts, "the Minions wake, not for their own ability")
+        assertTrue(first.prompt.startsWith("Wake every Minion"), "registry prompt: ${first.prompt}")
+
+        // …and running it hands the token out and registers that seat as the Demon.
+        val resolved = resolve(state, first, NightInput(playerIds = listOf(0L)))
+        assertTrue(tokenOn(resolved, 0L, "lilmonsta", "Is The Demon"))
+        assertTrue(
+            Team.DEMON in Registration.registersAs(resolved, lookup, assertNotNull(resolved.player(0L))),
+        )
+
+        // With the decision unset, nothing seatless is emitted at all.
+        val seated = Decisions.clear(state, SetupRequirements.LILMONSTA_NO_DEMON_SEAT)
+        assertNull(step(seated, "lilmonsta"))
     }
 
     @Test

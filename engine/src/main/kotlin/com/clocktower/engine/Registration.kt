@@ -35,7 +35,7 @@ object Registration {
                 out += Team.MINION
             }
             // Whoever holds the Lil' Monsta token is the Demon for every count.
-            else -> if (holdsLilMonsta(player)) out += Team.DEMON
+            else -> if (holdsLilMonsta(state, player)) out += Team.DEMON
         }
 
         // A ruling that named nothing recognisable must not empty the set.
@@ -90,7 +90,25 @@ object Registration {
         }
     }
 
-    /** The seat holding the Lil' Monsta babysitting token is the Demon. */
-    private fun holdsLilMonsta(player: Player): Boolean =
-        player.reminders.any { Tokens.key(it) == Tokens.key("lilmonsta", "Is The Demon") }
+    /**
+     * The seat holding the Lil' Monsta babysitting token is the Demon.
+     *
+     * Both spellings of "holding the token" count: the storyteller's own
+     * hand-placed `PlacedReminder`, and the [Effect] the night pipeline places
+     * when the Minions choose a babysitter. Reading only the reminder list made
+     * a pipeline-chosen babysitter register as their own team alone.
+     *
+     * Read from `state.effects` rather than through [Status]: the answer is
+     * needed while a [StatusQuery] is being built, and the token is
+     * `Until.FOREVER` with no source seat to lose its ability.
+     */
+    private fun holdsLilMonsta(state: GameState, player: Player): Boolean {
+        val key = Tokens.key("lilmonsta", "Is The Demon")
+        if (player.reminders.any { Tokens.key(it) == key }) return true
+        return state.effects.any {
+            it.targetId == player.id &&
+                !it.suspended &&
+                Tokens.key(it.sourceCharacterId, it.label) == key
+        }
+    }
 }
