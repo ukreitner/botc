@@ -725,19 +725,28 @@ fun CharacterPicker(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .padding(horizontal = 20.dp)
-            // The script list fills the sheet on every script, and a
-            // full-height `ModalBottomSheet` starts 8 px ABOVE the status-bar
-            // inset on the reference phone, which put [Back]'s top edge under
-            // the status bar (`audit`: "top 8px under the status bar/cutout").
-            // Same fix the token picker took in F-5.
-            .padding(top = 8.dp)
-            // …and the same list runs to the bottom edge, where
-            // `overlayBottomPadding()` could only offer its own 24 dp margin —
-            // 63 px against the home indicator's 84 px, hence "bottom 21px
-            // under the gesture inset". [insets] carries the real number in
-            // from outside the sheet.
-            .padding(bottom = bottomActionPadding(insets.bottom)),
+            .padding(horizontal = 20.dp),
+        // CONTENT padding, not layout padding, and the difference matters:
+        //
+        // * top 8 dp — a full-height `ModalBottomSheet` starts 8 px ABOVE the
+        //   status-bar inset on the reference phone, which put [Back]'s top
+        //   edge under the status bar ("top 8px under the status bar/cutout").
+        // * bottom — `overlayBottomPadding()` is 24 dp of margin plus an inset
+        //   the sheet reports as consumed, so it could only offer 63 px
+        //   against the home indicator's 84 px ("bottom 21px under the gesture
+        //   inset"). [insets] carries the real number in from outside.
+        //
+        // As `Modifier.padding` both of these shrink the list's VIEWPORT, and
+        // with `imePadding()` also taking the keyboard's height that leaves a
+        // few hundred pixels: the first search result fell outside the viewport
+        // and off the semantics tree entirely, so `D_bmr_assign.sh` could not
+        // find any row to tap. As `contentPadding` the viewport keeps its full
+        // height and the padding is space at the ends of the SCROLL — which is
+        // what "the last row must clear the home indicator" actually means.
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = bottomActionPadding(insets.bottom),
+        ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         item {
@@ -898,20 +907,16 @@ fun ReminderPicker(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .padding(horizontal = 20.dp)
-            // The token list is long enough to push this sheet to its full
-            // height on every script, and a full-height `ModalBottomSheet`
-            // starts 8 px ABOVE the status-bar inset on the reference phone —
-            // which put the header's [Back] button's top edge under the status
-            // bar (`audit`: "top 8px under the status bar/cutout"). The list
-            // scrolls, so the only row that ever sits at that edge is this
-            // first one.
-            .padding(top = 8.dp)
-            // Same reason as the character picker's: `overlayBottomPadding()`
-            // is 24 dp of margin and an inset the sheet reports as consumed,
-            // so the last chip of a long token list ended 21 px inside the
-            // home indicator's strip. [insets] is measured outside the sheet.
-            .padding(bottom = bottomActionPadding(insets.bottom)),
+            .padding(horizontal = 20.dp),
+        // The character picker's reasoning, verbatim (see there): 8 dp of top
+        // so [Back] clears the status bar a full-height sheet starts 8 px
+        // above, the measured inset at the bottom so the last chip clears the
+        // home indicator — and both as CONTENT padding, so the keyboard and
+        // the safe area do not eat the viewport between them.
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = bottomActionPadding(insets.bottom),
+        ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         item {
