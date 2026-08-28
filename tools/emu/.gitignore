@@ -1,0 +1,4 @@
+# Screenshots, raw uiautomator dumps and emulator logs produced by the harness.
+out/
+__pycache__/
+*.pyc
