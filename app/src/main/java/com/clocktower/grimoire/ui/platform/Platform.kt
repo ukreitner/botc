@@ -2,6 +2,9 @@ package com.clocktower.grimoire.ui.platform
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -107,6 +110,25 @@ fun shellSafeTopDp(): Dp = 0.dp
 /** The bottom half of [shellSafeTopDp]: zero here, the home indicator on the web. */
 @Composable
 fun shellSafeBottomDp(): Dp = 0.dp
+
+/**
+ * How far this platform's own full-screen `Dialog` window pushes its content
+ * down, WITHOUT telling Compose about it.
+ *
+ * Android's dialog windows fit system windows by default: the platform places
+ * the content below the status bar but still measures it against the full
+ * screen height, so a dialog laid out to 2400 px is drawn from y=136 and its
+ * last 136 px fall off the bottom. Compose inside that window reports no
+ * insets at all, which is why `Modifier.windowInsetsPadding` cannot see any of
+ * it (playtest A-2). Whatever the window took off the top has to be given back
+ * at the bottom — see `SafeArea.rememberDialogInsets`.
+ *
+ * The browser hosts dialogs at the scene root with no offset whatsoever, so
+ * the web seam returns zero.
+ */
+@Composable
+fun dialogDecorTopDp(): Dp =
+    WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
 
 /**
  * Returns an action that opens the platform file picker and reads the

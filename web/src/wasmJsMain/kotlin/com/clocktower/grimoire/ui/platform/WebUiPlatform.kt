@@ -127,6 +127,14 @@ fun shellSafeTopDp(): Dp = pollInsetDp { safeTopJs() }
 fun shellSafeBottomDp(): Dp = pollInsetDp { safeBottomJs() }
 
 /**
+ * The browser hosts `Dialog` content at the scene root, exactly where the app
+ * itself is drawn: nothing pushes it down, so nothing has to be given back.
+ * See the Android seam for what this compensates for.
+ */
+@Composable
+fun dialogDecorTopDp(): Dp = 0.dp
+
+/**
  * Reads one shell-measured inset and keeps reading it, writing state only when
  * the value actually changes, so a still device costs no recompositions —
  * the same discipline `Main.kt` uses for the root padding.

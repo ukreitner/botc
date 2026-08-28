@@ -52,6 +52,7 @@ import com.clocktower.engine.SetupRequirements
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
 import com.clocktower.grimoire.ui.components.overlaySafeAreaPadding
+import com.clocktower.grimoire.ui.components.rememberDialogInsets
 import com.clocktower.grimoire.ui.platform.KeepScreenOn
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
@@ -128,17 +129,29 @@ fun RevealFlow(
     /** Restrict the pass to these seats (a paired hand-over, one re-show). */
     seats: List<Long>? = null,
 ) {
+    // MEASURED HERE, outside the dialog. Inside the dialog's own window Compose
+    // reports no insets at all, so both `overlaySafeAreaPadding()` and
+    // `safeDrawingPadding()` resolved to zero and the whole column was laid out
+    // against the full 2400 px — "Start over" and "Finish later" were drawn
+    // past the bottom of the screen and the storyteller had no way out of
+    // hand-out mode but the hardware Back key (playtest A-2).
+    val insets = rememberDialogInsets()
     Dialog(
         onDismissRequest = onDone,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false),
     ) {
-        // A dialog is hosted ABOVE the shell's own inset padding, so the safe
-        // area is re-applied here rather than inside [HandOutMode] — which is
-        // also a first-class destination (SetupScreen), where the shell has
-        // already padded it and doing it again would double up.
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            Box(Modifier.fillMaxSize().overlaySafeAreaPadding()) {
-                HandOutMode(viewModel = viewModel, state = state, onDone = onDone, seats = seats)
+            Box(Modifier.fillMaxSize().overlaySafeAreaPadding(insets)) {
+                HandOutMode(
+                    viewModel = viewModel,
+                    state = state,
+                    onDone = onDone,
+                    seats = seats,
+                    // The box above already applied them; asking again inside
+                    // the dialog adds nothing today and would double up the day
+                    // a platform starts reporting insets there.
+                    applyOwnInsets = false,
+                )
             }
         }
     }
@@ -159,6 +172,11 @@ fun HandOutMode(
     state: GameState,
     onDone: () -> Unit,
     seats: List<Long>? = null,
+    /**
+     * False when a caller has already applied the safe area for us — the
+     * `Dialog` in [RevealFlow], whose window reports none of its own.
+     */
+    applyOwnInsets: Boolean = true,
 ) {
     KeepScreenOn()
     var seatOrder by rememberSaveable { mutableStateOf(false) }
@@ -220,6 +238,7 @@ fun HandOutMode(
                 onOpenSeat = { openSeatId = it },
                 onChecklist = { showChecklist = true },
                 onDone = onDone,
+                applyOwnInsets = applyOwnInsets,
             )
         }
         if (showChecklist) {
@@ -250,12 +269,13 @@ private fun HandOutRoster(
     onOpenSeat: (Long) -> Unit,
     onChecklist: () -> Unit,
     onDone: () -> Unit,
+    applyOwnInsets: Boolean,
 ) {
     Column(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .safeDrawingPadding()
+            .then(if (applyOwnInsets) Modifier.safeDrawingPadding() else Modifier)
             .padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
