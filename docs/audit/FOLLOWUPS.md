@@ -58,3 +58,8 @@
 - WP5 data: minstrel "Everyone Is Drunk" in reminders not remindersGlobal.
 - Divergences: Zombuul picker ALIVE (not ANY_LIVING_STATE); shabaloth/Dead Until.DAWN with regurgitation from Memory.lastChoice + DECIDE prompt in pending; tinker/Dead added; professor/Alive + shabaloth/Alive FOREVER; no StandingRule for sailor/tealady (would replace WP1's positional engine).
 - Stopgaps superseded: zombuul, godfather, pukka, chambermaid (+ ravenkeeper from TB) → delete CharacterRules.STOPGAP entirely; KEEPS_ABILITY_WHEN_DEAD id set → delete.
+
+## Post-deploy fix waves (2026-08-28)
+### Lunatic (lead verification, not agent-reported)
+- `NightPlan.resolve` does not neutralise effects for `ActingRole.alwaysFalse`; only the four BMR Demon rows call `placeboAction`. A Lunatic believing they are the Imp / Fang Gu / Vigormortis / any exp Demon runs the real Attack. Fix generically in the planner: for an alwaysFalse role drop every NightEffect except the holder's OWN illusion tokens, and place `lunatic/Chosen` per target for any believed Demon; still record the CHOICE.
+- The real Demon is shown who the Lunatic is on night 1 (DEMON_INFO) but never the Lunatic's nightly choice — add it to the Demon's step banner/detail from Memory.lastChoice at slot "lunatic" (+ TOLD ledger row) every night, and to DEMON_INFO on night 1 if the Lunatic acted before it.
