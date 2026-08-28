@@ -627,9 +627,22 @@ data class NightPlan(
             val nightRule = jinxOver(rule.nightRule(firstNightRules), rule, jinxed)
             val holder = ctx.holder(role)
             val nightCtx = ctx.nightContext(role, holder, firstNightRules)
+            // The BELIEVER'S own registry row, for a seat running an ability it
+            // does not have (lead D70). A Lunatic shown the Po believes in an
+            // ability with no first night at all, and before this the row was
+            // gated "no ability on this night" and auto-ticked — which threw the
+            // whole hand-over away (playtest D, P0-2). Night 1 is when the
+            // illusion is handed over: the Demon token, the fake Minions and the
+            // Lunatic's own bluffs. What to say is per-character knowledge and
+            // stays in the registry (§3.4.3); the planner only merges it in.
+            val believerRule = role.sourceId
+                ?.takeIf { role.alwaysFalse }
+                ?.let { CharacterRules.of(it, ctx.lookup(it)).nightRule(firstNightRules) }
             val gate = when {
-                nightRule == null -> StepGate.Skip("no ability on this night")
-                else -> nightRule.gate.gate(ctx.wakeContext(role, holder))
+                nightRule != null -> nightRule.gate.gate(ctx.wakeContext(role, holder))
+                // A believer's row is never "nothing to do".
+                believerRule != null -> believerRule.gate.gate(ctx.wakeContext(role, holder))
+                else -> StepGate.Skip("no ability on this night")
             }
             val chosen = nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
             // The picker shape is kept — a believed Shabaloth still takes two,
@@ -674,8 +687,11 @@ data class NightPlan(
                 },
                 detail = withEvidence(
                     withEvidence(
-                        detailFor(character, firstNightRules),
-                        nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                        withEvidence(
+                            detailFor(character, firstNightRules),
+                            nightRule?.detail?.invoke(nightCtx).orEmpty(),
+                        ),
+                        believerRule?.detail?.invoke(nightCtx).orEmpty(),
                     ),
                     briefing,
                 ),
@@ -689,11 +705,19 @@ data class NightPlan(
                 // briefing is appended rather than merged away — the real Demon
                 // must see the Lunatic's picks even on a night they are silenced.
                 banner = withEvidence(
-                    bannerFor(ctx, role, holder, gate)
-                        .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
+                    withEvidence(
+                        bannerFor(ctx, role, holder, gate)
+                            .ifEmpty { nightRule?.banner?.invoke(nightCtx).orEmpty() },
+                        // The hand-over is the point of a believer's first night,
+                        // so it goes in ember rather than in the drawer nobody
+                        // opens — even when the believed ability has a row of its
+                        // own to run underneath it.
+                        believerRule?.banner?.invoke(nightCtx).orEmpty(),
+                    ),
                     briefing,
                 ),
                 prompt = nightRule?.prompt.orEmpty()
+                    .ifEmpty { believerRule?.prompt.orEmpty() }
                     .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() },
                 action = action,
                 badges = badges,
