@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +52,8 @@ import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
 import com.clocktower.grimoire.ui.components.overlayBottomPadding
+import com.clocktower.grimoire.ui.components.rememberOverlayInsets
+import com.clocktower.grimoire.ui.components.sheetActionPadding
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.TownsfolkBlue
@@ -459,87 +462,110 @@ fun SetupChecklistSheet(
         return
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = overlayBottomPadding()),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            item {
-                Text(
-                    "Before the first night",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = AgedGold,
-                )
-                Text(
-                    "$doneCount of ${rows.size} done" +
-                        if (rows.isEmpty()) " — this game needs no setup decisions." else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(6.dp))
-            }
-            items(rows, key = { "req-" + it.id }) { row ->
-                val ok = satisfied[row.id] == true
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            if (row.kind == RequirementKind.BLUFFS) {
-                                bluffKey = bluffKeyOf[row.id] ?: bluffKeyOf.values.firstOrNull()
-                            } else {
-                                openRowId = row.id
-                            }
-                        }
-                        .padding(vertical = 6.dp),
-                ) {
+    // Measured OUTSIDE the sheet: a ModalBottomSheet reports its insets as
+    // already consumed, so nothing inside it can see the home indicator.
+    val insets = rememberOverlayInsets()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // Without this the sheet opens HALF expanded, is measured against the
+        // full content height anyway, and simply overflows the bottom of the
+        // screen — which is how a six-row checklist lost its Close button. Fully
+        // expanded, the content is bounded by the screen, so `weight` below can
+        // give the list what is left after the pinned button.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        // A-3: the ROWS scroll, the Close button does not. With six rows the
+        // sheet used to grow past the bottom of the screen and take its own
+        // only dismissal button with it — `ui.py tap "^Close$"` answered
+        // OFFSCREEN, and the row count grows with the script.
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            LazyColumn(
+                // `fill = false`: a two-row checklist still renders a short
+                // sheet rather than a full-height one.
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                item {
                     Text(
-                        if (ok) "✓" else "○",
-                        color = if (ok) AgedGold else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(22.dp),
+                        "Before the first night",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = AgedGold,
                     )
-                    Column(Modifier.weight(1f)) {
+                    Text(
+                        "$doneCount of ${rows.size} done" +
+                            if (rows.isEmpty()) " — this game needs no setup decisions." else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+                items(rows, key = { "req-" + it.id }) { row ->
+                    val ok = satisfied[row.id] == true
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (row.kind == RequirementKind.BLUFFS) {
+                                    bluffKey = bluffKeyOf[row.id] ?: bluffKeyOf.values.firstOrNull()
+                                } else {
+                                    openRowId = row.id
+                                }
+                            }
+                            .padding(vertical = 6.dp),
+                    ) {
                         Text(
-                            row.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (ok) {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
+                            if (ok) "✓" else "○",
+                            color = if (ok) AgedGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(22.dp),
                         )
-                        Text(
-                            row.prompt,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                row.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (ok) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                            )
+                            Text(
+                                row.prompt,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (!row.blocking) {
+                            Text(
+                                "optional",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    if (!row.blocking) {
-                        Text(
-                            "optional",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                }
+                item {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "\"Begin night\" still works with rows outstanding — the guard " +
+                            "tells you what is missing and lets you start anyway.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
                 }
             }
-            item {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "\"Begin night\" still works with rows outstanding — the guard " +
-                        "tells you what is missing and lets you start anyway.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                FilledTonalButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                    Text("Close")
-                }
+            // Pinned INSIDE the safe area, below the scrolling list.
+            FilledTonalButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .sheetActionPadding(insets),
+            ) {
+                Text("Close")
             }
         }
     }
