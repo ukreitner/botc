@@ -1657,6 +1657,8 @@ data class NightPlan(
                 }
 
                 is NightEffect.MarkConsumed -> next = Ledger.resolve(next, effect.ledgerId)
+
+                is NightEffect.SetCounter -> next = Counters.set(next, effect.key, effect.value)
             }
             return next
         }

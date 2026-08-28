@@ -1,5 +1,8 @@
 package com.clocktower.engine.rules
 
+import com.clocktower.engine.BriefingItem
+import com.clocktower.engine.BriefingKind
+import com.clocktower.engine.BriefingSeverity
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.CardOffer
 import com.clocktower.engine.Character
@@ -8,12 +11,13 @@ import com.clocktower.engine.CharacterRule
 import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
+import com.clocktower.engine.Counters
+import com.clocktower.engine.DayAbility
 import com.clocktower.engine.DayRule
 import com.clocktower.engine.DayRules
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.DeathEvent
 import com.clocktower.engine.DeathTrigger
-import com.clocktower.engine.Decisions
 import com.clocktower.engine.Effect
 import com.clocktower.engine.EffectKind
 import com.clocktower.engine.ExecutionConsequence
@@ -957,6 +961,12 @@ private fun riotNomination(
  * nights offer up to `charges` victims — and fewer, or none, is legal. The
  * sobriety check is at RESOLUTION time, not speaking time, which is the opposite
  * of what most storytellers assume, so it is on the step.
+ *
+ * W7b: the utterance tally is `GameState.counters["yaggababble.said"]` (lead
+ * D72), added to by the day ability below every time the storyteller hears the
+ * phrase, and zeroed by the night step that spends it — "for each time you said
+ * it publicly TODAY" is a per-day count, not a running total. The phrase itself
+ * stays a `decisions` secret.
  */
 private fun yaggababble() = CharacterRule(
     id = "yaggababble",
@@ -987,7 +997,44 @@ private fun yaggababble() = CharacterRule(
         prompt = "The Yaggababble is not woken. Up to <charges> players may die and YOU choose " +
             "who — or fewer, or none. Sobriety is judged NOW, not when the phrase was said.",
         action = { ctx -> yaggababbleKill(ctx) },
+        banner = { ctx ->
+            val said = chargesOf(ctx.state)
+            if (said == 0) "" else "Said the phrase $said time(s) yesterday."
+        },
+        // `pending` runs on EVERY resolve, including a Reduced (Exorcised) one,
+        // so the day's tally is spent whether or not anybody died.
+        pending = { listOf(NightEffect.SetCounter(Counters.YAGGABABBLE_SAID, 0)) },
         wakeCounts = WakeCount.NONE,
+    ),
+    day = DayRule(
+        ability = DayAbility(
+            label = "Said the phrase in public",
+            recordsAs = "yaggababble",
+            counterKey = Counters.YAGGABABBLE_SAID,
+            // Every utterance counts as it happens; whether it KILLS is judged
+            // at the step, on tonight's sobriety, not now.
+            available = { _, _, holder -> holder.alive },
+        ),
+        briefing = { ctx ->
+            if (ctx.slot != BriefingSlot.DAY_START) {
+                emptyList()
+            } else {
+                val phrase = phraseOf(ctx.state)
+                listOf(
+                    BriefingItem(
+                        key = "yaggababble:${ctx.holder.id}:${ctx.state.cycle}",
+                        kind = BriefingKind.STANDING_FACT,
+                        severity = BriefingSeverity.ACTION,
+                        sourceId = "yaggababble",
+                        text = "${ctx.holder.name} is the Yaggababble. Tap “Said the phrase in " +
+                            "public” every time you hear " +
+                            (if (phrase.isEmpty()) "their phrase" else "“$phrase”") +
+                            " today — tonight up to that many players may die.",
+                        playerId = ctx.holder.id,
+                    ),
+                )
+            }
+        },
     ),
 )
 
@@ -1211,18 +1258,14 @@ private fun minionsWanted(state: GameState): Int {
     return runCatching { Setup.distributionFor(residents).minions }.getOrDefault(0)
 }
 
-/**
- * FOLLOWUPS(WP2): there is no `GameState.secrets` map and no day-time utterance
- * counter, so the phrase and the count live in `decisions` until one exists.
- */
+/** The secret phrase itself is a storyteller decision, not a tally. */
 private const val YAGG_PHRASE = "yaggababble.phrase"
-private const val YAGG_SAID = "yaggababble.said"
-private const val YAGG_SPENT = "yaggababble.spent"
 
 private fun phraseOf(state: GameState): String = state.decisions[YAGG_PHRASE].orEmpty()
 
-private fun chargesOf(state: GameState): Int {
-    val said = Decisions.int(state, YAGG_SAID) ?: 0
-    val spent = Decisions.int(state, YAGG_SPENT) ?: 0
-    return (said - spent).coerceAtLeast(0)
-}
+/**
+ * How many players may die tonight: the number of times the phrase was said
+ * publicly TODAY (lead D72). The night step zeroes it as it spends it, so the
+ * count never carries into a second night.
+ */
+private fun chargesOf(state: GameState): Int = Counters.get(state, Counters.YAGGABABBLE_SAID)

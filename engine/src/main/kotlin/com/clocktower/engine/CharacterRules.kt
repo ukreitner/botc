@@ -187,6 +187,12 @@ data class DayAbility(
     val oncePerDay: Boolean = false,
     /** The ledger sourceId this ability writes and later consumes. */
     val recordsAs: String = "",
+    /**
+     * A [GameState.counters] key this ability adds one to each time it is used
+     * (lead D72) — the Yaggababble's "for each time you said it publicly today".
+     * Empty = this ability counts nothing. `DayAbilities.use` does the bumping.
+     */
+    val counterKey: String = "",
     val available: (state: GameState, lookup: (String) -> Character?, holder: Player) -> Boolean,
 )
 

@@ -359,4 +359,14 @@ sealed interface NightEffect {
      */
     @Serializable
     data class MarkConsumed(val ledgerId: Long) : NightEffect
+
+    /**
+     * Writes one [GameState.counters] entry (lead D72).
+     *
+     * A tally the night spends has to be zeroed by the step that spends it —
+     * the Yaggababble's "for each time you said it publicly TODAY". The key is
+     * supplied by the registry row, so no character id ever appears here.
+     */
+    @Serializable
+    data class SetCounter(val key: String, val value: Int = 0) : NightEffect
 }

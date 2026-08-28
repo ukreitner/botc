@@ -1201,6 +1201,44 @@ object DayAbilities {
     fun availableIn(state: GameState, lookup: (String) -> Character?): List<OfferedDayAbility> =
         forState(state, lookup).filter { it.available }
 
+    /**
+     * Records ONE use of a day ability: bumps its `counterKey` (lead D72) and
+     * appends the ledger entry its `recordsAs` names.
+     *
+     * This is what makes "for each time you said it publicly today" countable —
+     * the Yaggababble's night row reads the tally back and zeroes it. Returns
+     * the state unchanged when the ability is not on offer right now, so the
+     * spent / dead / impaired cases need no caller-side check.
+     */
+    fun use(
+        state: GameState,
+        lookup: (String) -> Character?,
+        sourceId: String,
+        holderId: Long? = null,
+        text: String = "",
+        kind: LedgerKind = LedgerKind.STATEMENT,
+    ): GameState {
+        val id = Character.normalizeId(sourceId)
+        val offer = forState(state, lookup)
+            .firstOrNull { it.sourceId == id && (holderId == null || it.holderId == holderId) }
+            ?: return state
+        if (!offer.available) return state
+        val bumped = if (offer.ability.counterKey.isEmpty()) {
+            state
+        } else {
+            Counters.bump(state, offer.ability.counterKey)
+        }
+        return Ledger.record(
+            bumped,
+            LedgerEntry(
+                kind = kind,
+                sourceId = offer.ability.recordsAs.ifEmpty { id },
+                actorId = offer.holderId,
+                text = text.ifEmpty { "${offer.holderName}: ${offer.ability.label}" },
+            ),
+        )
+    }
+
     private fun unavailableReason(
         state: GameState,
         lookup: (String) -> Character?,

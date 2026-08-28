@@ -845,7 +845,7 @@ class RulesExpDemonsTest {
         assertIs<StepGate.Skip>(assertNotNull(step(quiet, "yaggababble")).gate)
 
         // Said three times: up to three may die, and fewer is legal.
-        var loud = Decisions.set(quiet, "yaggababble.said", "3")
+        var loud = Counters.set(quiet, Counters.YAGGABABBLE_SAID, 3)
         val row = assertNotNull(step(loud, "yaggababble"))
         val action = assertIs<ChoosePlayers>(row.action)
         assertEquals(3, action.max)
@@ -855,10 +855,13 @@ class RulesExpDemonsTest {
         loud = resolve(loud, row, NightInput(playerIds = listOf(1L, 2L)))
         assertEquals(2, loud.deaths.size)
         assertTrue(loud.deaths.all { it.killerCharacterId == "yaggababble" })
+        // The day's tally is SPENT at the step: it never carries into a second
+        // night (lead D72).
+        assertEquals(0, Counters.get(loud, Counters.YAGGABABBLE_SAID))
 
         // Poisoned RIGHT NOW: nobody dies, however often the phrase was said.
         val poisoned = Effects.place(
-            state = Decisions.set(quiet, "yaggababble.said", "3"),
+            state = Counters.set(quiet, Counters.YAGGABABBLE_SAID, 3),
             target = 0L,
             kind = EffectKind.POISONED,
             sourceCharacterId = "poisoner",
@@ -868,5 +871,36 @@ class RulesExpDemonsTest {
         ).state
         val skip = assertIs<StepGate.Skip>(assertNotNull(step(poisoned, "yaggababble")).gate)
         assertTrue(skip.reason.isNotEmpty())
+    }
+
+    @Test
+    fun `every public utterance bumps the Yaggababble's counter through its day ability`() {
+        var state = game("yaggababble", "chef", "empath", "undertaker", "washerwoman")
+        state = Decisions.set(state, "yaggababble.phrase", "at the end of the day")
+        state = GameActions.advancePhase(state, lookup) // NIGHT 1 -> DAY 1
+
+        val offer = DayAbilities.forState(state, lookup).first { it.sourceId == "yaggababble" }
+        assertEquals(Counters.YAGGABABBLE_SAID, offer.ability.counterKey)
+        assertTrue(offer.available)
+
+        repeat(2) { state = DayAbilities.use(state, lookup, "yaggababble") }
+        assertEquals(2, Counters.get(state, Counters.YAGGABABBLE_SAID))
+        assertEquals(
+            2,
+            state.ledger.count { it.sourceId == "yaggababble" && it.kind == LedgerKind.STATEMENT },
+        )
+
+        // A dead Yaggababble says nothing that counts.
+        val dead = GameActions.kill(state, 0L, DeathCause.EXECUTION, lookup)
+        assertFalse(DayAbilities.forState(dead, lookup).first { it.sourceId == "yaggababble" }.available)
+        assertEquals(
+            2,
+            Counters.get(DayAbilities.use(dead, lookup, "yaggababble"), Counters.YAGGABABBLE_SAID),
+        )
+
+        // The night step reads the tally back: two utterances, up to two victims.
+        state = GameActions.advancePhase(state, lookup) // DAY 1 -> NIGHT 2
+        val action = assertIs<ChoosePlayers>(assertNotNull(step(state, "yaggababble")).action)
+        assertEquals(2, action.max)
     }
 }
