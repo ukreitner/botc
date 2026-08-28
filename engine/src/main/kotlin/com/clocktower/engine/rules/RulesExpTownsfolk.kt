@@ -26,6 +26,7 @@ import com.clocktower.engine.Gates
 import com.clocktower.engine.KillSuppression
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Memory
+import com.clocktower.engine.NightContext
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.NominationTrigger
@@ -842,7 +843,12 @@ private fun fisherman() = CharacterRule(
  *
  * A judgement, not a computation: `InfoCalc` must NOT invent an answer, and the
  * Vortox's "Townsfolk info must be false" does not apply because there is no
- * true answer to invert. All three answers are one tap.
+ * true answer to invert.
+ *
+ * W7b: the three answers are an [Options] step, so the judgement is a recorded
+ * CHOICE and a TOLD rather than a step that resolves having changed nothing.
+ * `infoId = ""` still suppresses the planner's `ShowInfo` fallback; the physical
+ * cards stay on the row.
  */
 private fun general(): CharacterRule {
     val rule = NightRule(
@@ -850,6 +856,34 @@ private fun general(): CharacterRule {
         prompt = "Show the General a thumb signal: up for good winning, down for evil " +
             "winning, to the side for neither.",
         infoId = "",
+        action = {
+            Options(
+                sourceId = "general",
+                prompt = "WHICH SIDE DO YOU BELIEVE IS WINNING?",
+                options = listOf(
+                    ActionOption(
+                        id = "good",
+                        label = "GOOD is winning",
+                        detail = "Thumb up.",
+                        effects = listOf(NightEffect.ShowCardTo(Ref.Source, "GOOD IS WINNING")),
+                    ),
+                    ActionOption(
+                        id = "evil",
+                        label = "EVIL is winning",
+                        detail = "Thumb down.",
+                        effects = listOf(NightEffect.ShowCardTo(Ref.Source, "EVIL IS WINNING")),
+                    ),
+                    ActionOption(
+                        id = "neither",
+                        label = "NEITHER team is winning",
+                        detail = "Thumb to the side.",
+                        effects = listOf(
+                            NightEffect.ShowCardTo(Ref.Source, "NEITHER TEAM IS WINNING"),
+                        ),
+                    ),
+                ),
+            )
+        },
         cards = {
             listOf(
                 CardOffer("SHOW: GOOD IS WINNING", ShowCardSpec.Message("GOOD", "GOOD IS WINNING"), true),
@@ -865,21 +899,40 @@ private fun general(): CharacterRule {
 // highpriestess
 // ---------------------------------------------------------------------------
 
-/** "Each night, learn which player the Storyteller believes you should talk to most." */
+/**
+ * "Each night, learn which player the Storyteller believes you should talk to
+ * most."
+ *
+ * W7b: the answer set IS the seating, so the row offers it as [Options] — one
+ * branch per seat, in seat order, each carrying the seat in
+ * `ActionOption.targetIds` so the CHOICE ledger row still records WHO was
+ * pointed out, and a TOLD naming them. A plain picker recorded the seat but
+ * showed the storyteller nothing to point at.
+ */
 private fun highPriestess(): CharacterRule {
     val rule = NightRule(
         gate = Gates.aliveHolder,
         prompt = "Point at the player they should talk to most. Alive or dead, good or " +
             "evil, Travellers included — do not filter. A repeat is a deliberate signal.",
         infoId = "",
-        action = {
-            ChoosePlayers(
+        action = { ctx ->
+            Options(
                 sourceId = "highpriestess",
                 prompt = "WHO SHOULD THEY TALK TO MOST?",
-                min = 1,
-                max = 1,
-                constraints = listOf(TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED),
-                sort = TargetSort.SEAT_ORDER,
+                options = ctx.state.seats.map { seat ->
+                    ActionOption(
+                        id = "seat:${seat.id}",
+                        label = seat.name,
+                        detail = listOfNotNull(
+                            if (seat.alive) null else "dead",
+                            if (seat.isTraveller) "Traveller" else null,
+                        ).joinToString(", "),
+                        targetIds = listOf(seat.id),
+                        effects = listOf(
+                            NightEffect.ShowCardTo(Ref.Source, "POINT AT ${seat.name}"),
+                        ),
+                    )
+                },
             )
         },
     )
@@ -1205,11 +1258,15 @@ private fun noble() = CharacterRule(
  * "You start knowing 1 in-play Townsfolk. If you were mad that you were this
  * character, you gain their ability when they die."
  *
- * SCHEMA GAP (WP2): `NightEffect.PlaceToken` carries no character payload, so
- * the mad character is read back from the CHOICE ledger entry (and from
- * `PlacedReminder.characterId` when the storyteller placed it by hand).
- * `pixie/Has Ability` is granted through a prompt, never silently, because
- * "were they mad enough?" is a storyteller judgement.
+ * W7E gave `NightEffect.PlaceToken` a character payload, so the Mad token NAMES
+ * the character; the ledger CHOICE stays a fallback, as does a token the
+ * storyteller placed by hand. `pixie/Has Ability` is granted through a prompt,
+ * never silently, because "were they mad enough?" is a storyteller judgement.
+ *
+ * W7b: the answer set is the IN-PLAY Townsfolk, so the row offers exactly those
+ * as [Options] rather than a `CharacterPool.TOWNSFOLK` picker that would happily
+ * offer a Townsfolk nobody is holding. Each branch names its character in
+ * `ActionOption.characterIds`, which the Mad token's empty payload resolves to.
  */
 private fun pixie() = CharacterRule(
     id = "pixie",
@@ -1218,25 +1275,32 @@ private fun pixie() = CharacterRule(
         prompt = "Show the Pixie an in-play Townsfolk token. They must be mad that they " +
             "are it. Mark the Pixie Mad and note which character.",
         infoId = "",
-        action = {
-            ChooseCharacter(
+        action = { ctx ->
+            Options(
                 sourceId = "pixie",
                 prompt = "WHICH IN-PLAY TOWNSFOLK ARE THEY MAD ABOUT?",
-                pool = CharacterPool.TOWNSFOLK,
-                allowNone = false,
-                onResolve = listOf(
-                    NightEffect.PlaceToken(
-                        sourceId = "pixie",
-                        label = "Mad",
-                        on = Ref.Source,
-                        kind = EffectKind.MAD,
-                        until = Until.FOREVER,
-                        // W7E: the token NAMES the character they are mad about,
-                        // which is the whole ability — the death trigger below
-                        // reads it back. It used to live only in the ledger.
-                        characterId = "",
-                    ),
-                ),
+                options = inPlayTownsfolk(ctx).map { id ->
+                    ActionOption(
+                        id = id,
+                        label = ctx.lookup(id)?.name ?: id,
+                        characterIds = listOf(id),
+                        effects = listOf(
+                            NightEffect.PlaceToken(
+                                sourceId = "pixie",
+                                label = "Mad",
+                                on = Ref.Source,
+                                kind = EffectKind.MAD,
+                                until = Until.FOREVER,
+                                // Empty = the character this branch names.
+                                characterId = "",
+                            ),
+                            NightEffect.ShowCardTo(
+                                Ref.Source,
+                                "YOU ARE MAD THAT YOU ARE THE ${(ctx.lookup(id)?.name ?: id).uppercase()}",
+                            ),
+                        ),
+                    )
+                },
             )
         },
     ),
@@ -1272,6 +1336,13 @@ private fun pixie() = CharacterRule(
         ),
     ),
 )
+
+/** The Townsfolk characters somebody is actually holding, in name order. */
+private fun inPlayTownsfolk(ctx: NightContext): List<String> = ctx.state.seats
+    .mapNotNull { it.characterId?.let(Character::normalizeId) }
+    .filter { ctx.lookup(it)?.team == Team.TOWNSFOLK }
+    .distinct()
+    .sortedBy { ctx.lookup(it)?.name ?: it }
 
 /** The character the Pixie was told to be mad about, from the token then the ledger. */
 private fun pixieMadCharacter(state: GameState, holder: Player): String? {

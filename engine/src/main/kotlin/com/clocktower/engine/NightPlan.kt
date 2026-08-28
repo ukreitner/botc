@@ -319,10 +319,12 @@ data class NightPlan(
             val pending = nightRule?.pending?.invoke(nightCtx).orEmpty()
 
             val targets = resolvedTargets(state, lookup, step, action, input)
-            // A per-pair answer names its characters in `assignments`; the
-            // whole-step list is what everything downstream reads.
-            val chosenCharacters =
-                input.characterIds.ifEmpty { input.assignments.map { it.second } }
+            // A per-pair answer names its characters in `assignments` and an
+            // answer-set branch in `ActionOption.characterIds`; the whole-step
+            // list is what everything downstream reads.
+            val chosenCharacters = input.characterIds
+                .ifEmpty { input.assignments.map { it.second } }
+                .ifEmpty { (action as? Options)?.let { chosenOption(it, input) }?.characterIds.orEmpty() }
             val scope = EffectScope(
                 sourceId = holderId,
                 sourceCharacterId = step.abilityId,
@@ -1244,12 +1246,16 @@ data class NightPlan(
             input: NightInput,
         ): List<Long> {
             if (input.none) return emptyList()
-            // A per-pair answer carries its seats in `assignments`; everything
-            // else reads `playerIds`.
-            val picked = if (action is ChoosePlayersAndCharacters && input.assignments.isNotEmpty()) {
-                input.assignments.map { it.first }
-            } else {
-                input.playerIds
+            // A per-pair answer carries its seats in `assignments`, an answer-set
+            // branch in `ActionOption.targetIds`; everything else reads `playerIds`.
+            val picked = when {
+                action is ChoosePlayersAndCharacters && input.assignments.isNotEmpty() ->
+                    input.assignments.map { it.first }
+
+                action is Options && input.playerIds.isEmpty() ->
+                    chosenOption(action, input)?.targetIds.orEmpty()
+
+                else -> input.playerIds
             }
             val constraints = when (action) {
                 is ChoosePlayers -> action.constraints
@@ -1269,6 +1275,10 @@ data class NightPlan(
                 .filter { allowed(state, lookup, step, constraints, it) }
                 .take(max.coerceAtLeast(0))
         }
+
+        /** The branch the storyteller tapped, or null for an unrecognised id. */
+        private fun chosenOption(action: Options, input: NightInput): ActionOption? =
+            action.options.firstOrNull { it.id == input.optionId }
 
         private fun allowed(
             state: GameState,
@@ -1419,7 +1429,7 @@ data class NightPlan(
                     scope.current = targets.firstOrNull()
                     // An unrecognised id applies `onNone`, never a branch picked
                     // by position: the storyteller's tap is the only authority.
-                    val chosen = action.options.firstOrNull { it.id == input.optionId }
+                    val chosen = chosenOption(action, input)
                     next = applyEffects(
                         next,
                         lookup,
@@ -1851,6 +1861,10 @@ data class NightPlan(
                 characterIds = characterIds,
                 // "They chose nobody" is a REAL answer and is recorded as one.
                 text = if (input.none) NO_CHOICE else "",
+                // An `Options` answer is otherwise invisible: the branch id is
+                // the whole answer for a judgement step (the General's side, the
+                // Wizard's wish, the Cult Leader's alignment).
+                shown = if (input.none) "" else input.optionId,
                 impaired = impaired,
                 byStoryteller = input.byStoryteller,
             )

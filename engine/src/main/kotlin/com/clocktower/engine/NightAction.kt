@@ -115,6 +115,21 @@ data class ActionOption(
     val id: String,
     val label: String,
     val detail: String = "",
+    /**
+     * The seats this branch is ABOUT — the High Priestess's pick.
+     *
+     * `NightPlan.resolve` adopts them as the step's targets when the input names
+     * none of its own, so `Ref.Target` addresses them and the CHOICE ledger row
+     * records who was chosen. Without it an answer set built out of seats would
+     * resolve to a bare option id and the log would forget the seat.
+     */
+    val targetIds: List<Long> = emptyList(),
+    /**
+     * The characters this branch NAMES — the Pixie's in-play Townsfolk. Adopted
+     * as the step's `characterIds` exactly as [targetIds] is, so an empty
+     * `PlaceToken.characterId` resolves to it and the CHOICE row records it.
+     */
+    val characterIds: List<String> = emptyList(),
     val effects: List<NightEffect> = emptyList(),
 )
 

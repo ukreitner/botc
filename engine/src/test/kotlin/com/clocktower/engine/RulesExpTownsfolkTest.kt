@@ -748,6 +748,25 @@ class RulesExpTownsfolkTest {
         assertTrue(gate(dead, "general") is StepGate.Skip)
     }
 
+    @Test
+    fun `the General's judgement is a recorded answer, not a step that changed nothing`() {
+        var state = game("general", "imp", "poisoner", "chef", "mayor")
+        val action = assertIs<Options>(assertNotNull(step(state, "general")?.action))
+        assertEquals(listOf("good", "evil", "neither"), action.options.map { it.id })
+
+        state = run(state, "general", NightInput(optionId = "evil"))
+        assertEquals(
+            "evil",
+            assertNotNull(Memory.by(state, LedgerKind.CHOICE, "general").lastOrNull()).shown,
+        )
+        assertEquals(
+            "EVIL IS WINNING",
+            assertNotNull(
+                state.ledger.lastOrNull { it.kind == LedgerKind.TOLD && it.sourceId == "general" },
+            ).shown,
+        )
+    }
+
     // ==================================================================
     // lycanthrope
     // ==================================================================
@@ -971,7 +990,10 @@ class RulesExpTownsfolkTest {
     fun `the Pixie is asked to judge the madness when their character dies`() {
         // Given a Pixie made mad that they are the Empath
         var state = game("pixie", "empath", "imp", "poisoner", "chef", "mayor")
-        state = run(state, "pixie", NightInput(characterIds = listOf("empath")))
+        // The answer set is the IN-PLAY Townsfolk, one branch each.
+        val action = assertIs<Options>(assertNotNull(step(state, "pixie")?.action))
+        assertEquals(listOf("chef", "empath", "mayor", "pixie"), action.options.map { it.id }.sorted())
+        state = run(state, "pixie", NightInput(optionId = "empath"))
         assertTrue(has(state, 0L, "pixie", "Mad"))
 
         // When the Empath dies
@@ -988,7 +1010,7 @@ class RulesExpTownsfolkTest {
     @Test
     fun `a Pixie who already gained the ability is never re-prompted`() {
         var state = game("pixie", "empath", "imp", "poisoner", "chef", "mayor")
-        state = run(state, "pixie", NightInput(characterIds = listOf("empath")))
+        state = run(state, "pixie", NightInput(optionId = "empath"))
         state = Effects.addReminder(state, 0L, PlacedReminder("pixie", "Has Ability"))
         state = kill(atNight(state, 2), 1L, DeathCause.DEMON_KILL, "imp", 2L)
         assertTrue(state.prompts.none { it.sourceId == "pixie" })
@@ -1175,13 +1197,22 @@ class RulesExpTownsfolkTest {
     @Test
     fun `the High Priestess picks any seat, alive or dead, every night`() {
         var state = atNight(game("highpriestess", "imp", "poisoner", "chef", "mayor"), 2)
-        state = kill(state, 4L, DeathCause.DEMON_KILL, "imp", 1L)
-        val action = assertNotNull(step(state, "highpriestess")?.action) as ChoosePlayers
-        assertTrue(TargetConstraint.ANY_LIVING_STATE in action.constraints, "dead seats are legal")
-        state = run(state, "highpriestess", NightInput(playerIds = listOf(4L)))
+        // The Chef, not the Mayor: a Demon kill on a Mayor may bounce.
+        state = kill(state, 3L, DeathCause.DEMON_KILL, "imp", 1L)
+        assertFalse(assertNotNull(state.player(3L)).alive)
+        // W7b: the answer set IS the seating, offered as one branch per seat.
+        val action = assertIs<Options>(assertNotNull(step(state, "highpriestess")?.action))
+        assertEquals(state.seats.map { it.name }, action.options.map { it.label })
+        assertTrue(action.options.any { it.detail == "dead" }, "dead seats are legal")
+
+        state = run(state, "highpriestess", NightInput(optionId = "seat:3"))
+        // The branch carries the seat, so the CHOICE row still records WHO.
         assertEquals(
-            listOf(4L),
+            listOf(3L),
             assertNotNull(Memory.by(state, LedgerKind.CHOICE, "highpriestess").lastOrNull()).targetIds,
+        )
+        assertTrue(
+            state.ledger.any { it.kind == LedgerKind.TOLD && it.sourceId == "highpriestess" },
         )
     }
 }
