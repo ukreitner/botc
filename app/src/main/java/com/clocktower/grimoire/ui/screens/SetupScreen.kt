@@ -585,8 +585,13 @@ fun SetupScreen(
                 viewModel.game.value?.players?.forEachIndexed { index, seat ->
                     if (index in travellerSeats) viewModel.setTraveller(seat.id, true)
                 }
-                if (seatlessAck) {
-                    // `Setup.seatlessInPlayIds` reads exactly this decision.
+                // A2-3: written ONLY when the centre token is actually in the
+                // bag. `Setup.seatlessInPlayIds` reads exactly this decision,
+                // and a game that was given it without the token ran a seatless
+                // Demon nobody held — no Demon on any seat, "✓ Lil' Monsta is in
+                // play — Confirmed" on the checklist, and a first-night step for
+                // a token that was never dealt.
+                if (seatlessIds.isNotEmpty()) {
                     viewModel.applySetupRequirementAck(SetupRequirements.LILMONSTA_NO_DEMON_SEAT)
                 }
                 outsiderBranch?.let { viewModel.setDecisionNumber(Decisions.OUTSIDER_BRANCH, it) }

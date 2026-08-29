@@ -266,6 +266,21 @@ class SetupTest {
         )
     }
 
+    /**
+     * A2-3's belt and braces: with no centre token in play a Demon-less bag is
+     * rejected like any other. The app dealt exactly this shape — eight seats,
+     * two Minions, no Demon anywhere — because a stale acknowledgement kept the
+     * shape alive after the Lil' Monsta token left the bag.
+     */
+    @Test
+    fun `a bag with no demon and no centre token is rejected`() {
+        val bag = teamPool(Team.TOWNSFOLK, 5) + teamPool(Team.OUTSIDER, 1) +
+            teamPool(Team.MINION, 2)
+        assertEquals(8, bag.size)
+        val issues = Setup.validateBag(bag, 8)
+        assertTrue(issues.any { it.startsWith("Demon: 0 in bag, expected 1") }, issues.toString())
+    }
+
     @Test
     fun `a lil monsta token counted as a seat is reported`() {
         val bag = teamPool(Team.TOWNSFOLK, 7) + teamPool(Team.MINION, 2) +
