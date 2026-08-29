@@ -1001,6 +1001,74 @@ class DayEngineTest {
         assertEquals("vizier", state.executions.single().preventedBy)
     }
 
+    /**
+     * C2-4 / C2-5: the Vizier's confirmation sheet stated one protection three
+     * times, once of them as the raw enum constant `DAY_IMMUNE`.
+     */
+    @Test
+    fun `the Vizier's execution preview states the protection once, in English`() {
+        var state = day1()
+        state = assign(state, 3L, "vizier")
+        val rows = Execution.previewConsequences(state, lookup, playerId = 3L)
+        val text = rows.joinToString("\n") { it.headline + " " + it.detail }
+
+        assertFalse("DAY_IMMUNE" in text, "no enum constant reaches the storyteller: $text")
+        // The funnel's verdict line already states the protection; the rows say
+        // what to DO about it, exactly once, and never repeat the sentence.
+        assertEquals(
+            0,
+            rows.count { "cannot die during the day" in it.headline },
+            "the verdict line owns the sentence; the rows must not repeat it: $text",
+        )
+        val credited = rows.single { it.sourceId == "vizier" }
+        assertTrue("remains alive" in credited.headline, credited.headline)
+        assertTrue("Vizier" in credited.detail, credited.detail)
+    }
+
+    /**
+     * The same preview has to CARRY the credit now — without it every dedupe
+     * that compares against `preventedBy` runs against an empty string.
+     */
+    @Test
+    fun `an execution preview credits the save the way the record will`() {
+        var state = day1()
+        state = assign(state, 3L, "vizier")
+        state = assign(state, 4L, "sailor")
+        assertEquals("vizier", Execution.previewRecord(state, lookup, 3L).preventedBy)
+        assertEquals("sailor", Execution.previewRecord(state, lookup, 4L).preventedBy)
+        // …and a plain seat is credited to nobody.
+        assertEquals("", Execution.previewRecord(state, lookup, 5L).preventedBy)
+        assertEquals(ExecutionOutcome.DIED, Execution.previewRecord(state, lookup, 5L).outcome)
+
+        // The applied record agrees with the preview it was shown.
+        val applied = Execution.execute(state, lookup, playerId = 3L).executions.single()
+        assertEquals(Execution.previewRecord(state, lookup, 3L).preventedBy, applied.preventedBy)
+    }
+
+    /** A hand-placed protection with a real label is named by that label. */
+    @Test
+    fun `a labelled protection is named by its token, not by its kind`() {
+        var state = day1()
+        state = Effects.place(
+            state = state,
+            target = 5L,
+            kind = EffectKind.SURVIVES_EXECUTION,
+            sourceCharacterId = "devilsadvocate",
+            sourcePlayerId = 0L,
+            until = Until.DUSK,
+            label = "Survives Execution",
+        ).state
+        val rows = Execution.previewConsequences(state, lookup, playerId = 5L)
+        assertTrue(
+            rows.any { it.sourceId == "devilsadvocate" },
+            rows.joinToString("\n") { it.headline },
+        )
+        assertFalse(
+            rows.any { "SURVIVES_EXECUTION" in it.headline },
+            "never the enum constant",
+        )
+    }
+
     // ==================================================================
     // The game log
     // ==================================================================

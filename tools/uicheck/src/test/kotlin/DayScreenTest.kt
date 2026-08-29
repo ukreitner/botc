@@ -9,11 +9,13 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.DayRules
 import com.clocktower.engine.Effects
 import com.clocktower.engine.Execution
+import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
 import com.clocktower.engine.HouseRules
+import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.Ledger
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Nomination
@@ -32,6 +34,8 @@ import com.clocktower.grimoire.ui.screens.day.DayStage
 import com.clocktower.grimoire.ui.screens.day.NominationModel
 import com.clocktower.grimoire.ui.screens.day.SaidModel
 import com.clocktower.grimoire.ui.screens.day.SeatPick
+import com.clocktower.grimoire.ui.screens.day.previewText
+import com.clocktower.grimoire.ui.screens.day.visibleConsequences
 import com.clocktower.grimoire.ui.screens.day.StageTone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -939,5 +943,40 @@ class DayScreenTest {
         timer.start(1)
         val past = com.clocktower.engine.Time.epochMillis() + 5_000
         assertEquals("TIME", TimerFormat.barLabel(timer, past))
+    }
+
+    // ------------------------------------------------------------------
+    // Execution sheet — one fact, once (C2-5)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `a consequence the verdict line already says is not printed again`() {
+        val preview = KillOutcome.Prevented(
+            by = null,
+            reason = "Fay cannot die during the day.",
+            announce = "Say: 'Fay was executed… and remains alive.' Do not say why.",
+        )
+        val rows = listOf(
+            ExecutionConsequence(
+                sourceId = "vizier",
+                headline = "Say: 'Fay was executed… and remains alive.' Do not say why.",
+                detail = "Credited to the Vizier.",
+            ),
+            ExecutionConsequence(sourceId = "vizier", headline = "Fay cannot die during the day."),
+            ExecutionConsequence(sourceId = "undertaker", headline = "Gus learns Fay's character."),
+        )
+        val visible = visibleConsequences(preview, rows)
+        assertEquals(visible.map { it.headline }.toString(), 1, visible.size)
+        assertEquals("undertaker", visible.single().sourceId)
+    }
+
+    @Test
+    fun `a verdict line that says nothing extra keeps every row`() {
+        val preview = KillOutcome.Dies(reason = "Nothing stops it — they die.")
+        val rows = listOf(
+            ExecutionConsequence(sourceId = "saint", headline = "Jo was the Saint — EVIL WINS."),
+        )
+        assertEquals(rows, visibleConsequences(preview, rows))
+        assertEquals("Nothing stops it — they die.", previewText(preview))
     }
 }

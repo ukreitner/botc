@@ -285,17 +285,24 @@ object Execution {
     ): List<ExecutionConsequence> = consequences(
         state,
         lookup,
-        pendingRecord(state, lookup, playerId, nominatorId, nominationIndex, via),
+        previewRecord(state, lookup, playerId, nominatorId, nominationIndex, via),
     )
 
-    /** The `ExecutionRecord` [execute] would write for this seat, right now. */
-    private fun pendingRecord(
+    /**
+     * The `ExecutionRecord` [execute] would write for this seat, right now —
+     * outcome, snapshots and the credited saver.
+     *
+     * Public because it is the ONE answer to "what would happen": the sheet
+     * reads its rows from it and every dedupe inside [consequences] compares
+     * against its `preventedBy`.
+     */
+    fun previewRecord(
         state: GameState,
         lookup: (String) -> Character?,
         playerId: Long,
-        nominatorId: Long?,
-        nominationIndex: Int?,
-        via: ExecutionVia,
+        nominatorId: Long? = null,
+        nominationIndex: Int? = null,
+        via: ExecutionVia = ExecutionVia.VOTE,
     ): ExecutionRecord {
         val target = state.player(playerId)
         val nomination = nominationIndex?.let { state.nominations.getOrNull(it) }
@@ -321,6 +328,15 @@ object Execution {
         return ExecutionRecord(
             day = state.cycle,
             outcome = outcome,
+            // The preview must credit the save the same way [resolve] will, or
+            // the rows that dedupe against `preventedBy` cannot see it: the
+            // Vizier's sheet stated one protection three times because every
+            // comparison ran against an empty string (playtest C2-4/C2-5).
+            preventedBy = if (outcome == ExecutionOutcome.SURVIVED) {
+                preventedBySource(decided)
+            } else {
+                ""
+            },
             playerId = playerId,
             nominatorId = nominatorId ?: nomination?.nominatorId,
             nominationIndex = nominationIndex,
@@ -396,6 +412,20 @@ object Execution {
         return state.copy(
             executions = state.executions.mapIndexed { i, r -> if (i == index) record else r },
         )
+    }
+
+    /**
+     * Which character the kill funnel credits with a survival, for the outcomes
+     * a preview can settle on its own. `Redirect` is deliberately absent: who
+     * dies instead is not known until the storyteller answers, and [resolve]
+     * reads the applied event to tell a Scapegoat from a Mayor bounce.
+     */
+    private fun preventedBySource(outcome: KillOutcome): String = when (outcome) {
+        is KillOutcome.Prevented -> outcome.by?.sourceCharacterId.orEmpty()
+        is KillOutcome.Spends -> outcome.sourceId
+        is KillOutcome.RegistersDead -> "zombuul"
+        KillOutcome.AlreadyDead -> PREVENTED_BY_ALREADY_DEAD
+        else -> ""
     }
 
     /** Turns the kill funnel's verdict into the execution's own. */
@@ -485,7 +515,7 @@ object Execution {
                 add(
                     ExecutionConsequence(
                         sourceId = effect.sourceCharacterId,
-                        headline = "$name carries ${effect.label.ifEmpty { kind.name }} — " +
+                        headline = "$name ${protectionPhrase(kind, effect.label)} — " +
                             "check whether it stops this execution.",
                         impaired = !Status.hasAbility(state, lookup, executed.id),
                     ),
@@ -545,8 +575,14 @@ object Execution {
             }
         }
 
-        // Vizier: cannot die during the day.
-        if (executed != null && DayRules.immuneToDayDeath(state, lookup, executed.id)) {
+        // Vizier: cannot die during the day. Only when the funnel has NOT
+        // already ruled on it — a preview that credits the save prints the same
+        // sentence as its verdict line, and the protection row above prints it
+        // a third time (playtest C2-5).
+        if (executed != null &&
+            DayRules.immuneToDayDeath(state, lookup, executed.id) &&
+            Character.normalizeId(record.preventedBy) != "vizier"
+        ) {
             add(
                 ExecutionConsequence(
                     sourceId = "vizier",
@@ -770,6 +806,24 @@ object Execution {
                 )
             }
         }
+    }
+
+    /**
+     * A protection in storyteller English, never as an enum constant.
+     *
+     * The Vizier's `DAY_IMMUNE` effect carries an empty official label (its
+     * token set is empty by design), and the row fell back to `kind.name` — so
+     * the last screen before an irreversible action read "Player 2 carries
+     * DAY_IMMUNE" (playtest C2-4). The token's own label still wins where the
+     * grimoire has one, because that is the words on the table.
+     */
+    private fun protectionPhrase(kind: EffectKind, label: String): String = when {
+        label.isNotEmpty() -> "is marked '$label'"
+        kind == EffectKind.SURVIVES_EXECUTION -> "survives execution today"
+        kind == EffectKind.CANT_DIE -> "cannot die"
+        kind == EffectKind.ONLY_EXECUTION_KILLS -> "can only die by execution"
+        kind == EffectKind.DAY_IMMUNE -> "cannot die during the day"
+        else -> "is protected"
     }
 
     /** Protective kinds worth surfacing on the confirmation sheet. */
