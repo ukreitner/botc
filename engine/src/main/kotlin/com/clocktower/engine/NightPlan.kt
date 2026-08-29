@@ -16,6 +16,13 @@ object NightMarkers {
     /** The Demon-only bluff step (Poppy Grower). */
     const val DEMON_BLUFFS_ONLY = "DEMON_BLUFFS_ONLY"
 
+    /**
+     * A Traveller who joined since the last hand-out is told what they are
+     * (lead D25 step 4). Not in the canonical order data — `NightPlan`
+     * inserts it right after Dusk while `Player.tokenShownAt` is unset.
+     */
+    const val TRAVELLER_ARRIVAL = "TRAVELLER_ARRIVAL"
+
     val all = setOf(DUSK, MINION_INFO, DEMON_INFO, DAWN, MINION_BLUFFS, DEMON_BLUFFS_ONLY)
 }
 
@@ -474,6 +481,11 @@ data class NightPlan(
             }
             next = discharge(next, step)
             next = markDone(next, step.key.token)
+            // The arrival row is derived from the hand-out record — stamping it
+            // is what retires the row (and satisfies the checklist's hand-out).
+            if (step.slotId == NightMarkers.TRAVELLER_ARRIVAL && holderId != null) {
+                next = Identity.markRevealed(next, holderId)
+            }
             return Effects.reconcile(next, lookup)
         }
 
@@ -1579,7 +1591,98 @@ data class NightPlan(
                 out += step
                 taken += step.key.token
             }
+            for (step in arrivalSteps(ctx, taken)) {
+                out += step
+                taken += step.key.token
+            }
             return out
+        }
+
+        /**
+         * A Traveller seated since the last hand-out owes their arrival moment
+         * (lead D25 step 4): wake them, show them their character and their
+         * alignment, and an EVIL Traveller learns who the Demon is.
+         *
+         * `Player.tokenShownAt` is the record — the row appears on the first
+         * night after the join and resolving it stamps the hand-out
+         * (`Identity.markRevealed`), so it never comes back. It sits right
+         * after Dusk: telling the new arrival what they are is the first thing
+         * the night does. The join dialog used to leave this to an overflow
+         * menu three screens away while the checklist demanded it.
+         */
+        private fun arrivalSteps(ctx: PlanContext, taken: Set<String>): List<NightStep> {
+            // Travellers seated during setup are part of the ordinary hand-out
+            // flow before the first night — no arrival row for them.
+            if (ctx.isFirstNight) return emptyList()
+            val owed = ctx.state.seats.filter {
+                it.isTraveller && it.characterId != null && it.tokenShownAt == null
+            }
+            if (owed.isEmpty()) return emptyList()
+            val duskAt = ctx.order.indexOf(NightMarkers.DUSK)
+                .let { if (it >= 0) it * BASE_SPACING.toDouble() else 0.0 }
+            val demons = ctx.state.seats.filter {
+                it.characterId?.let(ctx.lookup)?.team == Team.DEMON
+            }
+            return owed.mapIndexedNotNull { n, seat ->
+                val key = StepKey(NightMarkers.TRAVELLER_ARRIVAL, seat.id)
+                if (key.token in taken) return@mapIndexedNotNull null
+                val characterId = seat.characterId ?: return@mapIndexedNotNull null
+                val character = ctx.lookup(characterId)
+                val evil = seat.isEvil(ctx.lookup)
+                NightStep(
+                    key = key,
+                    slotId = NightMarkers.TRAVELLER_ARRIVAL,
+                    order = duskAt + 1.0 + n * 0.01,
+                    title = "New traveller — ${seat.name}",
+                    detail = "",
+                    style = ctx.style,
+                    gate = StepGate.Fire,
+                    prompt = buildString {
+                        append("${seat.name} joined as the ${character?.name ?: characterId}. ")
+                        append("Wake them: show them their character, and that they are ")
+                        append(if (evil) "EVIL." else "GOOD.")
+                        if (evil) {
+                            append(" An evil Traveller learns who the Demon is — point the Demon out")
+                            if (demons.isNotEmpty()) append(" (${demons.joinToString { it.name }})")
+                            append(".")
+                        }
+                    },
+                    infoId = "",
+                    cards = buildList {
+                        add(
+                            CardOffer(
+                                label = "SHOW: YOU ARE ${character?.name ?: characterId}",
+                                card = ShowCardSpec.CharacterCard("YOU ARE", characterId),
+                                truthful = true,
+                            ),
+                        )
+                        add(
+                            CardOffer(
+                                label = if (evil) "SHOW: YOU ARE EVIL" else "SHOW: YOU ARE GOOD",
+                                card = ShowCardSpec.AlignmentCard(evil),
+                                truthful = true,
+                            ),
+                        )
+                        if (evil && demons.isNotEmpty()) {
+                            add(
+                                CardOffer(
+                                    label = "SHOW: THIS IS THE DEMON — " +
+                                        demons.joinToString { it.name },
+                                    card = ShowCardSpec.PointCard(
+                                        prefix = "THIS IS THE DEMON",
+                                        playerNames = demons.map { it.name },
+                                        seatNumbers = demons.map { demon ->
+                                            ctx.state.seats.indexOfFirst { it.id == demon.id } + 1
+                                        },
+                                    ),
+                                    truthful = true,
+                                ),
+                            )
+                        }
+                    },
+                    wakeCounts = WakeCount.NONE,
+                )
+            }
         }
 
         /**

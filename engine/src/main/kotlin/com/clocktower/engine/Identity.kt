@@ -260,9 +260,19 @@ object Identity {
     /** The character the Cannibal currently has, from the seat carrying the Lunch token. */
     private fun cannibalLunchAbility(state: GameState): String? {
         val lunchKey = Tokens.key("cannibal", CANNIBAL_LUNCH)
-        val eaten = state.players.lastOrNull { seat ->
+        // BOTH stores: the execution sheet places the Lunch as a stored EFFECT
+        // (`Execution.consequences` → `Effects.place`), a storyteller places a
+        // hand reminder. Reading only `Player.reminders` here meant the normal
+        // execution path never granted the ability at all — the Cannibal ate
+        // and then simply never woke.
+        val byEffect = state.effects
+            .filter { !it.suspended && Tokens.key(it.sourceCharacterId, it.label) == lunchKey }
+            .maxByOrNull { it.id }
+            ?.let { effect -> state.player(effect.targetId) }
+        val byReminder = state.players.lastOrNull { seat ->
             seat.reminders.any { Tokens.key(it) == lunchKey }
-        } ?: return null
+        }
+        val eaten = byEffect ?: byReminder ?: return null
         val diedAs = state.deaths
             .lastOrNull { it.playerId == eaten.id && it.resurrectedAtCycle == null }
             ?.characterIdAtDeath

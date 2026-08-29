@@ -107,6 +107,13 @@ object InfoCalc {
         "dreamer", "villageidiot", "ravenkeeper", "grandmother", "exorcist" -> 1
         // W7H additions.
         "harlot", "beggar" -> 1
+        // "Which players do they learn" is the STORYTELLER's choice for these
+        // (user report: "for noble etc. allow to choose the three yourself") —
+        // the picker arrives with the engine's suggestion preselected and the
+        // calc validates whatever the storyteller finally picks.
+        "noble" -> 3
+        "knight", "sage" -> 2
+        "steward", "bountyhunter", "balloonist" -> 1
         else -> 0
     }
 
@@ -172,14 +179,14 @@ object InfoCalc {
             "washerwoman" -> startKnowing(ctx, Team.TOWNSFOLK, "Townsfolk")
             "librarian" -> startKnowing(ctx, Team.OUTSIDER, "Outsider")
             "investigator" -> startKnowing(ctx, Team.MINION, "Minion")
-            "knight" -> knight(ctx)
-            "sage" -> sage(ctx)
-            "steward" -> steward(ctx)
-            "noble" -> noble(ctx)
-            "bountyhunter" -> bountyHunter(ctx)
+            "knight" -> knight(ctx, targets)
+            "sage" -> sage(ctx, targets)
+            "steward" -> steward(ctx, targets)
+            "noble" -> noble(ctx, targets)
+            "bountyhunter" -> bountyHunter(ctx, targets)
             "chambermaid" -> chambermaid(ctx, targets)
             "mathematician" -> mathematician(ctx)
-            "balloonist" -> balloonist(ctx)
+            "balloonist" -> balloonist(ctx, targets)
             "godfather" -> godfather(ctx)
             "juggler" -> juggler(ctx)
             "exorcist" -> exorcist(ctx, targets)
@@ -847,68 +854,107 @@ object InfoCalc {
         return wrongTokens + wrongPair
     }
 
-    private fun sage(ctx: Ctx): InfoResult {
+    private fun sage(ctx: Ctx, targets: List<Long>): InfoResult {
         val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
         if (demons.isEmpty()) return InfoResult(Answer.Message("?"), "No Demon in the grimoire")
-        // "You learn 2 players, 1 of which is the Demon" — a bare Demon is a
-        // full reveal, so the pair is built here, never by the storyteller.
         val demon = demons.first()
-        val pair = pointPair(ctx, demon, ctx.holder?.id) ?: listOf(demon.id)
+        // The storyteller's pair when they picked one (the picker arrives with
+        // the engine's suggestion lit); the engine builds one otherwise.
+        val picked = validTargets(ctx, targets, 2)
+        val pair = picked?.map { it.id }
+            ?: pointPair(ctx, demon, ctx.holder?.id)
+            ?: listOf(demon.id)
         return InfoResult(
             answer = Answer.Players(pair),
             headline = "1 of 2 players is the Demon — ${ctx.name(demon)} really is",
             detail = "Point at " + pair.mapNotNull { ctx.state.player(it)?.name }.joinToString(" and "),
-            caveats = listOf("Only if the Demon killed the Sage; other deaths don't wake them."),
+            caveats = buildList {
+                add("Only if the Demon killed the Sage; other deaths don't wake them.")
+                if (picked != null && demons.none { d -> pair.any { it == d.id } }) {
+                    add("Neither pick is the Demon — the Sage's pair should contain the Demon.")
+                }
+            },
         )
     }
 
-    private fun knight(ctx: Ctx): InfoResult {
+    private fun knight(ctx: Ctx, targets: List<Long>): InfoResult {
         val demons = ctx.players.filter { ctx.character(it)?.team == Team.DEMON }
         val notDemon = ctx.players.filter { p ->
             p.id != ctx.holder?.id && demons.none { it.id == p.id }
         }
+        val picked = validTargets(ctx, targets, 2)
+        val pair = picked ?: notDemon.take(2)
         return InfoResult(
-            answer = Answer.Players(notDemon.take(2).map { it.id }),
+            answer = Answer.Players(pair.map { it.id }),
             headline = "Point to 2 players that are NOT the Demon",
             detail = "Demon: ${demons.joinToString { ctx.name(it) }}",
-            caveats = misregistrations(ctx, ctx.players),
+            caveats = buildList {
+                addAll(misregistrations(ctx, ctx.players))
+                val hit = picked?.filter { p -> demons.any { it.id == p.id } }.orEmpty()
+                if (hit.isNotEmpty()) {
+                    add("${hit.joinToString { ctx.name(it) }} IS the Demon — the Knight's 2 should not include one.")
+                }
+            },
         )
     }
 
-    private fun steward(ctx: Ctx): InfoResult {
+    private fun steward(ctx: Ctx, targets: List<Long>): InfoResult {
         // Never the Steward themselves: they already know they are good.
         val good = ctx.players.filter { !ctx.isEvil(it) && it.id != ctx.holder?.id }
+        val picked = validTargets(ctx, targets, 1)
+        val shown = picked ?: good.take(1)
         return InfoResult(
-            answer = Answer.Players(good.take(1).map { it.id }),
+            answer = Answer.Players(shown.map { it.id }),
             headline = "Point to 1 good player" +
-                good.firstOrNull()?.let { " — ${ctx.name(it)}" }.orEmpty(),
+                shown.firstOrNull()?.let { " — ${ctx.name(it)}" }.orEmpty(),
             detail = "Good players: ${good.joinToString { ctx.name(it) }}",
-            caveats = misregistrations(ctx, ctx.players),
+            caveats = buildList {
+                addAll(misregistrations(ctx, ctx.players))
+                val bad = picked?.filter { ctx.isEvil(it) }.orEmpty()
+                if (bad.isNotEmpty()) {
+                    add("${bad.joinToString { ctx.name(it) }} is evil — the Steward's player should be good.")
+                }
+            },
         )
     }
 
-    private fun noble(ctx: Ctx): InfoResult {
+    private fun noble(ctx: Ctx, targets: List<Long>): InfoResult {
         val others = ctx.players.filter { it.id != ctx.holder?.id }
         val evil = others.filter { ctx.isEvil(it) }
         val good = others.filter { !ctx.isEvil(it) }
-        val trio = (evil.take(1) + good.take(2)).sortedBy { p ->
+        val picked = validTargets(ctx, targets, 3)
+        val trio = (picked ?: (evil.take(1) + good.take(2))).sortedBy { p ->
             ctx.players.indexOfFirst { it.id == p.id }
         }
+        val pickedEvil = picked?.count { ctx.isEvil(it) }
         return InfoResult(
             answer = Answer.Players(trio.map { it.id }),
             headline = "Point to 3 players: exactly 1 evil, 2 good",
             detail = "Evil players: ${evil.joinToString { ctx.name(it) }}",
-            caveats = misregistrations(ctx, ctx.players),
+            caveats = buildList {
+                addAll(misregistrations(ctx, ctx.players))
+                if (pickedEvil != null && pickedEvil != 1) {
+                    add("Your 3 include $pickedEvil evil — the Noble's should include exactly 1 (misregistration aside).")
+                }
+            },
         )
     }
 
-    private fun bountyHunter(ctx: Ctx): InfoResult {
+    private fun bountyHunter(ctx: Ctx, targets: List<Long>): InfoResult {
         val evil = ctx.players.filter { ctx.isEvil(it) && it.id != ctx.holder?.id }
+        val picked = validTargets(ctx, targets, 1)
+        val shown = picked ?: evil.take(1)
         return InfoResult(
-            answer = Answer.Players(evil.take(1).map { it.id }),
+            answer = Answer.Players(shown.map { it.id }),
             headline = "Point to 1 evil player (mark them 'Known')",
             detail = "Evil players: ${evil.joinToString { "${ctx.name(it)} (${ctx.character(it)?.name})" }}",
-            caveats = listOf("Remember: 1 Townsfolk is evil in a Bounty Hunter game."),
+            caveats = buildList {
+                add("Remember: 1 Townsfolk is evil in a Bounty Hunter game.")
+                val goodPick = picked?.filter { !ctx.isEvil(it) }.orEmpty()
+                if (goodPick.isNotEmpty()) {
+                    add("${goodPick.joinToString { ctx.name(it) }} is good — the Bounty Hunter's player should be evil.")
+                }
+            },
         )
     }
 
@@ -945,16 +991,31 @@ object InfoCalc {
         )
     }
 
-    private fun balloonist(ctx: Ctx): InfoResult {
+    private fun balloonist(ctx: Ctx, targets: List<Long>): InfoResult {
         val others = ctx.players.filter { it.id != ctx.holder?.id }
         val byType = others
             .mapNotNull { p -> ctx.character(p)?.let { c -> c.team to p } }
             .groupBy({ it.first }, { it.second })
+        // Last night's shown player's type, from the ledger.
+        val lastTeams = Memory.lastChoice(ctx.state, "balloonist", ctx.holder?.id)
+            ?.targetIds
+            ?.mapNotNull { id -> ctx.state.player(id)?.let { p -> ctx.character(p)?.team } }
+            ?.toSet()
+            .orEmpty()
+        val picked = validTargets(ctx, targets, 1)
+        val shown = picked
+            ?: others.filter { p -> ctx.character(p)?.team !in lastTeams }.take(1)
+                .ifEmpty { others.take(1) }
+        val repeat = picked?.filter { p -> ctx.character(p)?.team in lastTeams }.orEmpty()
         return InfoResult(
-            answer = Answer.Players(others.take(1).map { it.id }),
+            answer = Answer.Players(shown.map { it.id }),
             headline = "Show a player of a DIFFERENT character type than last night",
             detail = byType.entries.joinToString("\n") { (team, ps) ->
                 "${team.displayName}: ${ps.joinToString { ctx.name(it) }}"
+            } + if (repeat.isEmpty()) {
+                ""
+            } else {
+                "\n${repeat.joinToString { ctx.name(it) }} is the SAME type as last night's."
             },
         )
     }

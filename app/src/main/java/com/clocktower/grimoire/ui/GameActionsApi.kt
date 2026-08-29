@@ -48,6 +48,7 @@ import com.clocktower.engine.SeatNote
 import com.clocktower.engine.Seats
 import com.clocktower.engine.Selection
 import com.clocktower.engine.SetupRequirement
+import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.Tokens
 import com.clocktower.engine.Verdict
 import com.clocktower.engine.VoteRules
@@ -463,7 +464,16 @@ interface GameActionsApi {
             id,
             if (evil) Alignment.EVIL else Alignment.GOOD,
         )
-        if (announce.isBlank()) aligned else Ledger.announce(aligned, announce)
+        // The dialog ASKED good-or-evil, so the answer is recorded — without
+        // this the setup checklist demanded the traveller's alignment a second
+        // time (its guard treats a bare Player.alignment as the dialog's
+        // pre-selection, not an answer).
+        val decided = Decisions.set(
+            aligned,
+            SetupRequirements.travellerAlignmentKey(id),
+            if (evil) "evil" else "good",
+        )
+        if (announce.isBlank()) decided else Ledger.announce(decided, announce)
     }
 
     // ---- WP9: day screen ----

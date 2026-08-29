@@ -829,6 +829,32 @@ object Execution {
                                         "good player dies by execution.",
                                 ).state
                             }
+                            // A first-night-only ability (a "start knowing", the
+                            // Chef…) has no other-night slot, so without this the
+                            // Cannibal's new ability never reached tonight's sheet.
+                            // Officially the Cannibal learns that info the night
+                            // after the execution — queue the re-run row.
+                            val eatenId = (record.characterIdAtExecution ?: died.characterId)
+                                ?.let(Character::normalizeId)
+                            val eaten = eatenId?.let(lookup)
+                            if (eaten != null &&
+                                eaten.firstNightReminder.isNotBlank() &&
+                                eaten.otherNightReminder.isBlank()
+                            ) {
+                                next = Prompts.queue(
+                                    next,
+                                    Prompt(
+                                        id = 0,
+                                        at = BriefingSlot.TONIGHT,
+                                        kind = PromptKind.RUN_FIRST_NIGHT,
+                                        sourceId = "cannibal",
+                                        subjectPlayerId = cannibal.id,
+                                        title = "Run ${cannibal.name}'s new ${eaten.name} " +
+                                            "information tonight (Cannibal)",
+                                        stepSlotId = eaten.id,
+                                    ),
+                                )
+                            }
                             next
                         },
                     ),

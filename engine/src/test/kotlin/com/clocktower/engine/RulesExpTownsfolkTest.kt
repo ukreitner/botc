@@ -499,6 +499,76 @@ class RulesExpTownsfolkTest {
         assertNull(step(state, "cannibal"), "the Cannibal has no slot of its own")
     }
 
+    @Test
+    fun `the execution sheet's Lunch EFFECT grants the ability too`() {
+        // The execution consequence places a stored EFFECT, not a hand
+        // reminder — the grant must follow both stores. It used to read only
+        // `Player.reminders`, so a Cannibal fed through the execution sheet
+        // never woke at all (user report: "cannibal didn't work properly").
+        var state = game("cannibal", "imp", "empath", "chef", "mayor")
+        state = day(state, 1)
+        state = kill(state, 2L, DeathCause.EXECUTION, "")
+        state = Effects.place(
+            state = state,
+            target = 2L,
+            kind = EffectKind.MARKER,
+            sourceCharacterId = "cannibal",
+            sourcePlayerId = 0L,
+            until = Until.FOREVER,
+            label = "Lunch",
+        ).state
+        state = atNight(state, 2)
+
+        val row = assertNotNull(step(state, "empath"), "the effect-placed Lunch grants nothing")
+        assertEquals(0L, row.holderId)
+        assertEquals("cannibal", row.sourceId)
+    }
+
+    @Test
+    fun `eating a first-night-only character re-runs their first night tonight`() {
+        // The Chef has no other-night slot, so the Lunch grant alone puts no
+        // row on tonight's sheet — the consequence queues the re-run, exactly
+        // as the wiki's Cannibal-eats-a-Chef example asks.
+        var state = game("cannibal", "imp", "chef", "empath", "mayor")
+        state = day(state, 1)
+        state = kill(state, 2L, DeathCause.EXECUTION, "")
+        state = Execution.recordDeathAsExecution(
+            state, lookup, 2L, KillCause(DeathCause.EXECUTION, "st"),
+        )
+        val record = state.executions.last()
+        val consequence = Execution.consequences(state, lookup, record)
+            .first { it.sourceId == "cannibal" }
+        state = assertNotNull(consequence.apply, "the Cannibal row does the bookkeeping")
+            .invoke(state, "")
+
+        assertTrue(
+            state.prompts.any {
+                it.kind == PromptKind.RUN_FIRST_NIGHT && it.sourceId == "cannibal" && !it.resolved
+            },
+            "a first-night-only meal owes tonight's re-run: ${state.prompts}",
+        )
+        state = atNight(state, 2)
+        val row = assertNotNull(step(state, "chef"), "the Cannibal runs the Chef's first night")
+        assertEquals(0L, row.holderId)
+
+        // An eaten EVERY-night character needs no re-run: its own slot fires.
+        var empathMeal = game("cannibal", "imp", "empath", "chef", "mayor")
+        empathMeal = day(empathMeal, 1)
+        empathMeal = kill(empathMeal, 2L, DeathCause.EXECUTION, "")
+        empathMeal = Execution.recordDeathAsExecution(
+            empathMeal, lookup, 2L, KillCause(DeathCause.EXECUTION, "st"),
+        )
+        val empathRecord = empathMeal.executions.last()
+        val empathConsequence = Execution.consequences(empathMeal, lookup, empathRecord)
+            .first { it.sourceId == "cannibal" }
+        empathMeal = assertNotNull(empathConsequence.apply).invoke(empathMeal, "")
+        assertTrue(
+            empathMeal.prompts.none { it.kind == PromptKind.RUN_FIRST_NIGHT },
+            "the Empath's slot fires every night — no re-run owed",
+        )
+        assertNotNull(step(atNight(empathMeal, 2), "empath"), "the Empath row is the Cannibal's")
+    }
+
     // ==================================================================
     // choirboy
     // ==================================================================
@@ -1010,6 +1080,49 @@ class RulesExpTownsfolkTest {
             assertTrue(row.action is ShowInfo, "$id shows, never chooses: ${row.action}")
             assertNull(step(atNight(state, 2), id), "$id must not wake again")
         }
+    }
+
+    @Test
+    fun `the Noble's three are the storyteller's choice, suggested but never forced`() {
+        // Seats: noble(0,g) imp(1,e) poisoner(2,e) chef(3) mayor(4) monk(5).
+        val state = game("noble", "imp", "poisoner", "chef", "mayor", "monk")
+        val show = assertIs<ShowInfo>(assertNotNull(step(state, "noble")).action)
+        assertEquals(3, show.targetsNeeded)
+        // The engine's legal suggestion arrives pre-lit: exactly 1 evil of 3.
+        assertEquals(3, show.preselect.size)
+        assertEquals(1, show.preselect.count { id -> state.player(id)!!.isEvil(lookup) })
+
+        // The storyteller's own trio wins — the card follows THEM.
+        val ours = assertNotNull(InfoCalc.compute(state, lookup, "noble", 0L, listOf(3L, 4L, 5L)))
+        assertEquals(listOf(3L, 4L, 5L), assertIs<Answer.Players>(ours.answer).ids.sorted())
+
+        // An off-shape trio is advised against, never blocked.
+        val twoEvil = assertNotNull(InfoCalc.compute(state, lookup, "noble", 0L, listOf(1L, 2L, 3L)))
+        assertEquals(listOf(1L, 2L, 3L), assertIs<Answer.Players>(twoEvil.answer).ids.sorted())
+        assertTrue(twoEvil.caveats.any { "2 evil" in it }, "${twoEvil.caveats}")
+    }
+
+    @Test
+    fun `seats marked Know win the Noble's preselect over the suggestion`() {
+        var state = game("noble", "imp", "poisoner", "chef", "mayor", "monk")
+        for (id in listOf(2L, 4L, 5L)) {
+            state = Effects.addReminder(state, id, PlacedReminder("noble", "Know"))
+        }
+        val show = assertIs<ShowInfo>(assertNotNull(step(state, "noble")).action)
+        assertEquals(listOf(2L, 4L, 5L), show.preselect.sorted())
+    }
+
+    @Test
+    fun `the Knight and Steward follow the storyteller's picks with advisory caveats`() {
+        val state = game("knight", "steward", "imp", "poisoner", "chef", "mayor")
+        // Knight: picking the Demon is warned about, not dropped.
+        val hit = assertNotNull(InfoCalc.compute(state, lookup, "knight", 0L, listOf(2L, 4L)))
+        assertEquals(listOf(2L, 4L), assertIs<Answer.Players>(hit.answer).ids.sorted())
+        assertTrue(hit.caveats.any { "IS the Demon" in it }, "${hit.caveats}")
+        // Steward: an evil pick is warned about, not dropped.
+        val evilPick = assertNotNull(InfoCalc.compute(state, lookup, "steward", 1L, listOf(3L)))
+        assertEquals(listOf(3L), assertIs<Answer.Players>(evilPick.answer).ids)
+        assertTrue(evilPick.caveats.any { "is evil" in it }, "${evilPick.caveats}")
     }
 
     // ==================================================================

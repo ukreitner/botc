@@ -40,6 +40,62 @@ class NightPlanTest {
         }
 
     // ==================================================================
+    // A traveller who joined mid-game (lead D25 step 4)
+    // ==================================================================
+
+    @Test
+    fun `a traveller seated mid-game gets an arrival row that retires itself`() {
+        var state = atNight(game(tb, "imp", "poisoner", "empath", "chef", "monk", "mayor"), 2)
+        state = Seats.addSeat(state, "Tess")
+        val seatId = state.players.maxOf { it.id }
+        state = Seats.assignCharacter(state, seatId, "thief", isTraveller = true)
+        state = Seats.setAlignment(state, seatId, Alignment.EVIL)
+
+        val row = assertNotNull(
+            plan(state).steps.firstOrNull { it.slotId == NightMarkers.TRAVELLER_ARRIVAL },
+            "no arrival row for the joined traveller",
+        )
+        assertEquals(seatId, row.holderId)
+        assertTrue(row.required, "telling the new arrival what they are is owed")
+        assertTrue("EVIL" in row.prompt, row.prompt)
+        // The three cards: their token, their alignment and — evil — the Demon.
+        assertTrue(row.cards.any { it.card == ShowCardSpec.CharacterCard("YOU ARE", "thief") })
+        assertTrue(row.cards.any { it.card == ShowCardSpec.AlignmentCard(evil = true) })
+        val point = assertNotNull(
+            row.cards.map { it.card }.filterIsInstance<ShowCardSpec.PointCard>().firstOrNull(),
+            "an evil traveller learns who the Demon is: ${row.cards.map { it.label }}",
+        )
+        assertEquals("THIS IS THE DEMON", point.prefix)
+        assertEquals(listOf("P1"), point.playerNames)
+
+        // Resolving stamps the hand-out, so the row never comes back.
+        val done = NightPlan.resolve(state, lookup, row.key, NightInput())
+        assertNotNull(done.player(seatId)?.tokenShownAt, "resolve records the hand-out")
+        assertNull(
+            NightPlan.build(done, lookup).steps
+                .firstOrNull { it.slotId == NightMarkers.TRAVELLER_ARRIVAL },
+        )
+    }
+
+    @Test
+    fun `a good traveller's arrival row never offers the Demon`() {
+        var state = atNight(game(tb, "imp", "poisoner", "empath", "chef", "monk", "mayor"), 2)
+        state = Seats.addSeat(state, "Gus")
+        val seatId = state.players.maxOf { it.id }
+        state = Seats.assignCharacter(state, seatId, "gunslinger", isTraveller = true)
+        state = Seats.setAlignment(state, seatId, Alignment.GOOD)
+
+        val row = assertNotNull(
+            plan(state).steps.firstOrNull { it.slotId == NightMarkers.TRAVELLER_ARRIVAL },
+        )
+        assertTrue(row.cards.any { it.card == ShowCardSpec.AlignmentCard(evil = false) })
+        assertTrue(
+            row.cards.map { it.card }.filterIsInstance<ShowCardSpec.PointCard>().isEmpty(),
+            "a good traveller does not learn the Demon",
+        )
+    }
+
+    // ==================================================================
     // The two information rows name who they are about
     // ==================================================================
 

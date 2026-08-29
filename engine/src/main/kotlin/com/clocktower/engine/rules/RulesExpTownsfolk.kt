@@ -11,7 +11,11 @@ import com.clocktower.engine.ChooseCharacter
 import com.clocktower.engine.ChoosePlayerAndCharacter
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.ChoosePlayersAndCharacters
+import com.clocktower.engine.Answer
 import com.clocktower.engine.DayAbility
+import com.clocktower.engine.DayRules
+import com.clocktower.engine.InfoCalc
+import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.DayRule
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.DeathEvent
@@ -505,8 +509,18 @@ private fun bountyHunter() = CharacterRule(
     id = "bountyhunter",
     firstNight = NightRule(
         gate = Gates.aliveHolder,
-        prompt = "Point at the player marked Know. The Bounty Hunter learns the PLAYER, " +
-            "not the character.",
+        prompt = "Point at 1 evil player. The Bounty Hunter learns the PLAYER, " +
+            "not the character. Yours to choose: tap the picker to change them.",
+        action = { ctx ->
+            ShowInfo(
+                sourceId = "bountyhunter",
+                prompt = "WHO DO THEY LEARN?",
+                targetsNeeded = 1,
+                constraints = listOf(TargetConstraint.NOT_SELF),
+                preselect = infoPickPreselect(ctx, "bountyhunter", 1),
+            )
+        },
+        infoId = "bountyhunter",
     ),
     otherNight = NightRule(
         gate = knownPlayerDied(),
@@ -1049,8 +1063,18 @@ private fun knight() = CharacterRule(
     id = "knight",
     firstNight = NightRule(
         gate = Gates.aliveHolder,
-        prompt = "Point at the 2 players marked Know. Neither is the Demon — they may be " +
-            "any other character, Minions included.",
+        prompt = "Point at 2 players — neither is the Demon; they may be any other " +
+            "character, Minions included. Yours to choose: tap the picker to change them.",
+        action = { ctx ->
+            ShowInfo(
+                sourceId = "knight",
+                prompt = "WHICH 2 DO THEY LEARN?",
+                targetsNeeded = 2,
+                constraints = listOf(TargetConstraint.NOT_SELF),
+                preselect = infoPickPreselect(ctx, "knight", 2),
+            )
+        },
+        infoId = "knight",
     ),
     tokens = listOf(TokenRule("knight", "Know", null, Until.FOREVER, copies = 2)),
 )
@@ -1245,11 +1269,44 @@ private fun noble() = CharacterRule(
     id = "noble",
     firstNight = NightRule(
         gate = Gates.aliveHolder,
-        prompt = "Point at the 3 players marked Know. Exactly 1 of them is evil — a " +
-            "Recluse may be your 1 evil, a Spy may be one of your 2 good.",
+        prompt = "Point at 3 players — exactly 1 of them evil. A Recluse may be your " +
+            "1 evil, a Spy may be one of your 2 good. Yours to choose: the picker " +
+            "arrives with the marked (or suggested) 3 lit, tap to change them.",
+        action = { ctx ->
+            ShowInfo(
+                sourceId = "noble",
+                prompt = "WHICH 3 DO THEY LEARN?",
+                targetsNeeded = 3,
+                constraints = listOf(TargetConstraint.NOT_SELF),
+                preselect = infoPickPreselect(ctx, "noble", 3),
+            )
+        },
+        infoId = "noble",
     ),
     tokens = listOf(TokenRule("noble", "Know", null, Until.FOREVER, copies = 3)),
 )
+
+/**
+ * The pre-lit seats for an information step whose players are the
+ * STORYTELLER's choice (Noble, Knight, Steward, Bounty Hunter, Sage — user
+ * report: "for noble etc. allow to choose the three yourself").
+ *
+ * Seats already marked `<id>/Know` at setup win; otherwise the engine's own
+ * suggested answer. A pre-filled answer and nothing more — the picker's chips
+ * toggle as they always do, and `InfoCalc` validates whatever is finally
+ * picked with advisory caveats, never a block.
+ *
+ * Safe inside `NightPlan.build` (unlike the Chambermaid, none of these
+ * calculators read the night plan).
+ */
+internal fun infoPickPreselect(ctx: NightContext, id: String, needed: Int): List<Long> {
+    val marked = ctx.state.seats
+        .filter { it.id != ctx.holder?.id && DayRules.hasToken(ctx.state, it.id, id, "Know") }
+        .map { it.id }
+    if (marked.isNotEmpty()) return marked.take(needed)
+    val answer = InfoCalc.compute(ctx.state, ctx.lookup, id, ctx.holder?.id)?.answer
+    return (answer as? Answer.Players)?.ids.orEmpty().take(needed)
+}
 
 // ---------------------------------------------------------------------------
 // pixie
@@ -1629,8 +1686,18 @@ private fun steward() = CharacterRule(
     id = "steward",
     firstNight = NightRule(
         gate = Gates.aliveHolder,
-        prompt = "Point at the player marked Know. A Spy is a legal answer — they " +
-            "register as good.",
+        prompt = "Point at 1 good player. A Spy is a legal answer — they register as " +
+            "good. Yours to choose: tap the picker to change them.",
+        action = { ctx ->
+            ShowInfo(
+                sourceId = "steward",
+                prompt = "WHO DO THEY LEARN?",
+                targetsNeeded = 1,
+                constraints = listOf(TargetConstraint.NOT_SELF),
+                preselect = infoPickPreselect(ctx, "steward", 1),
+            )
+        },
+        infoId = "steward",
     ),
     tokens = listOf(TokenRule("steward", "Know", null, Until.FOREVER, copies = 1)),
 )
