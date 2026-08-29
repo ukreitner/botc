@@ -85,6 +85,12 @@ fun NightScreen(
     onOpenShowTool: () -> Unit = {},
     /** Runs the phase button once the sheet is finished — the last card opens the day. */
     onDawn: () -> Unit = {},
+    /**
+     * The shell's "show the grimoire to a player…". Null until the shell wires
+     * it; the Spy's row is the one that always needs it and had no link to the
+     * feature at all (playtest B2-12).
+     */
+    onShowGrimoire: (() -> Unit)? = null,
 ) {
     // Pure and cheap: rebuilt on every state change so an insertion (a
     // resurrection's re-run, a Scarlet Woman promotion) appears at once (I6).

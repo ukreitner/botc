@@ -429,6 +429,11 @@ fun GameShell(
                         // The last card of the sheet IS the dawn button
                         // (ux/night-screen §F): "OPEN THE DAY →".
                         onDawn = onPhaseButton,
+                        // B2-12: the read-only grimoire is the shell's, so the
+                        // night sheet can only ask for it. The Spy's row is the
+                        // one that always needs it and had no link to the
+                        // feature at all.
+                        onShowGrimoire = { spyMode = true },
                     )
                     GameTab.DAY -> DayScreen(
                         viewModel = viewModel,
