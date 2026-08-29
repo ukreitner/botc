@@ -93,3 +93,8 @@
 - Emulator flake (README): the accessibility tree goes quiet >45 s on the twelve-seat grimoire about 1 in 3 `--fresh` launches; `audit` then reports "0 clickable node(s)" and passes VACUOUSLY. Testers must treat a 0-node audit as no result. `D_bmr_setup` flaky 2-in-3 for the same reason.
 - (from Fix-A2) `web/.../WebGameViewModel.kt:229` — same import block as GameViewModel; ids are now unique via the engine, but the "Imported script (2)" name-suffix pass is missing on the web. → next polish.
 - (from Fix-A2) The wave-3 queue's "harness fallback: tolerant dismiss-whatever-sheet-is-on-top step in ui.py" is NO LONGER NEEDED (FW3-1 fixed in the app; C_setup10 149/149, C_setup_rest 104/104).
+### After fix wave 3 (2026-08-29)
+- ZOOMED grimoire at 12/16 seats still audits overlaps (6/9): `graphicsLayer` scale moves a seat's REPORTED bounds while the clip reaches only the drawing. Un-zoomed 8/12/16 now clean (the old 8-seat 5 % case cleared by the 60 dp controls lane). Real fix = zoom re-lays-out the ring (D2-7 residual).
+- C2-13: the dusk primary "NO EXECUTION — BEGIN NIGHT n →" still wraps its `→` to a second centred line at the emulator width; label is D77-pinned and `F_fix_dusk` waits on it verbatim — shorten or NBSP together with the scenario.
+- Harness: `uiautomator dump` goes silent for minutes after "Start empty" on a 12+ seat board when the checklist is dismissed by a SCRIM tap; dismiss with its own [Close] (Fix-C2's `seated()` helper). README note pending.
+- `WebGameViewModel.kt:229` import name-suffix pass (from Fix-A2).
