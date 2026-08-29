@@ -3,7 +3,6 @@ package com.clocktower.grimoire.ui.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -20,7 +19,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Briefing
 import com.clocktower.engine.BriefingItem
@@ -295,6 +296,11 @@ internal fun PhaseGuardDialogs(
     state: GameState,
     guards: PhaseGuards,
     onItem: (BriefingItem) -> Boolean = { false },
+    /**
+     * Ends the game from a dusk advisory (C2-1). The shell owns it because the
+     * reveal sheet is the shell's; defaulted so a preview host needs no change.
+     */
+    onDeclareWinner: ((goodWins: Boolean) -> Unit)? = null,
     onTab: (GameTab) -> Unit,
 ) {
     val handleItem: (BriefingItem) -> Unit = { item ->
@@ -417,6 +423,12 @@ internal fun PhaseGuardDialogs(
             title = "Dusk · day ${briefing.cycle}",
             confirmLabel = DuskActions.confirmLabel(briefing.cycle + 1, onBlock?.name, spent),
             advisories = guards.duskAdvisories,
+            onDeclareWinner = onDeclareWinner?.let { declare ->
+                { goodWins: Boolean ->
+                    guards.clear()
+                    declare(goodWins)
+                }
+            },
             onConfirm = {
                 val target = onBlock?.id
                 val index = target?.let { blockingNominationIndex(state, it) }
@@ -468,11 +480,14 @@ private fun BriefingSheet(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     advisories: List<WinCheck.Advisory> = emptyList(),
+    /** Ends the game from the advisory that fired. Null = no route from here. */
+    onDeclareWinner: ((goodWins: Boolean) -> Unit)? = null,
     secondaryLabel: String? = null,
     onSecondary: () -> Unit = {},
     acted: Set<String> = emptySet(),
     onItem: (BriefingItem) -> Unit = {},
 ) {
+    val advisoryIds = advisories.map { it.ruleId }.toSet()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -483,16 +498,31 @@ private fun BriefingSheet(
             ) {
                 for (advisory in advisories) {
                     item(key = "advisory:${advisory.ruleId}") {
-                        Text(
-                            advisory.reason,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(vertical = 4.dp),
-                        )
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        ) {
+                            AdvisoryLines(advisory)
+                            // C2-1: the ending the sheet just announced is
+                            // OFFERED here, exactly as the Saint's is offered in
+                            // "Is the game over?". It used to be red text that
+                            // the primary button then threw away.
+                            if (endsTheGame(advisory) && onDeclareWinner != null) {
+                                FilledTonalButton(
+                                    onClick = { onDeclareWinner(declaredWinner(advisory)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text(declareLabel(advisory)) }
+                            }
+                        }
                     }
                 }
                 for (section in SECTIONS) {
-                    val lines = briefing.of(section.kind)
+                    // C2-2: the briefing carries one TODO_ASK per advisory (plus
+                    // one line per caution), so every advisory rendered above
+                    // was printed twice, ~200 px apart. The briefing keeps the
+                    // ones nothing up here is showing — the Zombuul's, which is
+                    // not an ending and is not in `advisories` at all.
+                    val lines = briefing.of(section.kind).filterNot { it.sourceId in advisoryIds }
                     if (lines.isEmpty()) continue
                     item(key = "heading:${section.kind}") {
                         Text(
@@ -534,9 +564,18 @@ private fun BriefingSheet(
                 }
             }
         },
-        confirmButton = { FilledTonalButton(onClick = onConfirm) { Text(confirmLabel) } },
+        confirmButton = {
+            FilledTonalButton(onClick = onConfirm) {
+                // Two lines, wrapped at a space — never an arrow orphaned on a
+                // line of its own (C2-13). The label is D77's and stays as it is.
+                Text(confirmLabel, textAlign = TextAlign.Center)
+            }
+        },
+        // A COLUMN, not a row: three long labels on one line is what split
+        // "Not yet" down the middle. Each dismissal gets its own line, and the
+        // dialog stacks the primary above them when the row cannot hold both.
         dismissButton = {
-            Row {
+            Column(horizontalAlignment = Alignment.End) {
                 secondaryLabel?.let { TextButton(onClick = onSecondary) { Text(it) } }
                 TextButton(onClick = onDismiss) { Text("Not yet") }
             }

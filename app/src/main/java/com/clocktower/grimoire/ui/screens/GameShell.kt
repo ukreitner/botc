@@ -536,7 +536,16 @@ fun GameShell(
             onDismiss = { revealGoodWins = null },
         )
     }
-    PhaseGuardDialogs(viewModel, state, phaseGuards, onItem = onBriefingItem) { tab = it }
+    PhaseGuardDialogs(
+        viewModel,
+        state,
+        phaseGuards,
+        onItem = onBriefingItem,
+        // C2-1: an ending detected at dusk (the Vortox's no-execution loss) is
+        // declared from the sheet that announced it, through the same reveal
+        // the "Is the game over?" dialog uses.
+        onDeclareWinner = { goodWins -> revealGoodWins = goodWins },
+    ) { tab = it }
     activeCard?.let { card ->
         FullScreenShow(
             card = card,

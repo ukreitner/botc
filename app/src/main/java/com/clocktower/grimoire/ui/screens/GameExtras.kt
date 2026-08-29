@@ -342,6 +342,39 @@ fun ActiveJinxesDialog(
     )
 }
 
+// ---------------------------------------------------------------------------
+// Endings — ONE decision, wherever a `WinCheck.Advisory` surfaces (C2-1)
+// ---------------------------------------------------------------------------
+//
+// The Saint's ending raised "Is the game over?" with [Declare evil victory];
+// the Vortox's, detected at dusk, was printed in red on the dusk sheet and then
+// thrown away when the primary advanced to night 2. The three functions below
+// are the shared half: whether an advisory ENDS the game, which side it hands
+// it to, and what the button says. Every surface renders those the same way.
+
+/**
+ * True when this advisory ends the game, so it must be OFFERED rather than
+ * merely printed. `goodWins == null` is a briefing — the Zombuul's "nobody
+ * died today" is the canonical one — and never gets a declare button.
+ */
+fun endsTheGame(advisory: WinCheck.Advisory): Boolean = advisory.goodWins != null
+
+/** Which side an accepted advisory hands the game to. */
+fun declaredWinner(advisory: WinCheck.Advisory): Boolean = advisory.goodWins ?: true
+
+/** The words on the button that ends the game. */
+fun declareLabel(advisory: WinCheck.Advisory): String =
+    if (advisory.goodWins == false) "Declare evil victory" else "Declare good victory"
+
+/** The advisory as prose: its reason, then every caution that could overturn it. */
+@Composable
+fun AdvisoryLines(advisory: WinCheck.Advisory) {
+    Text(advisory.reason, style = MaterialTheme.typography.bodyLarge, color = EmberRed)
+    for (c in advisory.cautions) {
+        Text("! $c", color = EmberRed, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
 /** Win-condition advisory with a path to the reveal screen. */
 @Composable
 fun WinAdvisoryDialog(
@@ -355,16 +388,13 @@ fun WinAdvisoryDialog(
         title = { Text("Is the game over?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(advisory.reason, style = MaterialTheme.typography.bodyLarge)
-                for (c in advisory.cautions) {
-                    Text("! $c", color = EmberRed, style = MaterialTheme.typography.bodySmall)
-                }
+                AdvisoryLines(advisory)
             }
         },
         confirmButton = {
             Column {
-                FilledTonalButton(onClick = { onDeclare(advisory.goodWins ?: true) }) {
-                    Text(if (advisory.goodWins == false) "Declare evil victory" else "Declare good victory")
+                FilledTonalButton(onClick = { onDeclare(declaredWinner(advisory)) }) {
+                    Text(declareLabel(advisory))
                 }
                 if (onMastermindDay != null && advisory.cautions.any { "Mastermind" in it }) {
                     TextButton(onClick = onMastermindDay) { Text("Play the Mastermind day") }
