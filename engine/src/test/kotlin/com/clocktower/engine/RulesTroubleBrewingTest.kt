@@ -244,9 +244,14 @@ class RulesTroubleBrewingTest {
         assertTrue(sober.deaths.isEmpty())
         assertTrue(sober.ledger.any { it.kind == LedgerKind.RULING && it.actorId == 3L })
 
+        assertFalse(step(sober, "monk").abilityImpaired, "a sober Monk really does protect")
+
         // Given the same board with the Monk poisoned first.
         var poisoned = atNight(game("imp", "poisoner", "monk", "chef", "mayor", "butler"), 2)
         poisoned = run(poisoned, "poisoner", 2L)
+        // Playtest B2-5: the row must SAY the protection will not happen — its
+        // primary read "PLAYER 1 — SAFE" under its own IMPAIRED banner.
+        assertTrue(step(poisoned, "monk").abilityImpaired, "and this one does not")
         poisoned = run(poisoned, "monk", 3L)
         assertTrue(carries(poisoned, 3L, "monk", "Safe"), "the token is still placed — the grimoire must look normal")
 

@@ -41,6 +41,13 @@ import com.clocktower.engine.YesNo
 /** The hard floor for text on the night screen, in sp (ux/night-screen §H). */
 const val NIGHT_MIN_SP: Float = 14f
 
+/**
+ * What a token placed by an ability that is not working actually does
+ * (playtest B2-5). The token is still placed — a Spy reading the grimoire must
+ * see an ordinary Monk — and it protects, poisons and drunks nobody.
+ */
+const val NO_EFFECT: String = "NO EFFECT (ABILITY NOT WORKING)"
+
 /** Clamps a requested text size to the night screen's floor. */
 fun nightSp(requested: Float): Float = if (requested < NIGHT_MIN_SP) NIGHT_MIN_SP else requested
 
@@ -382,6 +389,16 @@ fun primaryLabel(
      * (playtest B P1 #9).
      */
     impairedHolder: String = "",
+    /**
+     * [NightStep.abilityImpaired] — this holder's ability does not work
+     * tonight, so the tokens it places are inert.
+     *
+     * A poisoned Monk's primary read `PLAYER 1 — SAFE`, flat and enabled,
+     * directly under the card's own IMPAIRED banner; two steps later the Imp
+     * correctly killed Player 1 (playtest B2-5). Every protection and
+     * standing-effect row states the REAL outcome now.
+     */
+    abilityImpaired: Boolean = false,
 ): String {
     val also = if (deferredLine.isBlank()) "" else " · ${deferredLine.uppercase()}"
     if (dawn) return "OPEN THE DAY →"
@@ -396,7 +413,9 @@ fun primaryLabel(
     if (chosen.isNotEmpty()) {
         val names = chosen.joinToString(", ") { it.uppercase() }
         if (places.isNotEmpty()) {
-            return "$names — ${places.joinToString(" + ") { it.uppercase() }}$also"
+            val tokens = places.joinToString(" + ") { if (abilityImpaired) "“${it.uppercase()}”" else it.uppercase() }
+            val what = if (abilityImpaired) "$tokens — $NO_EFFECT" else tokens
+            return "$names — $what$also"
         }
         return "CONFIRM: $names$also"
     }

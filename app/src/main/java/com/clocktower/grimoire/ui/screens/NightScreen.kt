@@ -315,7 +315,13 @@ private fun resultOf(state: GameState, step: NightStep): String {
             val name = state.player(id)?.name ?: return@mapNotNull null
             if (!attacked) name else "$name ${fateOf(state, id)}"
         }
-        if (names.isNotEmpty()) return "→ ${names.joinToString()}"
+        // The tokens an impaired ability placed are inert, and the collapsed row
+        // is what the storyteller reads in the dark: "→ Player 1" read exactly
+        // like a protection that worked (playtest B2-5).
+        if (names.isNotEmpty()) {
+            val suffix = if (step.abilityImpaired && !attacked) " · no effect" else ""
+            return "→ ${names.joinToString()}$suffix"
+        }
     }
     val told = Memory.by(state, LedgerKind.TOLD, step.abilityId, step.holderId)
         .lastOrNull { it.cycle == state.cycle }

@@ -175,6 +175,18 @@ data class NightStep(
     /** Whether waking here counts for the Chambermaid (lead D13). */
     val wakeCounts: WakeCount = WakeCount.ACT,
     /**
+     * True when this holder's ability does not work tonight — drunk, poisoned,
+     * or running an ability that was never theirs.
+     *
+     * The tokens the row places are still placed (a Spy reading the grimoire
+     * must see an ordinary Monk) and they are inert. The button has to SAY so:
+     * a poisoned Monk's primary read "PLAYER 1 — SAFE", flat and enabled,
+     * directly under the card's own IMPAIRED banner, and Player 1 then died
+     * (playtest B2-5). The engine knows; this is how the screen finds out
+     * without asking about any character.
+     */
+    val abilityImpaired: Boolean = false,
+    /**
      * Seats this row kills TONIGHT without anybody choosing them — the standing
      * half of the step, which `NightRule.pending` declares and [action] cannot.
      *
@@ -941,6 +953,7 @@ data class NightPlan(
                 // An inherited Demon is not woken at all tonight, so a
                 // Chambermaid must not count them (lead D13).
                 wakeCounts = if (inherited) WakeCount.NONE else nightRule?.wakeCounts ?: WakeCount.ACT,
+                abilityImpaired = impairedNow(ctx, role, holder),
                 // A believer's row changes nothing at all, deferred half
                 // included (lead D70) — so it promises nothing either. Nor does
                 // a row for a Demon that inherited the token tonight.
@@ -1182,6 +1195,17 @@ data class NightPlan(
         }
 
         /** The one derived fact worth ember: why this ability will not work tonight. */
+        /**
+         * Whether this row's ability is dead on arrival tonight — the fact the
+         * IMPAIRED banner states, as data ([NightStep.abilityImpaired]).
+         */
+        private fun impairedNow(ctx: PlanContext, role: ActingRole, holder: Player?): Boolean {
+            if (role.alwaysFalse) return true
+            holder ?: return false
+            if (role.worksWhileImpaired) return false
+            return Status.impairment(ctx.state, ctx.lookup, holder.id).isNotEmpty()
+        }
+
         private fun bannerFor(
             ctx: PlanContext,
             role: ActingRole,

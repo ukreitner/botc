@@ -170,6 +170,35 @@ class NightRowsTest {
     }
 
     @Test
+    fun `an impaired ability's placement states that it does nothing`() {
+        // Playtest B2-5: a poisoned Monk's primary read "PLAYER 1 — SAFE",
+        // flat and enabled, under the card's own IMPAIRED banner — and the
+        // Imp killed Player 1 two steps later.
+        assertEquals(
+            "PLAYER 1 — “SAFE” — NO EFFECT (ABILITY NOT WORKING)",
+            primaryLabel(
+                picked = listOf("Player 1"),
+                places = listOf("Safe"),
+                abilityImpaired = true,
+            ),
+        )
+        // The Innkeeper's two tokens, same rule.
+        assertEquals(
+            "P1, P3 — “SAFE” + “DRUNK” — NO EFFECT (ABILITY NOT WORKING)",
+            primaryLabel(
+                picked = listOf("P1", "P3"),
+                places = listOf("Safe", "Drunk"),
+                abilityImpaired = true,
+            ),
+        )
+        // A working ability is unchanged.
+        assertEquals(
+            "PLAYER 1 — SAFE",
+            primaryLabel(picked = listOf("Player 1"), places = listOf("Safe")),
+        )
+    }
+
+    @Test
     fun `chose nobody is a real answer with its own label`() {
         assertEquals("THEY CHOSE NOBODY", primaryLabel(picked = listOf("Ben"), none = true))
     }

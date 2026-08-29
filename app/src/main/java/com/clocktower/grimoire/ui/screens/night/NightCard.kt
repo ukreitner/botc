@@ -257,6 +257,7 @@ fun NightCard(
         skipped = skipped,
         dawn = isDawn,
         impairedHolder = if (owesFalseInfo && chosen == null) holderName else "",
+        abilityImpaired = step.abilityImpaired,
     )
 
     Surface(
