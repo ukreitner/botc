@@ -625,18 +625,32 @@ private fun VotePanel(
         Text("· $reason", style = MaterialTheme.typography.bodyMedium, color = FadedInk)
     }
 
-    if (!hidden) {
-        Text(
-            view.outcomeLine,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = if (view.result == NominationResult.ABOUT_TO_DIE) {
-                EmberRed
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-        )
-    }
+    // The verdict is the one thing the whole secret-vote surface exists to
+    // keep (D80, C2-12): concealed like the tally, revealed by the same
+    // hold-to-peek, and rendered even while hidden so the row never simply
+    // vanishes and leaves the panel looking unfinished.
+    Text(
+        if (hidden) NominationModel.HIDDEN_OUTCOME else view.outcomeLine,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = when {
+            hidden -> FadedInk
+            view.result == NominationResult.ABOUT_TO_DIE -> EmberRed
+            else -> MaterialTheme.colorScheme.onSurface
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (view.secret) {
+                    Modifier.combinedClickable(
+                        onClick = { peek = false },
+                        onLongClick = { peek = true },
+                    )
+                } else {
+                    Modifier
+                },
+            ),
+    )
 
     // `DayRules.record` refuses an illegal nomination and returns the state
     // untouched, so a live Lock in on a closed day cleared the draft and wrote

@@ -431,4 +431,18 @@ object NominationModel {
 
     /** How many "may not vote" lines the panel prints before it summarises. */
     const val MAX_INELIGIBLE_LINES: Int = 3
+
+    /**
+     * The outcome line while the vote is secret and nobody is peeking (D80,
+     * playtest C2-12).
+     *
+     * The tally is `•••`, the recorded row is `••• votes · •••` and the button
+     * reads "Lock in silently" — and between them the panel printed
+     * "Player 6 is about to die." in plain text, which is the one thing the
+     * whole surface exists to keep. The line is concealed the same way and
+     * revealed by the same hold-to-peek. It never says "someone", either: the
+     * stat strip already carries that much, and this row is where a shoulder is
+     * most likely to be reading.
+     */
+    const val HIDDEN_OUTCOME: String = "••• — hold the tally to peek"
 }

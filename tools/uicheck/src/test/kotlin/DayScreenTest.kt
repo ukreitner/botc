@@ -965,6 +965,42 @@ class DayScreenTest {
     }
 
     // ------------------------------------------------------------------
+    // Secret voting hides the verdict too (D80, C2-12)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `the concealed outcome names nobody and points at the peek`() {
+        val hidden = NominationModel.HIDDEN_OUTCOME
+        assertTrue(hidden, hidden.contains("•••"))
+        assertTrue("it says how to read it: '$hidden'", hidden.contains("peek"))
+        // Whatever the outcome, the concealed line can never carry a name or
+        // the words that give the verdict away.
+        for (word in listOf("about to die", "is safe", "exiled", "Tie at")) {
+            assertFalse("'$hidden' leaks '$word'", hidden.contains(word))
+        }
+    }
+
+    @Test
+    fun `under an Organ Grinder the panel's own verdict is a secret worth keeping`() {
+        var state = day()
+        state = GameActions.assignCharacter(state, seat(state, "Kit"), "organgrinder")
+        assertTrue("the fixture must actually be secret", DayRules.secretVoting(state, lookup))
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            nominatorId = seat(state, "Ana"),
+            nomineeId = seat(state, "Fay"),
+            voterIds = state.alivePlayers.take(7).map { it.id }.toSet(),
+        )
+        assertTrue(view.secret)
+        // The clear-text line still exists — it is what a PEEK reveals — and it
+        // is exactly the line the panel must not print unpeeked.
+        assertTrue(view.outcomeLine, view.outcomeLine.contains("Fay"))
+        assertFalse(NominationModel.HIDDEN_OUTCOME.contains("Fay"))
+    }
+
+    // ------------------------------------------------------------------
     // The ring stands down once its two taps have landed (C-15 / C2-9)
     // ------------------------------------------------------------------
 
