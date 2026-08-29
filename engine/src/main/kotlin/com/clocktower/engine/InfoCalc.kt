@@ -668,6 +668,11 @@ object InfoCalc {
         return InfoResult(
             answer = Answer.Characters(listOfNotNull(target.characterId)),
             headline = "${ctx.name(target)} is the ${character?.name ?: "?"}",
+            // The card printed the generic stem "THIS CHARACTER" over the token
+            // and the ledger recorded it — the physical info token the
+            // Ravenkeeper, the Grandmother and the Harlot are shown reads
+            // "THIS PLAYER IS" (playtest B2-10, the residue of B-17).
+            cardPrefix = "THIS PLAYER IS",
             caveats = misregistrations(ctx, listOf(target)),
         )
     }

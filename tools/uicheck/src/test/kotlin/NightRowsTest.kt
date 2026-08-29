@@ -42,7 +42,9 @@ import com.clocktower.grimoire.ui.screens.night.offerAnswerText
 import com.clocktower.grimoire.ui.screens.night.openRowKey
 import com.clocktower.grimoire.ui.screens.night.openRowToken
 import com.clocktower.grimoire.ui.screens.night.openingToken
+import com.clocktower.grimoire.ui.screens.night.lastPickEffects
 import com.clocktower.grimoire.ui.screens.night.placedLabels
+import com.clocktower.grimoire.ui.screens.night.sharedEffects
 import com.clocktower.grimoire.ui.screens.night.pointPrefix
 import com.clocktower.grimoire.ui.screens.night.preselected
 import com.clocktower.grimoire.ui.screens.night.primaryEnabled
@@ -167,6 +169,34 @@ class NightRowsTest {
             "BEN — POISONED",
             primaryLabel(picked = listOf("Ben"), places = listOf("Poisoned")),
         )
+    }
+
+    @Test
+    fun `a token that lands on the last pick only is stated separately`() {
+        // Playtest B2-14: "PLAYER 1, PLAYER 3 — SAFE + DRUNK" reads as though
+        // both were safe AND drunk. The card's prompt already says the SECOND
+        // one tapped is the drunk one; the button threw that away.
+        val innkeeper = ChoosePlayers(
+            sourceId = "step",
+            prompt = "WHICH TWO?",
+            min = 2,
+            max = 2,
+            perTarget = listOf(NightEffect.PlaceToken("step", "Safe", Ref.Target)),
+            onResolve = listOf(NightEffect.PlaceToken("step", "Drunk", Ref.Target)),
+        )
+        assertEquals(listOf("Drunk"), placedLabels(lastPickEffects(innkeeper)))
+        assertEquals(listOf("Safe"), placedLabels(sharedEffects(innkeeper)))
+        assertEquals(
+            "P1, P3 — SAFE · P3 — DRUNK",
+            primaryLabel(
+                picked = listOf("P1", "P3"),
+                places = placedLabels(sharedEffects(innkeeper)),
+                lastPickPlaces = placedLabels(lastPickEffects(innkeeper)),
+            ),
+        )
+        // A single-pick action keeps every token on the one name.
+        val monk = choose(perTarget = listOf(NightEffect.PlaceToken("step", "Safe", Ref.Target)))
+        assertEquals(emptyList<NightEffect>(), lastPickEffects(monk))
     }
 
     @Test

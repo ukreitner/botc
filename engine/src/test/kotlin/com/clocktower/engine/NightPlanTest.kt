@@ -256,6 +256,47 @@ class NightPlanTest {
         assertTrue(demon.required)
     }
 
+    @Test
+    fun `an information offer prints the character's name, never the engine id`() {
+        // Playtest B2-7: the planner built its offers with the default name
+        // resolver (the raw id) and the screen built the same offers again with
+        // real names, so a multi-word character produced two chips that
+        // `distinctBy { label }` could not collapse — and choosing the first put
+        // "SHOW “SCARLETWOMAN — …”" on the button the storyteller reads out.
+        val state = game(tb, "imp", "scarletwoman", "investigator", "chef", "monk", "mayor", "butler")
+        val row = assertNotNull(step(state, "investigator"))
+        val truthful = row.cards.filter { it.truthful }
+        assertEquals(1, truthful.size, "exactly one truthful offer: ${row.cards.map { it.label }}")
+        assertTrue("Scarlet Woman".uppercase() in truthful.single().label, truthful.single().label)
+        assertTrue(
+            row.cards.none { "scarletwoman" in it.label.lowercase() },
+            "no raw id anywhere: ${row.cards.map { it.label }}",
+        )
+    }
+
+    @Test
+    fun `an info step that picks nobody writes no choice at all`() {
+        // Playtest B2-9: five of night 1's twelve log lines were
+        // "Player 6 (Washerwoman) chooses nobody" — a CHOICE row written for
+        // every "start knowing", count and yes/no step, none of which can pick.
+        var state = game(tb, "imp", "poisoner", "washerwoman", "chef", "empath", "monk", "mayor", "butler")
+        for (id in listOf("washerwoman", "chef", "empath")) {
+            state = NightPlan.resolve(state, lookup, assertNotNull(step(state, id)).key, NightInput())
+        }
+        assertTrue(
+            state.ledger.none { it.kind == LedgerKind.CHOICE },
+            "no invented choices: ${state.ledger.filter { it.kind == LedgerKind.CHOICE }}",
+        )
+        // …while a row that COULD choose and did not still records the answer.
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            assertNotNull(step(state, "poisoner")).key,
+            NightInput(none = true),
+        )
+        assertTrue(state.ledger.any { it.kind == LedgerKind.CHOICE && it.sourceId == "poisoner" })
+    }
+
     // ==================================================================
     // Gating
     // ==================================================================

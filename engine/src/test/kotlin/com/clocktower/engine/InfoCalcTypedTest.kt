@@ -286,6 +286,18 @@ class InfoCalcTypedTest {
         assertFalse(result.abilityMalfunctions, "nothing is wrong with the Chef's ability")
     }
 
+    @Test
+    fun `a character reveal is headed with the words on the physical token`() {
+        // Playtest B2-10 (B-17's residue): the Ravenkeeper's and the
+        // Grandmother's full-screen card was headed "THIS CHARACTER" — the
+        // generic stem — and the ledger recorded it that way too.
+        val state = game("ravenkeeper", "imp", "poisoner", "recluse", "spy", "chef", "empath", "mayor")
+        val result = assertNotNull(compute(state, "ravenkeeper", 0L, listOf(1L)))
+        assertEquals("THIS PLAYER IS", result.cardPrefix)
+        val card = NightPlan.cardsFor(state, result).first { it.truthful }.card
+        assertEquals(ShowCardSpec.CharacterCard("THIS PLAYER IS", "imp"), card)
+    }
+
     // ==================================================================
     // The rewritten and the new calculators
     // ==================================================================

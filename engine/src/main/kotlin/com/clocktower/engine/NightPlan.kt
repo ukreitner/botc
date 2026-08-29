@@ -1275,7 +1275,12 @@ data class NightPlan(
             val infoId = infoIdFor(role.abilityId, nightRule) ?: return emptyList()
             if (!InfoCalc.supports(infoId) || InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
             val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, role.playerId) ?: return emptyList()
-            return cardsFor(ctx.state, result)
+            // With the default `nameOf` the label printed the ENGINE ID, and the
+            // screen built the same offer again with real names — two chips a
+            // `distinctBy { label }` could not collapse, one of them putting
+            // "SHOW “SCARLETWOMAN — …”" on the primary the storyteller reads out
+            // loud (playtest B2-7).
+            return cardsFor(ctx.state, result) { id -> ctx.lookup(id)?.name ?: id }
         }
 
         /** Turns a typed answer into show-card offers; lies are labelled as lies. */
@@ -2387,7 +2392,25 @@ data class NightPlan(
             characterIds: List<String>,
             impaired: Boolean,
         ): GameState {
-            if (step.action == null && targets.isEmpty() && !input.none) return state
+            // Nothing was chosen and nothing could have been: a "start knowing",
+            // a count or a yes/no picks no seat, and an `Options` answer records
+            // itself in `shown`. Writing a CHOICE row for those put five lines
+            // of "Player 6 (Washerwoman) chooses nobody" in the night's log
+            // (playtest B2-9); "they chose nobody" on a row that COULD have
+            // chosen is a real answer and is still recorded.
+            // The INPUT, not the validated targets: a pick the constraints
+            // dropped is still an answer, and the empty CHOICE row is the proof
+            // that it was dropped.
+            val answered = input.playerIds.isNotEmpty() ||
+                input.characterIds.isNotEmpty() ||
+                input.assignments.isNotEmpty() ||
+                input.none ||
+                input.optionId.isNotEmpty() ||
+                input.yes != null ||
+                input.number != null ||
+                targets.isNotEmpty() ||
+                characterIds.isNotEmpty()
+            if (!answered) return state
             return ledger(
                 state,
                 LedgerKind.CHOICE,

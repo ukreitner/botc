@@ -123,7 +123,13 @@ fun NightCard(
     val action = step.action?.takeIf { choiceAllowed && !skipped && !awaitingGate }
 
     val holders = step.wakes.mapNotNull { state.player(it) }
-    val holderName = holders.firstOrNull()?.name.orEmpty()
+    // A group row wakes several seats, and the button named only the first of
+    // them: Minion info woke three and promised "…TO PLAYER 2" (playtest B2-11).
+    val holderName = if (holders.size > 1) {
+        "ALL ${holders.size}"
+    } else {
+        holders.firstOrNull()?.name.orEmpty()
+    }
     val character = viewModel.characterById(step.abilityId)
 
     // ---- the information this step gives, and the cards that carry it ----
@@ -248,7 +254,8 @@ fun NightCard(
     val label = primaryLabel(
         picked = pick.playerIds.mapNotNull { state.player(it)?.name },
         pickedCharacters = pick.characterIds.map { viewModel.characterById(it)?.name ?: it },
-        places = placedLabels(effects),
+        places = placedLabels(sharedEffects(step.action)),
+        lastPickPlaces = placedLabels(lastPickEffects(step.action)),
         deathLine = deathLine,
         deferredLine = deferredLine,
         answer = shownAnswer,
@@ -256,7 +263,11 @@ fun NightCard(
         none = pick.none,
         skipped = skipped,
         dawn = isDawn,
-        impairedHolder = if (owesFalseInfo && chosen == null) holderName else "",
+        impairedHolder = if (owesFalseInfo && chosen == null) {
+            holders.firstOrNull()?.name.orEmpty()
+        } else {
+            ""
+        },
         abilityImpaired = step.abilityImpaired,
     )
 

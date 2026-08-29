@@ -12,6 +12,7 @@ import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.Prompt
+import com.clocktower.engine.Ref
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -357,8 +358,15 @@ fun primaryLabel(
      * label (B2-2).
      */
     pickedCharacters: List<String> = emptyList(),
-    /** Reminder-token labels this action will place, from the registry. */
+    /** Reminder-token labels this action will place on EVERY pick, from the registry. */
     places: List<String> = emptyList(),
+    /**
+     * Labels it places on the LAST pick only — the Innkeeper's `Drunk`, whose
+     * effect resolves against `scope.current` (§2.11). Joining them with
+     * [places] made "PLAYER 1, PLAYER 3 — SAFE + DRUNK", which reads as though
+     * both were safe AND drunk (playtest B2-14).
+     */
+    lastPickPlaces: List<String> = emptyList(),
     /** The kill funnel's own words when the action ends in a death attempt. */
     deathLine: String = "",
     /**
@@ -412,10 +420,21 @@ fun primaryLabel(
     val chosen = picked + pickedCharacters
     if (chosen.isNotEmpty()) {
         val names = chosen.joinToString(", ") { it.uppercase() }
-        if (places.isNotEmpty()) {
-            val tokens = places.joinToString(" + ") { if (abilityImpaired) "“${it.uppercase()}”" else it.uppercase() }
-            val what = if (abilityImpaired) "$tokens — $NO_EFFECT" else tokens
-            return "$names — $what$also"
+        fun tokens(labels: List<String>) = labels.joinToString(" + ") {
+            if (abilityImpaired) "“${it.uppercase()}”" else it.uppercase()
+        }
+        val phrases = buildList {
+            if (places.isNotEmpty()) add("$names — ${tokens(places)}")
+            // "PLAYER 1, PLAYER 3 — SAFE + DRUNK" read as though both were both;
+            // the SECOND pick is the drunk one and the card says so, so the
+            // button says so too (playtest B2-14).
+            if (lastPickPlaces.isNotEmpty()) {
+                add("${chosen.last().uppercase()} — ${tokens(lastPickPlaces)}")
+            }
+        }
+        if (phrases.isNotEmpty()) {
+            val body = phrases.joinToString(" · ")
+            return if (abilityImpaired) "$body — $NO_EFFECT$also" else "$body$also"
         }
         return "CONFIRM: $names$also"
     }
@@ -457,6 +476,23 @@ fun actionEffects(action: NightAction?): List<NightEffect> = when (action) {
 /** The token labels an action places — the outcome half of the button's label. */
 fun placedLabels(effects: List<NightEffect>): List<String> =
     effects.filterIsInstance<NightEffect.PlaceToken>().map { it.label }.distinct()
+
+/**
+ * The effects a multi-pick action applies to the LAST pick only.
+ *
+ * `perTarget` runs once per pick; `onResolve` runs once, with `Ref.Target`
+ * resolving to the pick that landed last (§2.11) — which is how the Innkeeper's
+ * "the SECOND one you tap is the drunk one" is expressed. Anything else stays
+ * with the whole answer.
+ */
+fun lastPickEffects(action: NightAction?): List<NightEffect> = when {
+    action !is ChoosePlayers || action.max <= 1 -> emptyList()
+    else -> action.onResolve.filter { it is NightEffect.PlaceToken && it.on == Ref.Target }
+}
+
+/** [actionEffects] minus the ones [lastPickEffects] has already claimed. */
+fun sharedEffects(action: NightAction?): List<NightEffect> =
+    actionEffects(action) - lastPickEffects(action).toSet()
 
 /**
  * True when the primary button must be **held** for

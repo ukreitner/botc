@@ -308,6 +308,14 @@ private fun causeOf(state: GameState, step: NightStep): DeathCause =
  * Read from the LEDGER, which is what survives the dawn token sweep (I3).
  */
 private fun resultOf(state: GameState, step: NightStep): String {
+    // What was SHOWN, when anything was: the Fortune Teller's row recorded
+    // "→ Player 1, Player 5" and dropped the YES that is the whole point of the
+    // step, while the Chef's row beside it read "shown: 0" (playtest B2-13).
+    val shown = Memory.by(state, LedgerKind.TOLD, step.abilityId, step.holderId)
+        .lastOrNull { it.cycle == state.cycle }
+        ?.shown
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "shown: $it" }
     val choice = Memory
         .lastChoice(state, step.abilityId, step.holderId, beforeCycle = state.cycle + 1)
         ?.takeIf { it.cycle == state.cycle }
@@ -326,12 +334,10 @@ private fun resultOf(state: GameState, step: NightStep): String {
         // like a protection that worked (playtest B2-5).
         if (names.isNotEmpty()) {
             val suffix = if (step.abilityImpaired && !attacked) " · no effect" else ""
-            return "→ ${names.joinToString()}$suffix"
+            return listOfNotNull("→ ${names.joinToString()}$suffix", shown).joinToString(" · ")
         }
     }
-    val told = Memory.by(state, LedgerKind.TOLD, step.abilityId, step.holderId)
-        .lastOrNull { it.cycle == state.cycle }
-    return told?.shown?.takeIf { it.isNotBlank() }?.let { "shown: $it" }.orEmpty()
+    return shown.orEmpty()
 }
 
 /** Did tonight's attack on [playerId] land? Read from the deaths, not the tokens. */
