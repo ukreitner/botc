@@ -939,6 +939,37 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Courtier's and the Exorcist's answers are for the storyteller and never a card`() {
+        var state = game("courtier", "pukka", "sailor", "exorcist", "fool", "gossip")
+        val courtier = seat(state, "courtier")
+        val exorcist = seat(state, "exorcist")
+        val demon = seat(state, "pukka")
+
+        // The Courtier names a character and learns NOTHING: the answer is the
+        // storyteller's crib of who holds what, so it may not become a card
+        // (playtest B2-2, D2-2).
+        val courtierInfo = assertNotNull(InfoCalc.compute(state, lookup, "courtier", courtier))
+        assertEquals(InfoAudience.STORYTELLER, courtierInfo.audience)
+        assertTrue(
+            NightPlan.cardsFor(state, courtierInfo).isEmpty(),
+            "no card offer: ${NightPlan.cardsFor(state, courtierInfo).map { it.label }}",
+        )
+        assertTrue(
+            require(state, "courtier").cards.isEmpty(),
+            "and none on the row: ${require(state, "courtier").cards.map { it.label }}",
+        )
+
+        // The Exorcist is not told either way — the DEMON is the one who learns
+        // something (playtest B2-2, D2-3).
+        state = state.copy(cycle = 2, nightStepsDone = emptySet())
+        val exorcistInfo =
+            assertNotNull(InfoCalc.compute(state, lookup, "exorcist", exorcist, listOf(demon)))
+        assertEquals(Answer.YesNoAnswer(true), exorcistInfo.answer, "the answer is still computed")
+        assertEquals(InfoAudience.STORYTELLER, exorcistInfo.audience)
+        assertTrue(NightPlan.cardsFor(state, exorcistInfo).isEmpty())
+    }
+
+    @Test
     fun `the Courtier spends on any named character and drunks an in-play one for three days`() {
         var state = game("courtier", "pukka", "sailor", "chambermaid", "fool", "gossip")
         val courtier = seat(state, "courtier")

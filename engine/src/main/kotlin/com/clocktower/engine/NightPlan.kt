@@ -1198,6 +1198,10 @@ data class NightPlan(
             result: InfoResult,
             nameOf: (String) -> String = { it },
         ): List<CardOffer> = buildList {
+            // An answer computed FOR THE STORYTELLER is never a card. The
+            // Courtier's put every character in play in front of the Courtier
+            // and the Exorcist's told them who the Demon was (B2-2, D2-2, D2-3).
+            if (result.audience == InfoAudience.STORYTELLER) return@buildList
             cardFor(state, result.answer, result.cardPrefix)
                 ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer, nameOf)}", it, true)) }
             for (alternative in result.alternatives) {

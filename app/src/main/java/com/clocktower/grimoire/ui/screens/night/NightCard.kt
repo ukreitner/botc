@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.clocktower.engine.Answer
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.GameState
+import com.clocktower.engine.InfoAudience
 import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.InfoResult
 import com.clocktower.engine.KillCause
@@ -152,7 +153,12 @@ fun NightCard(
     val truthCard = remember(answerCards) { answerCards.firstOrNull { it.truthful }?.card?.asCard() }
     val truthful = remember(offers) { offers.filter { it.truthful } }
     val lies = remember(offers) { offers.filterNot { it.truthful } }
-    val answer = info?.let {
+    // An answer the engine computed FOR THE STORYTELLER is not shown to anybody:
+    // no card, and no `SHOW … TO …` on the one gold button (B2-2, D2-2, D2-3).
+    // It stays on the card as the headline and the detail, which is what the
+    // storyteller needs to run the step.
+    val forStorytellerOnly = info?.audience == InfoAudience.STORYTELLER
+    val answer = info?.takeUnless { forStorytellerOnly }?.let {
         answerLabel(
             it.answer,
             characterName = { id -> viewModel.characterById(id)?.name ?: id },
@@ -221,7 +227,10 @@ fun NightCard(
     // holder the card itself says "give false info", and the one gold button
     // must not be the true answer (playtest B P1 #9).
     var chosen by remember(state.cycle, key.token, info) { mutableStateOf<UiOffer?>(null) }
-    val owesFalseInfo = info != null && mustNotShowTruth(info.obligation, info.abilityMalfunctions)
+    // Nothing is shown, so nothing can be shown falsely: an impaired Courtier
+    // must not be held on "PICK WHAT TO SHOW" with no card to pick.
+    val owesFalseInfo = info != null && !forStorytellerOnly &&
+        mustNotShowTruth(info.obligation, info.abilityMalfunctions)
     val shownAnswer = when {
         chosen != null -> offerAnswerText(chosen!!.label)
         owesFalseInfo -> ""
@@ -231,6 +240,7 @@ fun NightCard(
     val isDawn = step.slotId == NightMarkers.DAWN
     val label = primaryLabel(
         picked = pick.playerIds.mapNotNull { state.player(it)?.name },
+        pickedCharacters = pick.characterIds.map { viewModel.characterById(it)?.name ?: it },
         places = placedLabels(effects),
         deathLine = deathLine,
         deferredLine = deferredLine,
@@ -366,6 +376,15 @@ fun NightCard(
                     fontWeight = FontWeight.Bold,
                     color = AgedGold,
                 )
+                if (forStorytellerOnly) {
+                    Text(
+                        text = STORYTELLER_ONLY_NOTE,
+                        fontSize = NIGHT_MIN_SP.sp,
+                        lineHeight = nightSp(19f).sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EmberRed,
+                    )
+                }
                 if (info.detail.isNotBlank()) {
                     Text(
                         text = info.detail,
@@ -856,6 +875,10 @@ private fun TokenPlacer(viewModel: GameViewModel, state: GameState, step: NightS
 
 /** How many false cards the card itself offers before the rest go in the drawer. */
 private const val MAX_LIE_CHIPS = 3
+
+/** Said out loud on a row whose computed answer is the storyteller's own (B2-2). */
+private const val STORYTELLER_ONLY_NOTE =
+    "FOR YOU ONLY — this is not shown to anybody, and there is no card to hold up."
 
 /** Long-press on an offer: the free-text editor, no longer the default path. */
 @Composable

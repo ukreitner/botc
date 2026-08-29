@@ -332,6 +332,13 @@ fun openRowToken(key: String, cycle: Int): String? {
 fun primaryLabel(
     /** Seats the storyteller picked, in pick order. */
     picked: List<String> = emptyList(),
+    /**
+     * Character names the storyteller picked — the Courtier names a character
+     * and nobody is pointed at, so the button had nothing to state but
+     * "DONE — NEXT STEP" once its (storyteller-only) answer stopped being the
+     * label (B2-2).
+     */
+    pickedCharacters: List<String> = emptyList(),
     /** Reminder-token labels this action will place, from the registry. */
     places: List<String> = emptyList(),
     /** The kill funnel's own words when the action ends in a death attempt. */
@@ -374,8 +381,9 @@ fun primaryLabel(
         val shown = "SHOW “${answer.uppercase()}”"
         return if (holder.isBlank()) shown else "$shown TO ${holder.uppercase()}"
     }
-    if (picked.isNotEmpty()) {
-        val names = picked.joinToString(", ") { it.uppercase() }
+    val chosen = picked + pickedCharacters
+    if (chosen.isNotEmpty()) {
+        val names = chosen.joinToString(", ") { it.uppercase() }
         if (places.isNotEmpty()) {
             return "$names — ${places.joinToString(" + ") { it.uppercase() }}$also"
         }
