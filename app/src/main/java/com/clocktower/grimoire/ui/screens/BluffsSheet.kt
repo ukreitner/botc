@@ -15,6 +15,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
@@ -35,7 +36,8 @@ import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.Time
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
-import com.clocktower.grimoire.ui.components.overlayBottomPadding
+import com.clocktower.grimoire.ui.components.bottomActionPadding
+import com.clocktower.grimoire.ui.components.rememberOverlayInsets
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import kotlin.random.Random
@@ -66,7 +68,18 @@ fun BluffsSheet(
     var query by rememberSaveable { mutableStateOf("") }
     val safeTab = tab.coerceIn(0, (requirements.size - 1).coerceAtLeast(0))
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // Measured OUTSIDE the sheet, where the numbers still exist (D82,
+    // components/SafeArea.kt).
+    val insets = rememberOverlayInsets()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // D2-5: half-expanded, the sheet was measured against the full content
+        // height anyway and simply overflowed — the list's container ran to
+        // y=2400, the physical bottom of the display, and its last two rows
+        // were under the gesture strip with one centre untappable. Fully
+        // expanded the content is bounded by the screen, as the checklist's is.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         if (requirements.isEmpty()) {
             Column(Modifier.fillMaxWidth().padding(20.dp)) {
                 Text("Bluffs", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
@@ -93,7 +106,13 @@ fun BluffsSheet(
         }
 
         if (requirements.size > 1) {
-            ScrollableTabRow(selectedTabIndex = safeTab, edgePadding = 12.dp) {
+            // A full-height sheet starts 8 px ABOVE the status-bar inset, which
+            // is what put the tab row's top edge under the cutout (D2-5).
+            ScrollableTabRow(
+                selectedTabIndex = safeTab,
+                edgePadding = 12.dp,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
                 requirements.forEachIndexed { index, req ->
                     val full = state.bluffSets[req.key].orEmpty().size >= req.size
                     Tab(
@@ -115,7 +134,14 @@ fun BluffsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = overlayBottomPadding()),
+                // LAYOUT padding, so the CONTAINER stops inside the safe area:
+                // `overlayBottomPadding` could only offer its own 24 dp margin
+                // from in here (a ModalBottomSheet reports its insets as
+                // consumed), and [insets] carries the real number in from
+                // outside. D82's warning is about compounding this with
+                // `imePadding` until the viewport cannot hold a search result —
+                // this list takes one or the other, never both.
+                .padding(bottom = bottomActionPadding(insets.bottom)),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             item("bluff-head-${requirement.key}") {
