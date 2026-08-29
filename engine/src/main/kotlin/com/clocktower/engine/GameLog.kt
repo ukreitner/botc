@@ -180,8 +180,7 @@ object GameLog {
 
             LedgerKind.SPENT -> "$source is spent (${name(entry.actorId)})"
 
-            LedgerKind.WOKE ->
-                "${name(entry.actorId)} wakes" + if (entry.genuine) " for $source" else " (shown to)"
+            LedgerKind.WOKE -> "${name(entry.actorId)} wakes${wokeReason(entry, source)}"
 
             LedgerKind.MALFUNCTION ->
                 "${name(entry.actorId)}'s $source ability malfunctioned: ${entry.text}"
@@ -192,6 +191,34 @@ object GameLog {
             LedgerKind.NOTE ->
                 entry.actorId?.let { "${name(it)}: ${entry.text}" } ?: "Note: ${entry.text}"
         }
+    }
+
+    /**
+     * Why a seat opened its eyes, in words (playtest B2-8).
+     *
+     * `genuine` is "this is the holder's OWN ability", and the false branch was
+     * a bare `" (shown to)"` that used neither the source nor anything else —
+     * so a Minion woken for the Minion-info step logged as
+     * `Player 8 wakes (shown to)`, a sentence with no object. The marker steps
+     * are named for what they are; an ordinary seat woken for somebody else's
+     * ability names that ability.
+     */
+    private fun wokeReason(entry: LedgerEntry, source: String): String = when {
+        markerName(entry.sourceId) != null -> " (${markerName(entry.sourceId)})"
+        entry.sourceId.isBlank() -> ""
+        entry.genuine -> " for $source"
+        else -> " (for the $source)"
+    }
+
+    /** The marker night steps, in the words the log prints. */
+    private fun markerName(sourceId: String): String? = when (sourceId) {
+        NightMarkers.MINION_INFO -> "Minion info"
+        NightMarkers.DEMON_INFO -> "Demon info"
+        NightMarkers.MINION_BLUFFS -> "Minion bluffs"
+        NightMarkers.DEMON_BLUFFS_ONLY -> "Demon bluffs"
+        NightMarkers.DUSK -> "dusk"
+        NightMarkers.DAWN -> "dawn"
+        else -> null
     }
 
     private fun verdictText(verdict: Verdict): String = when (verdict) {
