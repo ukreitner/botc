@@ -23,6 +23,30 @@ class ScriptParserTest {
         assertEquals(listOf("washerwoman", "fortuneteller", "scarletwoman", "imp"), script.characterIds)
     }
 
+    /**
+     * A2-4: both of these are called "Imported script", both used to be filed
+     * under `imported-importedscript`, and storing the second silently destroyed
+     * the first.
+     */
+    @Test
+    fun `two unnamed imports get two different ids`() {
+        val first = ScriptParser.parse("""["washerwoman","librarian","imp"]""")
+        val second = ScriptParser.parse("""["chef","empath","monk","imp"]""")
+        assertEquals(first.name, second.name)
+        assertTrue(first.id != second.id, "both minted ${first.id}")
+        assertTrue(first.id.startsWith("imported-importedscript-"), first.id)
+    }
+
+    /** …while re-importing the SAME script lands on the same id and replaces itself. */
+    @Test
+    fun `the same script imported twice keeps one id`() {
+        val json = """[{"id":"_meta","name":"Catfishing"},"washerwoman","imp"]"""
+        assertEquals(ScriptParser.parse(json).id, ScriptParser.parse(json).id)
+        // A different script that happens to share the name is still distinct.
+        val sameName = """[{"id":"_meta","name":"Catfishing"},"chef","imp"]"""
+        assertTrue(ScriptParser.parse(json).id != ScriptParser.parse(sameName).id)
+    }
+
     @Test
     fun `parses inline custom characters`() {
         val json = """

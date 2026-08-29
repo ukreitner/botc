@@ -71,15 +71,53 @@ object ScriptParser {
             }
         }
 
+        // Hand-edited scripts sometimes repeat an id; duplicates would
+        // crash keyed lists downstream, so keep first occurrence only.
+        val characterIds = ids.distinct()
+        val customCharacters = custom.distinctBy { it.id }
         return Script(
-            id = "imported-" + Character.normalizeId(name).ifEmpty { "script" },
+            id = importedId(name, characterIds, customCharacters),
             name = name,
             author = author,
-            // Hand-edited scripts sometimes repeat an id; duplicates would
-            // crash keyed lists downstream, so keep first occurrence only.
-            characterIds = ids.distinct(),
-            customCharacters = custom.distinctBy { it.id },
+            characterIds = characterIds,
+            customCharacters = customCharacters,
         )
+    }
+
+    /**
+     * The id an imported script is filed under: its name, plus a short
+     * fingerprint of what is actually in it.
+     *
+     * Playtest A2-4: the id was the NAME alone, so every script imported without
+     * a `_meta` header was called "Imported script", was filed under
+     * `imported-importedscript`, and the second one silently destroyed the
+     * first — importing two custom scripts was a flow you could not complete.
+     * Including the contents means two different scripts are two different
+     * scripts whatever they are called, while re-importing the SAME one lands on
+     * the same id and replaces itself instead of piling up copies.
+     */
+    fun importedId(
+        name: String,
+        characterIds: List<String>,
+        customCharacters: List<Character> = emptyList(),
+    ): String {
+        val slug = Character.normalizeId(name).ifEmpty { "script" }
+        val fingerprint = characterIds.joinToString(",") +
+            customCharacters.joinToString(",") { "${it.id}/${it.team}/${it.ability}" }
+        return "imported-$slug-" + shortHash(fingerprint)
+    }
+
+    /**
+     * FNV-1a over the script's contents, base 36. Deliberately hand-rolled: the
+     * engine has no platform digest it can call on JVM and wasm alike, and this
+     * only has to separate one paste from another.
+     */
+    private fun shortHash(text: String): String {
+        var hash = 2166136261L
+        for (ch in text) {
+            hash = ((hash xor ch.code.toLong()) * 16777619L) and 0xFFFFFFFFL
+        }
+        return hash.toString(36)
     }
 
     private fun parseCustomCharacter(id: String, obj: JsonObject): Character? {

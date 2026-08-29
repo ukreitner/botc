@@ -131,7 +131,6 @@ fun SetupScreen(
     // (A-19). The store writes asynchronously, so the confirmation is raised
     // when the new script actually appears rather than when Import was pressed.
     var awaitingImport by rememberSaveable { mutableStateOf(false) }
-    var knownScriptIds by rememberSaveable { mutableStateOf(ArrayList<String>() as List<String>) }
     var importNotice by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     // Seat indices marked as Travellers: they fill no distribution slot and are
@@ -154,14 +153,20 @@ fun SetupScreen(
     val liveGame by viewModel.game.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(imported) {
-        val added = imported.lastOrNull { it.id !in knownScriptIds }
+        // A2-5: this used to look for a script whose id it had never seen. An
+        // import that reused an id (every unnamed paste did) found none, so the
+        // banner kept the PREVIOUS import's text — "22 characters" over a
+        // 12-character script — and the selection never moved either, which made
+        // re-importing look like it had done nothing at all. The store appends
+        // the script it just wrote, so while an import is in flight the last
+        // entry IS it, new id or not.
+        val added = imported.lastOrNull()
         if (awaitingImport && added != null) {
             importNotice = "Imported \"${added.name}\" — " +
                 "${plural(added.characterIds.size, "character")}, now selected."
             scriptId = added.id
             awaitingImport = false
         }
-        knownScriptIds = ArrayList(imported.map { it.id })
     }
 
     if (handingOut) {

@@ -264,8 +264,21 @@ class GameViewModel(application: Application) :
         } else {
             viewModelScope.launch {
                 app.dataStore.updateData { saved ->
+                    // A2-4: ids are unique by CONTENT now (`ScriptParser.importedId`),
+                    // so re-importing the same script still replaces itself and a
+                    // different one never lands on top of it. What is left is the
+                    // NAME: two unnamed pastes are both "Imported script", so the
+                    // second is suffixed rather than shadowing the first in the
+                    // list. Nothing is ever dropped silently.
                     val others = saved.importedScripts.filterNot { it.id == script.id }
-                    saved.copy(importedScripts = others + script)
+                    val taken = others.map { it.name }.toSet()
+                    var named = script
+                    var copy = 2
+                    while (named.name in taken) {
+                        named = script.copy(name = "${script.name} ($copy)")
+                        copy++
+                    }
+                    saved.copy(importedScripts = others + named)
                 }
             }
             null
