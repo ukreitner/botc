@@ -105,15 +105,36 @@ class BagTargetsTest {
         assertEquals(listOf(7), targets.getValue(Team.TOWNSFOLK).counts)
     }
 
-    /** And the two never contradict each other on a real bag. */
+    /**
+     * And the two never contradict each other on a real bag. A2-1: with a Baron
+     * in it, ten players want 5/2/3/0 — the shape's Demon-for-Minion swap and
+     * the Baron's `[+2 Outsiders]` BOTH apply.
+     */
     @Test
     fun `a legal Lil Monsta bag agrees with the validator`() {
         val bag = bag(
-            "washerwoman", "librarian", "investigator", "chef", "empath", "fortuneteller", "undertaker",
+            "washerwoman", "librarian", "investigator", "chef", "empath",
+            "butler", "recluse",
             "poisoner", "spy", "baron",
             "lilmonsta",
         )
         assertAgrees(bag, playerCount = 10, inPlayIds = listOf("lilmonsta"))
+        assertEquals(
+            emptyList(),
+            Setup.validateBag(bag, 10, inPlayIds = listOf("lilmonsta")),
+        )
+
+        // The bag the app used to accept: the printed 0 Outsiders beside a Baron.
+        val swallowed = bag(
+            "washerwoman", "librarian", "investigator", "chef", "empath", "fortuneteller", "undertaker",
+            "poisoner", "spy", "baron",
+            "lilmonsta",
+        )
+        assertAgrees(swallowed, playerCount = 10, inPlayIds = listOf("lilmonsta"))
+        assertTrue(
+            Setup.validateBag(swallowed, 10, inPlayIds = listOf("lilmonsta"))
+                .any { it.startsWith("Outsider: 0 in bag, expected 2") },
+        )
     }
 
     /** The centre token fills no seat, whoever is counting. */

@@ -287,6 +287,23 @@ object Setup {
         return variants
     }
 
+    /**
+     * The single [SetupModifier] every shape's [BagShape.delta] adds up to, or
+     * null when no shape carries one.
+     *
+     * Playtest A2-1: a [BagShape] that PINS a team replaces the distribution
+     * check for it, so Lil' Monsta's pinned Townsfolk/Outsider counts swallowed
+     * a Baron's `[+2 Outsiders]` and a 12-player Baron game validated — and
+     * dealt — with two Outsiders instead of four. A shape whose rule is really
+     * "one fewer Demon, one more Minion" states it as a delta instead, which is
+     * applied ON TOP of the distributions the ordinary setup modifiers produced,
+     * so every bracket in the bag still composes.
+     */
+    private fun shapeDelta(shapes: Collection<BagShape>): SetupModifier? {
+        val deltas = shapes.mapNotNull { it.delta }
+        return if (deltas.isEmpty()) null else combine(deltas)
+    }
+
     private fun combine(modifiers: List<SetupModifier>): SetupModifier =
         SetupModifier(
             characterId = "",
@@ -408,10 +425,11 @@ object Setup {
     }
 
     /**
-     * The distribution [randomBag] aims at: [base] clamped into every shape's
-     * ranges, then rebalanced so the seats still add up to [playerCount] — the
-     * slack goes to the Townsfolk first, then the Outsiders, exactly as the
-     * physical game trades a Demon slot for a Minion.
+     * The distribution [randomBag] aims at: [base] with every shape's [delta]
+     * folded in, clamped into every shape's ranges, then rebalanced so the seats
+     * still add up to [playerCount] — the slack goes to the Townsfolk first,
+     * then the Outsiders, exactly as the physical game trades a Demon slot for
+     * a Minion.
      */
     private fun shapeTarget(
         shapes: Collection<BagShape>,
@@ -424,11 +442,12 @@ object Setup {
             return ranges.maxOf { it.first }..ranges.minOf { it.last }
         }
 
+        val shaped = shapeDelta(shapes)?.let { base + it } ?: base
         val counts = mutableMapOf(
-            Team.TOWNSFOLK to base.townsfolk,
-            Team.OUTSIDER to base.outsiders,
-            Team.MINION to base.minions,
-            Team.DEMON to base.demons,
+            Team.TOWNSFOLK to shaped.townsfolk,
+            Team.OUTSIDER to shaped.outsiders,
+            Team.MINION to shaped.minions,
+            Team.DEMON to shaped.demons,
         )
         for (team in counts.keys.toList()) {
             rangeOf(team)?.let { counts[team] = counts.getValue(team).coerceIn(it) }
@@ -645,6 +664,12 @@ object Setup {
             }
         }
         var allowed = allowedDistributions(playerCount, seatFilling + virtual)
+        // A2-1: the shape's own delta lands ON TOP of every distribution the
+        // brackets in the bag allow, never instead of them — Lil' Monsta's
+        // "no Demon, one extra Minion" composes with a Baron's "+2 Outsiders".
+        shapeDelta(shapes.values)?.let { delta ->
+            allowed = allowed.map { it + delta }.toSet()
+        }
         if ("sentinel" in fabledIds.map { Character.normalizeId(it) }) {
             allowed = allowed
                 .flatMap { d ->
@@ -835,20 +860,30 @@ object Setup {
 
         // A token in the centre, not a seat: swap the Demon slot for a Minion
         // (10 players -> 7 / 0 / 3 / 0, lead D18).
+        //
+        // A2-1: stated as a DELTA, not as four pinned counts. Pinning the
+        // Townsfolk and Outsider halves to the PRINTED distribution replaced the
+        // distribution check for them, so a Baron in the same bag was ignored
+        // and a 12-player game validated at 7/2/3/0 instead of 5/4/3/0.
         "lilmonsta" -> BagShape(
-            townsfolk = base.townsfolk..base.townsfolk,
-            outsiders = base.outsiders..base.outsiders,
-            minions = (base.minions + 1)..(base.minions + 1),
             demons = 0..0,
+            delta = SetupModifier(
+                characterId = "lilmonsta",
+                text = "no Demon in the bag, +1 Minion",
+                minionDelta = 1,
+                demonDelta = -1,
+            ),
             forbidInBag = setOf("lilmonsta"),
             note = "Lil' Monsta is a token, not a seat. " +
                 "Put ${base.minions + 1} Minions and no Demon in the bag.",
         )
 
-        // "[No Demon]" — the Summoner makes one on the third night.
+        // "[No Demon]" — the Summoner makes one on the third night. The Demon
+        // slot is already traded away by the Summoner's own bracket
+        // ([modifierFor] reads "No Demon" as `demonDelta = -1`), so this shape
+        // only states the firm part; pinning the Townsfolk count on top of it
+        // double-counted the trade and swallowed every other bracket (A2-1).
         "summoner" -> BagShape(
-            townsfolk = (base.townsfolk + 1)..(base.townsfolk + 1),
-            minions = base.minions..base.minions,
             demons = 0..0,
             note = "No Demon in the bag: the Summoner creates one on the 3rd night.",
         )
@@ -950,6 +985,14 @@ data class BagShape(
     val minions: IntRange? = null,
     val demons: IntRange? = null,
     val requireInBag: Set<String> = emptySet(),
+    /**
+     * A change to the distribution the OTHER setup brackets produced, rather
+     * than a pinned count that replaces them: Lil' Monsta's "no Demon in the
+     * bag, one extra Minion" must still leave a Baron's `[+2 Outsiders]`
+     * standing (playtest A2-1). Pins state what a shape fixes outright; this
+     * states what it MOVES, so several brackets compose.
+     */
+    val delta: SetupModifier? = null,
     /** Ids that must NOT be in the bag even though they are "in play" (lilmonsta). */
     val forbidInBag: Set<String> = emptySet(),
     val copies: Map<String, IntRange> = emptyMap(),
