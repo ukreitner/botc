@@ -1303,6 +1303,12 @@ data class NightPlan(
             if (result.audience == InfoAudience.STORYTELLER) return@buildList
             cardFor(state, result.answer, result.cardPrefix)
                 ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer, nameOf)}", it, true)) }
+            // Equally true, and equally the storyteller's to choose: WHICH
+            // Townsfolk a Washerwoman is shown is a decision, not a lie (B2-15).
+            for (other in result.alsoTrue) {
+                val card = cardFor(state, other, result.cardPrefix) ?: continue
+                add(CardOffer("SHOW: ${labelFor(state, other, nameOf)}", card, true))
+            }
             for (alternative in result.alternatives) {
                 val card = cardFor(state, alternative, result.cardPrefix) ?: continue
                 add(CardOffer("LIE · SHOW ${labelFor(state, alternative, nameOf)}", card, false))

@@ -81,6 +81,34 @@ class InfoCalcTypedTest {
     }
 
     @Test
+    fun `every Townsfolk the Washerwoman could be shown is offered as a true card`() {
+        // Playtest B2-15: with several Townsfolk in play the card offered ONE
+        // truthful chip and generated its variants by moving the decoy, so
+        // choosing WHICH real Townsfolk to reveal — the storyteller's main
+        // lever — was only reachable by leaving the card for "show a card…".
+        val state = game("washerwoman", "imp", "poisoner", "recluse", "spy", "chef", "empath", "mayor")
+        val result = assertNotNull(compute(state, "washerwoman", 0L))
+        val offered = (listOf(result.answer) + result.alsoTrue).map { assertIs<Answer.Players>(it) }
+
+        assertTrue(offered.size >= 3, "chef, empath and mayor are all legal: $offered")
+        for (option in offered) {
+            assertEquals(2, option.ids.size, "every option keeps the 1-of-2 shape")
+            assertFalse(0L in option.ids, "and never points at the Washerwoman")
+            assertEquals(1, trueHolders(state, option).size, "and is TRUE")
+            assertEquals(Team.TOWNSFOLK, data.character(assertNotNull(option.characterId))?.team)
+        }
+        assertEquals(
+            offered.size,
+            offered.map { it.characterId }.distinct().size,
+            "one card per character, not the same one with a different decoy",
+        )
+        // They reach the sheet as truthful offers, not as lies.
+        val cards = NightPlan.cardsFor(state, result) { id -> data.character(id)?.name ?: id }
+        assertEquals(offered.size, cards.count { it.truthful }, cards.map { it.label }.toString())
+        assertTrue(cards.none { it.truthful && "LIE" in it.label })
+    }
+
+    @Test
     fun `the Librarian shows a pair, and the 0 signal when no Outsider is in play`() {
         val withOutsider = game("librarian", "imp", "poisoner", "butler", "chef", "empath", "mayor", "monk")
         val pair = assertIs<Answer.Players>(assertNotNull(compute(withOutsider, "librarian", 0L)).answer)

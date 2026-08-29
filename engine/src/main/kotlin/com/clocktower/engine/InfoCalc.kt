@@ -64,6 +64,15 @@ data class InfoResult(
      * not render a "false info" heading at all.
      */
     val alternatives: List<Answer> = emptyList(),
+    /**
+     * Other answers that are equally TRUE — the storyteller's choice, not a lie.
+     *
+     * "1 of 2 players is a particular Townsfolk" is a choice of WHICH Townsfolk
+     * to reveal, and that choice is one of the storyteller's main levers. The
+     * card offered exactly one true chip and hid the rest of the decision behind
+     * "show a card…" (playtest B2-15).
+     */
+    val alsoTrue: List<Answer> = emptyList(),
     val obligation: InfoObligation = InfoObligation.TRUTH,
     /** Impairment, misregistration and Vortox are THREE obligations — keep them apart. */
     val caveats: List<String> = emptyList(),
@@ -780,9 +789,22 @@ object InfoCalc {
             // The two lies that keep the card's shape: same pair with a wrong
             // token, and the true token over a pair that does not contain them.
             alternatives = startKnowingLies(ctx, team, pair, trueHolder, characterId),
+            // Every OTHER real candidate, as a card of its own: which one to
+            // show is the storyteller's choice and it belongs on the card
+            // (playtest B2-15).
+            alsoTrue = inPlay.asSequence()
+                .filter { it.id != trueHolder.id }
+                .mapNotNull { other ->
+                    pointPair(ctx, other, holderId)?.let { Answer.Players(it, other.characterId) }
+                }
+                .take(MAX_TRUE_CHOICES)
+                .toList(),
             caveats = misregistrations(ctx, ctx.players),
         )
     }
+
+    /** How many other true "1 of 2" cards the storyteller is offered outright. */
+    private const val MAX_TRUE_CHOICES = 4
 
     /**
      * [trueHolder] plus one decoy, in seat order — never [excludeId], who is the
