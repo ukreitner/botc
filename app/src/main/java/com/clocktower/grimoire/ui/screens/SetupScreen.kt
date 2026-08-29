@@ -123,7 +123,6 @@ fun SetupScreen(
     // rotation that lost them would change how the whole game votes.
     var secretVotes by rememberSaveable { mutableStateOf(false) }
     val houseRules = HouseRules(secretVotes = secretVotes)
-    var seatlessAck by rememberSaveable { mutableStateOf(false) }
     var outsiderBranch by rememberSaveable { mutableStateOf<Int?>(null) }
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
     /** Filters the character list in card 3 (A-11). */
@@ -205,7 +204,22 @@ fun SetupScreen(
             }
         }
     }
-    val seatlessIds = if (seatlessAck) seatlessCandidates.map { it.first.id } else emptyList()
+    // A2-2 / A2-3: the tick-box and the bag are ONE bit, and the bag holds it.
+    //
+    // It used to be a free-floating `rememberSaveable` boolean. Unticking it
+    // while the token sat in the bag changed nothing on screen (the engine
+    // raises the shape from the bag as well as from the acknowledgement) yet it
+    // was the only thing that wrote the decision into the dealt game, so the
+    // deal opened on four blocking rows; and ticking it SURVIVED the token
+    // leaving the bag, which dealt an eight-player table with no Demon on any
+    // seat while the checklist said "✓ Lil' Monsta is in play — Confirmed" and
+    // the first night still scheduled its step.
+    //
+    // Derived from `bagIds`, the box drives the bag maths, the header, the bars
+    // and the badge the moment it is pressed, it cannot survive the token's
+    // removal, and the deal can never disagree with the screen.
+    val seatlessIds = seatlessCandidates.map { it.first.id }.filter { it in bagIds }
+    val seatlessAck = seatlessIds.isNotEmpty()
     val issues = if (script == null || !validCount) {
         emptyList()
     } else {
@@ -407,7 +421,17 @@ fun SetupScreen(
                             onAllowDuplicates = { allowDuplicates = it },
                             seatlessNote = seatlessCandidates.firstOrNull()?.second?.note.orEmpty(),
                             seatlessAck = seatlessAck,
-                            onSeatlessAck = { seatlessAck = it },
+                            // The box PUTS the centre token in the bag and takes
+                            // it out again — one decision, one place it is
+                            // stored, so nothing on this screen can disagree
+                            // with anything else on it (A2-2 / A2-3).
+                            onSeatlessAck = { wanted ->
+                                val ids = seatlessCandidates.map { it.first.id }
+                                bagIds = ArrayList(
+                                    if (wanted) bagIds + ids.filterNot { it in bagIds } else bagIds - ids.toSet(),
+                                )
+                                bagMessage = null
+                            },
                             query = bagQuery,
                             onQuery = { bagQuery = it },
                             onRandomize = { keep ->
@@ -430,16 +454,12 @@ fun SetupScreen(
                                     // acknowledgement they are shown beside. The
                                     // acknowledged centre token fills no seat, so
                                     // the roll never draws it — put it back, so
-                                    // the tray shows what is actually in play…
-                                    for ((character, _) in seatlessCandidates) {
-                                        if (seatlessAck && character.id !in ids) ids.add(character.id)
-                                    }
-                                    // …and the other way round: a roll that came
-                                    // back holding one IS a seatless game, so tick
-                                    // the box rather than leaving the storyteller
-                                    // with a bag its own validator rejects.
-                                    if (!seatlessAck && seatlessCandidates.any { it.first.id in ids }) {
-                                        seatlessAck = true
+                                    // the tray shows what is actually in play.
+                                    // (The other direction needs no code now: a
+                                    // roll that DID come back holding one leaves
+                                    // it in `bagIds`, and the box reads the bag.)
+                                    for (id in seatlessIds) {
+                                        if (id !in ids) ids.add(id)
                                     }
                                     bagIds = ids
                                 }
