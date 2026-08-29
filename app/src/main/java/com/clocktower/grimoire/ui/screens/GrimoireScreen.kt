@@ -28,7 +28,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -81,7 +88,7 @@ import com.clocktower.grimoire.ui.components.CharacterToken
 import com.clocktower.grimoire.ui.components.PipRow
 import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.components.StatusPip
-import com.clocktower.grimoire.ui.components.ZoomControls
+import com.clocktower.grimoire.ui.components.ZoomState
 import com.clocktower.grimoire.ui.components.rememberZoomState
 import com.clocktower.grimoire.ui.components.visiblePips
 import com.clocktower.grimoire.ui.components.zoomGestures
@@ -512,6 +519,26 @@ private fun CircleView(
             }
             .zoomGestures(zoom),
     ) {
+        // The canvas keeps its own lane, and the zoom controls keep theirs
+        // (playtest D2-7). Zooming scales the ring inside the canvas without
+        // shrinking its box, so at 12 and 16 seats the seats grew UP into the
+        // header's chips and Search (42 % and 47 % overlaps) and DOWN over the
+        // floating zoom column (40 %). Two changes, one for each direction:
+        //
+        // * `clipToBounds` — the transform may no longer draw, or report hit
+        //   bounds, outside the canvas, so the header is untouchable by zoom at
+        //   any scale;
+        // * a reserved strip at the bottom for [ZoomBar], so the ring can never
+        //   reach the controls. A horizontal lane is far cheaper than the
+        //   vertical one FOLLOWUPS costed for the 102 dp column, because the
+        //   ellipse is wide and short — and it clears the known un-zoomed
+        //   8-seat overlap as well.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = ZOOM_BAR_LANE)
+                .clipToBounds(),
+        ) {
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
@@ -556,13 +583,61 @@ private fun CircleView(
                 }
             }
         }
+        }
 
-        ZoomControls(
+        ZoomBar(
             state = zoom,
-            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp),
         )
     }
 }
+
+/**
+ * The zoom controls as a ROW in the lane reserved for them at the bottom of the
+ * canvas, rather than a floating column on top of it (D2-7).
+ *
+ * A column of three 48 dp buttons is 156 dp tall and sits exactly where the
+ * seats at 7 and 8 o'clock are; zoomed, tokens were drawn straight over it and
+ * `audit` measured 40 % overlaps. A row costs the ellipse a shallow horizontal
+ * strip instead — the cheap direction, because the ring is wide and short.
+ *
+ * `components/Zoomable.kt`'s own `ZoomControls` stays as it is: the notes
+ * circle has no header row and no reserved lane, and its column is fine there.
+ */
+@Composable
+private fun ZoomBar(state: ZoomState, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.height(ZOOM_BAR_LANE),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilledTonalIconButton(
+            onClick = { state.zoomBy(ZOOM_STEP) },
+            modifier = Modifier.size(48.dp),
+        ) { Icon(Icons.Filled.ZoomIn, contentDescription = "Zoom in") }
+        FilledTonalIconButton(
+            onClick = { state.zoomBy(1f / ZOOM_STEP) },
+            modifier = Modifier.size(48.dp),
+        ) { Icon(Icons.Filled.ZoomOut, contentDescription = "Zoom out") }
+        if (!state.isDefault) {
+            FilledTonalIconButton(
+                onClick = { state.reset() },
+                modifier = Modifier.size(48.dp),
+            ) {
+                Icon(
+                    Icons.Filled.CenterFocusStrong,
+                    contentDescription = "Reset zoom and recenter",
+                )
+            }
+        }
+    }
+}
+
+/** The strip at the bottom of the canvas that belongs to [ZoomBar] alone. */
+private val ZOOM_BAR_LANE = 60.dp
+
+/** One tap of zoom, matching `components/Zoomable.kt`'s own step. */
+private const val ZOOM_STEP = 1.3f
 
 /**
  * Lays children out evenly around an ellipse inscribed in the available
