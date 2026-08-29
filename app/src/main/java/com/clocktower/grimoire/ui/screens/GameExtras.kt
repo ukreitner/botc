@@ -487,6 +487,17 @@ fun RevealSheet(
  * how the rest of the app reaches it without every caller having to own the
  * sheet's state. Same shape as `UpdateManager.state`.
  */
+object SetupChecklist {
+    /** Bumped by [open]; [SetupIdentityPrompts] raises the sheet when it changes. */
+    var openRequests by mutableStateOf(0)
+        private set
+
+    /** Raise the "Before the first night" sheet, wherever the storyteller is. */
+    fun open() {
+        openRequests += 1
+    }
+}
+
 /**
  * The obligations whose ARRIVAL is not, on its own, worth interrupting for
  * (FW3-1).
@@ -510,17 +521,6 @@ private fun raiseId(row: SetupRequirement): String = when {
     row.id.startsWith("bag.") -> "bag"
     row.kind == RequirementKind.BLUFFS -> "bluffs"
     else -> row.id
-}
-
-object SetupChecklist {
-    /** Bumped by [open]; [SetupIdentityPrompts] raises the sheet when it changes. */
-    var openRequests by mutableStateOf(0)
-        private set
-
-    /** Raise the "Before the first night" sheet, wherever the storyteller is. */
-    fun open() {
-        openRequests += 1
-    }
 }
 
 @Composable
