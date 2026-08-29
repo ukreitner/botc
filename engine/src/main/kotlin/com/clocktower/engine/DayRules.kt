@@ -1091,6 +1091,18 @@ object DayRules {
 
     // ---- existing helpers, moved here from GameActions in WP0 ----
 
+    /**
+     * How many votes the NEXT nomination must reach to beat today's standing
+     * high — the one meaning of "to beat" anywhere in the app.
+     *
+     * The day screen had two: the stat strip appended "· 5 to beat" (the
+     * standing high-water) while the tie line one row below said "6 to beat it"
+     * (the number a vote must reach). Same words, different numbers, one line
+     * apart on screen (playtest C2-10). Zero when nothing is standing.
+     */
+    fun votesToBeat(state: GameState): Int =
+        highestVotesToday(state).takeIf { it > 0 }?.plus(1) ?: 0
+
     /** Highest passing vote tally so far today (for tie/beat logic). */
     fun highestVotesToday(state: GameState): Int =
         state.nominations

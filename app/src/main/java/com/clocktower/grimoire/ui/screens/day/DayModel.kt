@@ -119,7 +119,9 @@ object DayModel {
             append("$alive alive · $threshold to execute")
             if (ghosts > 0) append(" · $ghosts ghost ${if (ghosts == 1) "vote" else "votes"}")
             // The tally to beat is part of the secret an Organ Grinder keeps.
-            if (!secret && highest > 0) append(" · $highest to beat")
+            // ONE meaning of "to beat" (C2-10): the number a vote must REACH,
+            // from the engine, the same number the tie line prints.
+            if (!secret) DayRules.votesToBeat(state).takeIf { it > 0 }?.let { append(" · $it to beat") }
         }
         // Once the day's execution is settled the block is history: leaving
         // "On the block: Fay — 6 votes" up for the rest of the day is a live
@@ -171,7 +173,8 @@ object DayModel {
             1 -> " — ${tied.first()}"
             else -> " — " + tied.dropLast(1).joinToString(", ") + " and " + tied.last()
         }
-        return "Tie at $highest$who. No one is about to die. ${highest + 1} to beat it."
+        return "Tie at $highest$who. No one is about to die. " +
+            "${DayRules.votesToBeat(state)} to beat it."
     }
 
     // ---- individual rows -------------------------------------------------

@@ -664,6 +664,24 @@ class DayScreenTest {
         assertTrue("the tie names both: '$line'", line.contains("Fay") && line.contains("Gus"))
         assertTrue("and the number to beat: '$line'", line.contains("to beat it"))
         assertNull("nobody is on the block after a tie", DayRules.aboutToDie(state))
+
+        // C2-10: the strip printed the standing high-water ("· 5 to beat") one
+        // line above the tie line's "6 to beat it". One meaning, one number.
+        val toBeat = DayRules.votesToBeat(state)
+        assertEquals(DayRules.highestVotesToday(state) + 1, toBeat)
+        assertTrue("the tie line uses it: '$line'", line.contains("$toBeat to beat it"))
+        val detail = DayModel.stats(state, lookup).detail
+        assertTrue("and so does the strip: '$detail'", detail.contains("· $toBeat to beat"))
+    }
+
+    @Test
+    fun `nothing standing prints no number to beat`() {
+        val state = day()
+        assertEquals(0, DayRules.votesToBeat(state))
+        assertFalse(
+            "'${DayModel.stats(state, lookup).detail}'",
+            DayModel.stats(state, lookup).detail.contains("to beat"),
+        )
     }
 
     @Test
