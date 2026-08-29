@@ -98,6 +98,8 @@ fun NightCard(
      * (playtest B P0 #3); the sheet keeps the row open until they are answered.
      */
     prompts: List<Prompt> = emptyList(),
+    /** The shell's "show the grimoire to a player…", when it has wired one. */
+    onShowGrimoire: (() -> Unit)? = null,
 ) {
     val key = step.key
     // Keyed on the CYCLE as well as the step: last night's two lit chips must
@@ -551,6 +553,7 @@ fun NightCard(
                     },
                     onOpenShowTool = onOpenShowTool,
                     onKillSheet = onKillSheet,
+                    onShowGrimoire = onShowGrimoire,
                 )
             }
         }
@@ -776,6 +779,13 @@ private fun SecondaryDrawer(
     onShow: (UiOffer) -> Unit,
     onOpenShowTool: () -> Unit,
     onKillSheet: (Long, Long?) -> Unit,
+    /**
+     * Opens the shell's read-only grimoire hand-over. Null when the shell has
+     * not wired it: the one row that always needs it — the Spy's, whose card
+     * says "Show the Grimoire to the Spy for as long as they need" — had no
+     * link to the feature at all (playtest B2-12).
+     */
+    onShowGrimoire: (() -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider()
@@ -800,6 +810,14 @@ private fun SecondaryDrawer(
             modifier = Modifier.fillMaxWidth(),
             onClick = onOpenShowTool,
         )
+        onShowGrimoire?.let { open ->
+            NightChip(
+                label = "show the grimoire to a player…",
+                tone = Tone.NORMAL,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = open,
+            )
+        }
         if (hasAttack) {
             for (id in attacked) {
                 NightChip(
