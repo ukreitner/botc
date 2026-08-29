@@ -387,7 +387,10 @@ fun SetupScreen(
                     TableCard(
                         names = names,
                         travellerSeats = travellerSeats,
-                        rosters = rosters.map { it.names },
+                        // A2-10: dedupe by ROSTER. Four chips all reading
+                        // "Last table (N)" were indistinguishable, and two
+                        // tables of the same size were the same chip twice.
+                        rosters = rosters.map { it.names }.distinct(),
                         onNames = { names = it },
                         onTravellers = setTravellers,
                         onPaste = { showPaste = true },
@@ -864,7 +867,17 @@ private fun TableCard(
                             onNames(ArrayList(roster))
                             onTravellers(travellerSeats.filter { it < roster.size }.toSet())
                         },
-                        label = { Text("Last table (${roster.size})") },
+                        // A2-10: the seat count was the only thing telling four
+                        // "Last table (N)" chips apart, so two tables of the
+                        // same size were indistinguishable and only one of them
+                        // could be "last". The table's first name names it.
+                        label = {
+                            Text(
+                                roster.firstOrNull()?.takeIf { it.isNotBlank() }
+                                    ?.let { "$it +${roster.size - 1}" }
+                                    ?: "Table of ${roster.size}",
+                            )
+                        },
                     )
                 }
             }
