@@ -20,6 +20,8 @@ import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.StepGate
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.screens.DuskActions
+import com.clocktower.grimoire.ui.screens.checklistFooter
+import com.clocktower.grimoire.ui.screens.checklistTitle
 import com.clocktower.grimoire.ui.screens.declareLabel
 import com.clocktower.grimoire.ui.screens.declaredWinner
 import com.clocktower.grimoire.ui.screens.endsTheGame
@@ -292,6 +294,31 @@ class PhaseFlowTest {
                 dusk.briefing.items.map { it.sourceId to it.text },
             ruleIds.all { id -> dusk.briefing.items.any { it.sourceId == id } },
         )
+    }
+
+    // ------------------------------------------------------------------
+    // The checklist header follows the phase (C2-7, D2-9)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `the checklist is titled for the phase it is raised in`() {
+        assertEquals("Before the first night", checklistTitle(Phase.SETUP))
+        assertTrue(
+            "the guard the caption talks about only exists in setup",
+            checklistFooter(Phase.SETUP).contains("Begin night"),
+        )
+
+        for (phase in listOf(Phase.NIGHT, Phase.DAY)) {
+            val title = checklistTitle(phase)
+            assertFalse("no 'first night' on day 2: '$title'", title.contains("first night"))
+            assertEquals("Setup still owed", title)
+            val footer = checklistFooter(phase)
+            assertFalse(
+                "no guard the storyteller passed two phases ago: '$footer'",
+                footer.contains("Begin night"),
+            )
+            assertTrue(footer, footer.contains("Nothing is blocked"))
+        }
     }
 
     @Test

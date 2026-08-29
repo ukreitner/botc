@@ -50,6 +50,7 @@ import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameLog
 import com.clocktower.engine.GameState
 import com.clocktower.engine.HouseRules
+import com.clocktower.engine.Phase
 import com.clocktower.engine.Team
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameActionsApi
@@ -574,6 +575,32 @@ fun SetupIdentityPrompts(
  * Advisory rows (`blocking = false`) are shown too, greyed and labelled, so a
  * default is never silent (lead D54).
  */
+/**
+ * The checklist's own header, which has to follow the PHASE (playtest C2-7,
+ * D2-9).
+ *
+ * The sheet is deliberately not gated on `phase == SETUP` — a Pit-Hag creating
+ * a Drunk on night 3, or a traveller seated on day 2, raises real rows — but
+ * both strings were written for setup and stayed hard-coded, so seating a
+ * traveller on day 2 raised a sheet headed "Before the first night" over a
+ * running game.
+ *
+ * Pure, so `tools/uicheck` can measure it, and storyteller-facing in every
+ * phase: what the sheet lists is what the game still owes.
+ */
+fun checklistTitle(phase: Phase): String =
+    if (phase == Phase.SETUP) "Before the first night" else "Setup still owed"
+
+/** The caption under the rows — the begin-night guard only exists in setup. */
+fun checklistFooter(phase: Phase): String =
+    if (phase == Phase.SETUP) {
+        "\"Begin night\" still works with rows outstanding — the guard " +
+            "tells you what is missing and lets you start anyway."
+    } else {
+        "Nothing is blocked while these are outstanding — answer them " +
+            "whenever the table gives you a moment."
+    }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupChecklistSheet(
@@ -633,7 +660,7 @@ fun SetupChecklistSheet(
             ) {
                 item {
                     Text(
-                        "Before the first night",
+                        checklistTitle(state.phase),
                         style = MaterialTheme.typography.headlineSmall,
                         color = AgedGold,
                     )
@@ -703,8 +730,7 @@ fun SetupChecklistSheet(
                 item {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "\"Begin night\" still works with rows outstanding — the guard " +
-                            "tells you what is missing and lets you start anyway.",
+                        checklistFooter(state.phase),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

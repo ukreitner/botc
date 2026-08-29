@@ -288,11 +288,16 @@ fun GameShell(
                         // guard's "Fix setup" so there is one sheet, not two.
                         DropdownMenuItem(
                             text = {
+                                // The row is present in every phase (lead D78);
+                                // it takes its words from the sheet's own header,
+                                // which follows the phase now (C2-7). In SETUP
+                                // that is still "Before the first night…".
+                                val name = checklistTitle(state.phase)
                                 Text(
                                     if (setupOutstanding == 0) {
-                                        "Before the first night…"
+                                        "$name…"
                                     } else {
-                                        "Before the first night… · $setupOutstanding to do"
+                                        "$name… · $setupOutstanding to do"
                                     },
                                 )
                             },
