@@ -964,6 +964,62 @@ class DayScreenTest {
     }
 
     // ------------------------------------------------------------------
+    // An exile the table voted for and nobody carried out (C2-3)
+    // ------------------------------------------------------------------
+
+    /** Day 1 with Jo as a Beggar, exiled by a passing vote nobody acted on. */
+    private fun exileOwed(): GameState {
+        var state = day()
+        state = Seats.assignCharacter(state, seat(state, "Jo"), "beggar", isTraveller = true)
+        return DayRules.record(
+            state,
+            lookup,
+            Nomination(
+                day = state.cycle,
+                nominatorId = seat(state, "Ana"),
+                nomineeId = seat(state, "Jo"),
+                isExile = true,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+    }
+
+    @Test
+    fun `the stat strip names an exile that has not happened`() {
+        val plain = DayModel.stats(day(), lookup)
+        assertEquals("", plain.exileLine)
+        assertNull(plain.exileOwedId)
+
+        val stats = DayModel.stats(exileOwed(), lookup)
+        assertEquals(seat(exileOwed(), "Jo"), stats.exileOwedId)
+        assertTrue(stats.exileLine, stats.exileLine.startsWith("Jo was exiled"))
+        assertTrue(stats.exileLine, stats.exileLine.contains("has not left the game"))
+        // The block line is untouched — these are two different obligations.
+        assertNull(stats.onBlockId)
+    }
+
+    @Test
+    fun `the DUSK row says so and does not read as complete`() {
+        val state = exileOwed()
+        val dusk = DayModel.stages(state, lookup, null, emptyBriefing(), emptySet())
+            .single { it.stage == DayStage.DUSK }
+        assertTrue(dusk.summary, dusk.summary.contains("Jo was exiled and has not left the game."))
+        assertEquals(StageTone.ALERT, dusk.tone)
+        assertFalse("a day that still owes an exile is not finished", dusk.complete)
+    }
+
+    @Test
+    fun `a recorded day still owes the exile`() {
+        // An exile is not the day's execution: recording one does not clear it.
+        val state = Execution.noExecution(exileOwed())
+        val dusk = DayModel.stages(state, lookup, null, emptyBriefing(), emptySet())
+            .single { it.stage == DayStage.DUSK }
+        assertTrue(dusk.summary, dusk.summary.contains("No execution today"))
+        assertTrue(dusk.summary, dusk.summary.contains("has not left the game"))
+        assertFalse(dusk.complete)
+    }
+
+    // ------------------------------------------------------------------
     // Execution sheet — one fact, once (C2-5)
     // ------------------------------------------------------------------
 

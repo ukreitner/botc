@@ -413,6 +413,84 @@ class DayEngineTest {
         assertFalse(assertNotNull(exile.player(2)).ghostVoteUsed, "an exile spends no ghost vote")
     }
 
+    /**
+     * C2-3: a passed exile the storyteller never carried out was invisible —
+     * the strip, the DUSK card and the dusk sheet's BEFORE YOU MOVE ON all said
+     * nothing, and the night ran with the traveller seated and voting.
+     */
+    @Test
+    fun `a passed exile nobody carried out is owed, and says so at dusk`() {
+        var state = day1(9)
+        state = assign(state, 8L, "beggar", traveller = true)
+        assertNull(DayRules.exileOwed(state), "nothing is owed before the vote")
+
+        state = DayRules.record(
+            state,
+            lookup,
+            nomination(state, 0L, 8L).copy(
+                isExile = true,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+        assertEquals(8L, DayRules.exileOwed(state))
+
+        val owed = Briefings.at(state, lookup, BriefingSlot.DUSK)
+            .of(BriefingKind.TODO_ASK)
+            .single { it.key.contains(":exile-owed:") }
+        assertEquals(BriefingSeverity.ALERT, owed.severity)
+        assertEquals(8L, owed.playerId)
+        assertEquals("${Briefings.ACTION_EXILE}8", owed.actionId)
+        assertTrue("has not left the game" in owed.text, owed.text)
+
+        // Carrying it out clears the obligation and the alive count with it.
+        val before = state.aliveCountWithTravellers
+        state = Execution.exile(state, lookup, 8L)
+        assertNull(DayRules.exileOwed(state))
+        assertEquals(before - 1, state.aliveCountWithTravellers)
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DUSK).items.none {
+                it.key.contains(":exile-owed:")
+            },
+        )
+    }
+
+    @Test
+    fun `an exile owed outlives the day it was voted on, and a withdrawal clears it`() {
+        var state = day1(9)
+        state = assign(state, 8L, "beggar", traveller = true)
+        state = DayRules.record(
+            state,
+            lookup,
+            nomination(state, 0L, 8L).copy(
+                isExile = true,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+        // A passing exile vote IS the exile: the obligation does not expire.
+        val tomorrow = state.copy(cycle = state.cycle + 1)
+        assertEquals(8L, DayRules.exileOwed(tomorrow))
+
+        // Withdrawing the nomination is the way out for a vote that did not count.
+        val withdrawn = tomorrow.copy(
+            nominations = tomorrow.nominations.map {
+                if (it.isExile) it.copy(result = NominationResult.WITHDRAWN) else it
+            },
+        )
+        assertNull(DayRules.exileOwed(withdrawn))
+    }
+
+    @Test
+    fun `an exile that failed the vote owes nothing`() {
+        var state = day1(9)
+        state = assign(state, 8L, "beggar", traveller = true)
+        state = DayRules.record(
+            state,
+            lookup,
+            nomination(state, 0L, 8L).copy(isExile = true, result = NominationResult.SAFE),
+        )
+        assertNull(DayRules.exileOwed(state))
+    }
+
     @Test
     fun `the Butler's Master is a standing fact of the day briefing`() {
         // Playtest C-6: a living Butler with a placed Master read

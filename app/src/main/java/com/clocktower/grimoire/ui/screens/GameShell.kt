@@ -193,6 +193,18 @@ fun GameShell(
                 false
             }
 
+            // A passing exile vote IS the exile (C2-3), so the line that says it
+            // has not happened yet carries it out — the dusk sheet is a dialog
+            // and a confirmation sheet under it would be invisible. The dusk
+            // primary does the same thing; this is the one-tap route for a
+            // storyteller who is reading the list.
+            action.startsWith(Briefings.ACTION_EXILE) -> {
+                val seatId = item.playerId
+                    ?: action.removePrefix(Briefings.ACTION_EXILE).toLongOrNull()
+                seatId?.let { viewModel.exile(it) }
+                seatId != null
+            }
+
             // mark-announced:, resolve-prompt: — and execute:, which the dusk
             // sheet's own primary button performs.
             action.isNotBlank() -> viewModel.resolveBriefingItem(item)

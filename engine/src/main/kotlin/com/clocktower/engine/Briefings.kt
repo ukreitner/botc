@@ -94,6 +94,9 @@ object Briefings {
     /** Open the execution sheet for the player on the block. */
     const val ACTION_EXECUTE: String = "execute:"
 
+    /** Open the exile sheet for a Traveller the table voted out and nobody removed. */
+    const val ACTION_EXILE: String = "exile:"
+
     /** Text a resurrection announcement always contains — never a reason (lead D7). */
     internal const val ALIVE_AGAIN: String = "is alive again"
 
@@ -790,6 +793,23 @@ object Briefings {
                         ),
                     )
                 }
+            }
+            // …and the exile the table voted for that nobody carried out. Same
+            // obligation, same section: an exile that never happens sends the
+            // traveller into the night still seated, still holding a vote and
+            // still counted in tomorrow's execution threshold (playtest C2-3).
+            DayRules.exileOwed(state)?.let { owed ->
+                add(
+                    BriefingItem(
+                        key = "$prefix:exile-owed:$owed",
+                        kind = BriefingKind.TODO_ASK,
+                        severity = BriefingSeverity.ALERT,
+                        sourceId = Ledger.Sources.STORYTELLER,
+                        text = "${nameOf(state, owed)} was exiled and has not left the game.",
+                        playerId = owed,
+                        actionId = "$ACTION_EXILE$owed",
+                    ),
+                )
             }
             DayRules.nominationsClosedReason(state, lookup).takeIf { it.isNotBlank() }?.let {
                 add(

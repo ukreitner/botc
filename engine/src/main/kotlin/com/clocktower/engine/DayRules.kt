@@ -1092,6 +1092,30 @@ object DayRules {
     // ---- existing helpers, moved here from GameActions in WP0 ----
 
     /**
+     * A Traveller the table voted out today who is still in the game.
+     *
+     * The exile itself is a separate, explicit tap ([Exile] on the nomination
+     * row), and until playtest C2-3 nothing anywhere noticed when it was
+     * missed: the strip said "No one is about to die.", the DUSK card said
+     * there was no execution today, and the dusk sheet's BEFORE YOU MOVE ON —
+     * the same section that warns about an un-executed block — was empty. The
+     * night then ran with the traveller seated, holding their vote and counted
+     * in the execution threshold.
+     *
+     * NOT scoped to today, unlike [aboutToDie]: a passing exile vote *is* the
+     * exile by the rules, so the obligation outlives the day it was taken on
+     * and the warning keeps standing until the seat leaves. Withdrawing the
+     * nomination is the way out for a vote the storyteller ruled did not count.
+     */
+    fun exileOwed(state: GameState): Long? = state.nominations
+        .lastOrNull {
+            it.isExile &&
+                it.result == NominationResult.ABOUT_TO_DIE &&
+                state.player(it.nomineeId)?.alive == true
+        }
+        ?.nomineeId
+
+    /**
      * How many votes the NEXT nomination must reach to beat today's standing
      * high — the one meaning of "to beat" anywhere in the app.
      *

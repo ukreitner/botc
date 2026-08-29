@@ -261,6 +261,7 @@ fun DayScreen(
                                 state = state,
                                 onDusk = onDusk,
                                 onExecute = { executeId = it },
+                                onExile = { exileId = it },
                             )
                         }
                     }
@@ -338,6 +339,17 @@ private fun DayStatStrip(stats: DayStats) {
                 fontWeight = FontWeight.Bold,
                 color = if (stats.onBlockId != null) EmberRed else FadedInk,
             )
+            // A passed exile nobody carried out is as load-bearing as the block
+            // and was invisible everywhere (C2-3): it changes the alive count
+            // and tomorrow's threshold the moment the night begins.
+            if (stats.exileLine.isNotBlank()) {
+                Text(
+                    stats.exileLine,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                )
+            }
             // Whatever rewrote today's vote, said once, where the numbers are.
             if (stats.voteNote.isNotBlank()) {
                 Text(
@@ -743,10 +755,12 @@ private fun DuskBody(
     state: GameState,
     onDusk: (() -> Unit)?,
     onExecute: (Long) -> Unit,
+    onExile: (Long) -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
     val record = viewModel.executionToday(state)
     val onBlock = DayRules.aboutToDie(state)?.let { state.player(it) }
+    val exileOwed = DayRules.exileOwed(state)?.let { state.player(it) }
 
     when {
         record?.outcome == ExecutionOutcome.NO_EXECUTION -> Text(
@@ -806,6 +820,28 @@ private fun DuskBody(
             style = MaterialTheme.typography.bodyMedium,
             color = PaleGold,
         )
+    }
+
+    // An exile is not the day's execution, so it is owed whatever the record
+    // says — including on a settled day (C2-3). The button is right here, next
+    // to the one that closes the day.
+    if (exileOwed != null) {
+        Text(
+            "${exileOwed.name} was exiled and has not left the game.",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = EmberRed,
+        )
+        Text(
+            "Until you carry it out they are still seated, still hold a vote, and " +
+                "still count towards tomorrow's execution threshold.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = FadedInk,
+        )
+        Button(
+            onClick = { onExile(exileOwed.id) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Exile ${exileOwed.name}", fontWeight = FontWeight.Bold) }
     }
 
     if (onDusk != null) {

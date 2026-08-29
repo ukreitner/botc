@@ -295,6 +295,31 @@ class PhaseFlowTest {
     }
 
     @Test
+    fun `an owed exile is named on the primary without disturbing the three D77 labels`() {
+        // With nothing owed the labels are byte-identical to D77's.
+        assertEquals(
+            "NO EXECUTION — BEGIN NIGHT 4 →",
+            DuskActions.confirmLabel(4, onBlockName = null, executionSpent = false),
+        )
+        // C2-3: the exile the table voted for is named, and the record it is
+        // about to write is still readable behind it.
+        assertEquals(
+            "EXILE BEGGED · NO EXECUTION — BEGIN NIGHT 4 →",
+            DuskActions.confirmLabel(4, null, executionSpent = false, exileName = "Begged"),
+        )
+        assertEquals(
+            "EXILE BEGGED · EXECUTE BEA & BEGIN NIGHT",
+            DuskActions.confirmLabel(4, "Bea", executionSpent = false, exileName = "Begged"),
+        )
+        assertEquals(
+            "EXILE BEGGED · BEGIN NIGHT 4 →",
+            DuskActions.confirmLabel(4, null, executionSpent = true, exileName = "Begged"),
+        )
+        // The exile is not the day's execution: it never changes what is recorded.
+        assertTrue(DuskActions.confirmRecordsNoExecution(onBlockName = null, executionSpent = false))
+    }
+
+    @Test
     fun `a day that already has its record only begins the night`() {
         assertEquals(
             "BEGIN NIGHT 5 →",

@@ -70,6 +70,13 @@ data class DayStats(
      * the vote is the ordinary one. Defaulted so older call sites still build.
      */
     val voteNote: String = "",
+    /**
+     * "Begged was exiled and has not left the game." — a passed exile the
+     * storyteller has not carried out (C2-3). Blank when nothing is owed.
+     */
+    val exileLine: String = "",
+    /** The seat that exile is owed on, so the strip's line can act. */
+    val exileOwedId: Long? = null,
 )
 
 object DayModel {
@@ -138,6 +145,9 @@ object DayModel {
             highest > 0 -> tieLine(state)
             else -> "No one is about to die."
         }
+        // An exile is never secret — no ability applies to it, and the vote is
+        // taken with eyes open even under an Organ Grinder.
+        val exileOwedId = DayRules.exileOwed(state)
         return DayStats(
             headline = "Day ${state.cycle}",
             detail = detail,
@@ -145,6 +155,10 @@ object DayModel {
             onBlockId = onBlockId,
             secret = secret,
             voteNote = rules.reasons.joinToString(" · "),
+            exileLine = exileOwedId
+                ?.let { "${state.player(it)?.name ?: "A traveller"} was exiled and has not left the game." }
+                .orEmpty(),
+            exileOwedId = exileOwedId,
         )
     }
 
@@ -268,23 +282,29 @@ object DayModel {
     private fun duskRow(state: GameState, lookup: (String) -> Character?): StageRow {
         val record = DayRules.executionToday(state)
         val onBlock = DayRules.aboutToDie(state)?.let { state.player(it) }
+        // A passed exile nobody carried out is owed whatever the execution did
+        // (C2-3): it is not the day's execution, so a recorded day can still
+        // owe it, and the row must say so rather than reading "the day is over".
+        val exile = DayRules.exileOwed(state)?.let { state.player(it) }
+        val exileNote = exile?.let { " ${it.name} was exiled and has not left the game." }.orEmpty()
         return StageRow(
             stage = DayStage.DUSK,
             title = "Dusk",
             summary = when {
                 record?.outcome == ExecutionOutcome.NO_EXECUTION ->
-                    "No execution today — the day is over."
+                    "No execution today — the day is over.$exileNote"
 
-                record != null -> DayRules.nominationsClosedReason(state, lookup)
-                onBlock != null -> "On the block: ${onBlock.name}."
-                else -> "No one is about to die. There is no execution today."
+                record != null -> DayRules.nominationsClosedReason(state, lookup) + exileNote
+                onBlock != null -> "On the block: ${onBlock.name}.$exileNote"
+                else -> "No one is about to die. There is no execution today.$exileNote"
             },
             tone = when {
+                exile != null -> StageTone.ALERT
                 record != null -> StageTone.QUIET
                 onBlock != null -> StageTone.ALERT
                 else -> StageTone.ACTION
             },
-            complete = record != null,
+            complete = record != null && exile == null,
         )
     }
 

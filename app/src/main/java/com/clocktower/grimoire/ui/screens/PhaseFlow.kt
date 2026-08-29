@@ -156,11 +156,26 @@ object PhaseFlow {
  */
 object DuskActions {
 
-    /** The primary. [onBlockName] is the seat the vote put on the block, if any. */
-    fun confirmLabel(nextCycle: Int, onBlockName: String?, executionSpent: Boolean): String = when {
-        onBlockName != null -> "EXECUTE ${onBlockName.uppercase()} & BEGIN NIGHT"
-        !executionSpent -> "NO EXECUTION — BEGIN NIGHT $nextCycle →"
-        else -> "BEGIN NIGHT $nextCycle →"
+    /**
+     * The primary. [onBlockName] is the seat the vote put on the block, if any;
+     * [exileName] a Traveller the table voted out and nobody removed (C2-3).
+     *
+     * The exile is PREPENDED rather than folded in, so the three labels D77
+     * pins are byte-identical when no exile is owed and the storyteller can
+     * still read the record the button is about to write.
+     */
+    fun confirmLabel(
+        nextCycle: Int,
+        onBlockName: String?,
+        executionSpent: Boolean,
+        exileName: String? = null,
+    ): String {
+        val base = when {
+            onBlockName != null -> "EXECUTE ${onBlockName.uppercase()} & BEGIN NIGHT"
+            !executionSpent -> "NO EXECUTION — BEGIN NIGHT $nextCycle →"
+            else -> "BEGIN NIGHT $nextCycle →"
+        }
+        return if (exileName == null) base else "EXILE ${exileName.uppercase()} · $base"
     }
 
     /** True when the primary writes a `NO_EXECUTION` record before advancing. */
@@ -209,6 +224,9 @@ class PhaseGuards {
     /** Someone is on the block and has not been executed. */
     var onBlockId by mutableStateOf<Long?>(null)
 
+    /** A Traveller the table voted out and nobody removed (C2-3). */
+    var exileOwedId by mutableStateOf<Long?>(null)
+
     /**
      * Keys of the briefing items already acted on from the open sheet. The
      * briefing itself is a frozen snapshot, so a line whose obligation the tap
@@ -224,6 +242,7 @@ class PhaseGuards {
         dusk = null
         duskAdvisories = emptyList()
         onBlockId = null
+        exileOwedId = null
         actedKeys = emptySet()
     }
 }
@@ -267,6 +286,7 @@ internal fun requestPhaseAdvance(
             guards.duskAdvisories = request.advisories.filter { it.blocking }
             guards.onBlockId = DayRules.aboutToDie(state)
                 ?.takeIf { state.player(it)?.alive == true && !DayRules.executionSpent(state) }
+            guards.exileOwedId = DayRules.exileOwed(state)
             null
         }
 
@@ -415,13 +435,19 @@ internal fun PhaseGuardDialogs(
 
     guards.dusk?.let { briefing ->
         val onBlock = guards.onBlockId?.let { state.player(it) }
+        val exile = guards.exileOwedId?.let { state.player(it) }
         val spent = DayRules.executionSpent(state)
         val recordOnConfirm = DuskActions.confirmRecordsNoExecution(onBlock?.name, spent)
         val recordOnSecondary = DuskActions.secondaryRecordsNoExecution(onBlock?.name, spent)
         BriefingSheet(
             briefing = briefing,
             title = "Dusk · day ${briefing.cycle}",
-            confirmLabel = DuskActions.confirmLabel(briefing.cycle + 1, onBlock?.name, spent),
+            confirmLabel = DuskActions.confirmLabel(
+                briefing.cycle + 1,
+                onBlock?.name,
+                spent,
+                exile?.name,
+            ),
             advisories = guards.duskAdvisories,
             onDeclareWinner = onDeclareWinner?.let { declare ->
                 { goodWins: Boolean ->
@@ -432,11 +458,15 @@ internal fun PhaseGuardDialogs(
             onConfirm = {
                 val target = onBlock?.id
                 val index = target?.let { blockingNominationIndex(state, it) }
+                val exileId = exile?.id
                 guards.clear()
                 // One execution funnel, always (lead D24): never a bare kill.
                 target?.let {
                     viewModel.execute(it, via = ExecutionVia.VOTE, nominationIndex = index)
                 }
+                // A passing exile vote IS the exile; carrying it out is what
+                // the primary is for, and its label said so (C2-3).
+                exileId?.let { viewModel.exile(it) }
                 if (recordOnConfirm) viewModel.noExecution()
                 viewModel.advancePhase()
                 onTab(GameTab.NIGHT)
