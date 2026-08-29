@@ -148,6 +148,16 @@ data class NightStep(
     /** Imperative, storyteller voice, at most two lines. */
     val prompt: String = "",
     val action: NightAction? = null,
+    /**
+     * Which [InfoCalc] answer this row shows, "" for none.
+     *
+     * The screen used to guess it from the action (`ShowInfo.sourceId`, else the
+     * ability id), which meant a row with no action at all still computed its
+     * character's information: the Grandmother's "your grandchild was killed"
+     * row grew a picker and a `SHOW … TO …` primary (playtest B2-3). The
+     * planner decides; the screen reads.
+     */
+    val infoId: String = "",
     /** "died tonight", "spent on night 2", "new character", "out of order". */
     val badges: List<String> = emptyList(),
     /** Pre-filled cards this step offers. */
@@ -883,6 +893,11 @@ data class NightPlan(
                         .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() }
                 },
                 action = action,
+                infoId = if (inherited) {
+                    ""
+                } else {
+                    infoIdFor(role.abilityId, nightRule)?.takeIf(InfoCalc::supports).orEmpty()
+                },
                 badges = badges,
                 cards = if (inherited) {
                     emptyList()
@@ -1152,12 +1167,29 @@ data class NightPlan(
         }
 
         /**
-         * A supported information step still gets its picker when no rule
-         * declares one. `infoId = ""` suppresses it outright (W7H); `null` — the
-         * default — falls back to the ability's own id.
+         * Which calculation a row runs, if any.
+         *
+         * `infoId = ""` suppresses it outright (W7H); a NAMED id is always
+         * honoured — the seatless Duchess asks for one and wakes nobody. `null`
+         * — the default — falls back to the ability's own id, but only for a row
+         * that actually wakes its holder: a `WakeCount.NONE` row is the
+         * storyteller's own bookkeeping, so there is nobody to show anything to.
+         *
+         * The Grandmother's "your grandchild was killed" row is the case. It has
+         * no action and no infoId, so it inherited `grandmother` →
+         * `InfoCalc.revealCharacter` and grew a twelve-seat "WHO DID THEY
+         * CHOOSE?" picker she has no ability for; answering it replaced
+         * "ERIN DIES" on the button with "SHOW “SAILOR” TO ERIN" (playtest B2-3).
          */
+        private fun infoIdFor(abilityId: String, nightRule: NightRule?): String? = when {
+            nightRule?.infoId != null -> nightRule.infoId
+            nightRule?.wakeCounts == WakeCount.NONE -> null
+            else -> abilityId
+        }
+
+        /** A supported information step still gets its picker when no rule declares one. */
         private fun infoAction(abilityId: String, nightRule: NightRule?): NightAction? {
-            val infoId = nightRule?.infoId ?: abilityId
+            val infoId = infoIdFor(abilityId, nightRule) ?: return null
             if (!InfoCalc.supports(infoId)) return null
             val needed = InfoCalc.targetsNeeded(infoId)
             return ShowInfo(
@@ -1178,7 +1210,7 @@ data class NightPlan(
             role: ActingRole,
             nightRule: NightRule?,
         ): List<CardOffer> {
-            val infoId = nightRule?.infoId ?: role.abilityId
+            val infoId = infoIdFor(role.abilityId, nightRule) ?: return emptyList()
             if (!InfoCalc.supports(infoId) || InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
             val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, role.playerId) ?: return emptyList()
             return cardsFor(ctx.state, result)

@@ -53,7 +53,6 @@ import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.ShowCardSpec
-import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
@@ -128,7 +127,10 @@ fun NightCard(
     val character = viewModel.characterById(step.abilityId)
 
     // ---- the information this step gives, and the cards that carry it ----
-    val infoId = (step.action as? ShowInfo)?.sourceId?.ifBlank { step.abilityId } ?: step.abilityId
+    // WHICH answer this row shows is the planner's decision (`NightStep.infoId`),
+    // not a guess from the action: a row with no action at all was computing its
+    // character's information and offering it (playtest B2-3).
+    val infoId = step.infoId
     val info = remember(state, key.token, pick.playerIds) {
         if (InfoCalc.supports(infoId) && pick.playerIds.size >= picksNeeded(step.action)) {
             viewModel.nightInfo(state, infoId, step.holderId, pick.playerIds)

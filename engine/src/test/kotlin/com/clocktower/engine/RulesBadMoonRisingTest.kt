@@ -391,6 +391,33 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Grandmother's death row asks nothing — it is not a second reveal`() {
+        // Playtest B2-3: the row has no action and no infoId, so the planner
+        // fell back to the CHARACTER's own calculation and grew a
+        // "WHO DID THEY CHOOSE?" picker; answering it replaced "ERIN DIES" on
+        // the button with "SHOW “SAILOR” TO ERIN". A WakeCount.NONE row wakes
+        // nobody, so there is nobody to show anything to.
+        var state = game("pukka", "grandmother", "gossip", "chambermaid", "gambler", "courtier")
+        val child = seat(state, "gossip")
+        state = Effects.placeExclusiveReminder(state, child, PlacedReminder("grandmother", "Grandchild"))
+        state = nextNight(state)
+        state = Deaths.attempt(
+            state, lookup, child, KillCause(DeathCause.DEMON_KILL, "pukka", seat(state, "pukka")),
+        ).state
+
+        val row = require(state, "grandmother")
+        assertEquals(StepGate.Fire, row.gate, "the row fires — the Grandmother dies")
+        assertNull(row.action, "and asks for nothing: ${row.action}")
+        assertEquals("", row.infoId)
+        assertTrue(row.cards.isEmpty(), "no card either: ${row.cards.map { it.label }}")
+
+        // The first night's row is untouched: that one really does show a token.
+        val firstNight = require(game("pukka", "grandmother", "gossip", "chambermaid"), "grandmother")
+        assertEquals("grandmother", firstNight.infoId)
+        assertIs<ShowInfo>(firstNight.action)
+    }
+
+    @Test
     fun `an Exorcised Pukka still names the victim its silenced row will kill`() {
         var state = game("pukka", "exorcist", "gossip", "chambermaid", "professor", "fool")
         val pukka = seat(state, "pukka")
