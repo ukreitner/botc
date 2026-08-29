@@ -965,6 +965,32 @@ class DayScreenTest {
     }
 
     // ------------------------------------------------------------------
+    // The ring stands down once its two taps have landed (C-15 / C2-9)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `the ring collapses only when both halves are picked`() {
+        assertFalse(NominationModel.ringCollapsed(null, null, forcedOpen = false))
+        assertFalse("one tap in, the seats are still needed",
+            NominationModel.ringCollapsed(1L, null, forcedOpen = false))
+        assertFalse(NominationModel.ringCollapsed(null, 2L, forcedOpen = false))
+        assertTrue(NominationModel.ringCollapsed(1L, 2L, forcedOpen = false))
+        assertFalse("[Change] brings the seats back",
+            NominationModel.ringCollapsed(1L, 2L, forcedOpen = true))
+    }
+
+    @Test
+    fun `a collapsed ring frees more than the ring could ever give back by shrinking`() {
+        // The reason the ring collapses instead of shrinking: at 12 seats the
+        // radius search is already at its floor, so there is nothing to give.
+        val width = 360f
+        val twelve = NominationModel.ringHeightDp(12, width)
+        val squeezed = NominationModel.ringHeightDp(12, width, maxRadiusYDp = 96f)
+        assertTrue("a 12-seat ring cannot be squeezed into a header's height: $squeezed", squeezed > 200f)
+        assertTrue(twelve >= squeezed)
+    }
+
+    // ------------------------------------------------------------------
     // A recorded line is editable (C2-8)
     // ------------------------------------------------------------------
 

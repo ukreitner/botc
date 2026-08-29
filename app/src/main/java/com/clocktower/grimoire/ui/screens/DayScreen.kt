@@ -63,6 +63,7 @@ import com.clocktower.grimoire.ui.screens.day.ExecutionSheet
 import com.clocktower.grimoire.ui.screens.day.DayStats
 import com.clocktower.grimoire.ui.screens.day.ExileSheet
 import com.clocktower.grimoire.ui.screens.day.NominationDetail
+import com.clocktower.grimoire.ui.screens.day.NominationModel
 import com.clocktower.grimoire.ui.screens.day.SeatRingPanel
 import com.clocktower.grimoire.ui.screens.day.SaidModel
 import com.clocktower.grimoire.ui.screens.day.SaidEditDialog
@@ -122,6 +123,8 @@ fun DayScreen(
     var executeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var exileId by rememberSaveable { mutableStateOf<Long?>(null) }
     var timerOpen by rememberSaveable { mutableStateOf(false) }
+    /** [Change] on the collapsed ring brings the seats back (C2-9). */
+    var ringForcedOpen by rememberSaveable { mutableStateOf(false) }
 
     val currentPlayerIds = state.players.map { it.id }.toSet()
     LaunchedEffect(currentPlayerIds) {
@@ -146,6 +149,7 @@ fun DayScreen(
         nomineeId = null
         voters = emptySet()
         forceNomination = false
+        ringForcedOpen = false
     }
 
     fun openSay(speakerId: Long?, sourceId: String?) {
@@ -167,6 +171,11 @@ fun DayScreen(
                 nominatorId = nominatorId,
                 nomineeId = nomineeId,
                 reopened = reopenedDay,
+                collapsed = NominationModel.ringCollapsed(
+                    nominatorId,
+                    nomineeId,
+                    ringForcedOpen,
+                ),
                 onPickSeat = { id ->
                     when {
                         nominatorId == id -> nominatorId = null
@@ -177,6 +186,9 @@ fun DayScreen(
                             voters = emptySet()
                         }
                     }
+                    // A fresh pair collapses the ring again; picking one half
+                    // apart leaves it open until the second tap lands.
+                    ringForcedOpen = false
                     // A day the storyteller reopened stays overridden across
                     // the two ring taps; anything else asks again.
                     forceNomination = reopenedDay
@@ -186,6 +198,7 @@ fun DayScreen(
                     reopenedDay = true
                     forceNomination = true
                 },
+                onChangePair = { ringForcedOpen = true },
             )
         }
 

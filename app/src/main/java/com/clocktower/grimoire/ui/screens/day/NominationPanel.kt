@@ -76,9 +76,13 @@ fun SeatRingPanel(
     nomineeId: Long?,
     /** The storyteller has explicitly reopened a closed day. */
     reopened: Boolean,
+    /** Both taps have landed: the ring stands down so the tally fits (C2-9). */
+    collapsed: Boolean,
     onPickSeat: (Long) -> Unit,
     onSay: (Long) -> Unit,
     onReopen: () -> Unit,
+    /** Brings the ring back to change either half of the pair. */
+    onChangePair: () -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
     val ring = remember(state, nominatorId, nomineeId) {
@@ -106,6 +110,30 @@ fun SeatRingPanel(
                     TextButton(onClick = onReopen) { Text("Nominate anyway") }
                 }
             }
+        }
+        if (collapsed) {
+            // The ring's whole job was the two taps; done, it hands the screen
+            // to the tally (C2-9). What it was showing in its centre — the pair
+            // — is all that is left, plus the way back.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${ring.firstOrNull { it.pick == SeatPick.NOMINATOR }?.name ?: "?"} » " +
+                        (ring.firstOrNull { it.pick == SeatPick.NOMINEE }?.name ?: "?"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onChangePair) { Text("Change") }
+            }
+            return@Column
         }
         Text(
             if (locked) {
