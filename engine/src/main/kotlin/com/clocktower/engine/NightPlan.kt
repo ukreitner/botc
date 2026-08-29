@@ -677,6 +677,35 @@ data class NightPlan(
             val changedTonight: List<IdentityRecord> = state.identityLog
                 .filter { it.cycle == state.cycle && it.atNight }
 
+            /**
+             * True when [holder] became THIS Demon tonight by inheriting the
+             * token from a Demon that died — a star pass, a Scarlet Woman catch,
+             * a Fang Gu jump. *"If you kill yourself this way, a Minion becomes
+             * the Imp"* hands the token over; the attack has already been spent,
+             * so the new Demon does not act tonight
+             * (<https://wiki.bloodontheclocktower.com/Imp>), which is exactly
+             * what the hand-over card already tells the storyteller
+             * ([Identity] `changeNotes`).
+             *
+             * Only inheritance FROM A DEATH is suppressed. A Demon a Pit-Hag
+             * created out of a living seat is not an heir: they act if their slot
+             * is still to come (lead D67), and their reason is not in
+             * [PROMOTIONS].
+             */
+            fun inheritedDemonTonight(
+                holder: Player?,
+                abilityId: String,
+                character: Character?,
+            ): Boolean {
+                if (holder == null || character?.team != Team.DEMON) return false
+                val id = Character.normalizeId(abilityId)
+                return changedTonight.any {
+                    it.playerId == holder.id &&
+                        it.reason in PROMOTIONS &&
+                        Character.normalizeId(it.toCharacterId.orEmpty()) == id
+                }
+            }
+
             fun holder(role: ActingRole?): Player? = role?.let { state.player(it.playerId) }
 
             fun wakeContext(role: ActingRole?, holder: Player?) = WakeContext(
@@ -754,13 +783,24 @@ data class NightPlan(
             val believerRule = role.sourceId
                 ?.takeIf { role.alwaysFalse }
                 ?.let { CharacterRules.of(it, ctx.lookup(it)).nightRule(firstNightRules) }
+            // A seat that INHERITED the Demon tonight does not act as the Demon
+            // tonight (playtest B2-1): the Imp's attack was spent on itself, and
+            // the hand-over card says so in as many words. The row stays on the
+            // sheet as a marker so the storyteller can see the new Demon; it
+            // never carries a kill.
+            val inherited = ctx.inheritedDemonTonight(holder, role.abilityId, character)
             val gate = when {
+                inherited -> StepGate.Skip(NEW_DEMON_TONIGHT)
                 nightRule != null -> nightRule.gate.gate(ctx.wakeContext(role, holder))
                 // A believer's row is never "nothing to do".
                 believerRule != null -> believerRule.gate.gate(ctx.wakeContext(role, holder))
                 else -> StepGate.Skip("no ability on this night")
             }
-            val chosen = nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
+            val chosen = if (inherited) {
+                null
+            } else {
+                nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
+            }
             // The picker shape is kept — a believed Shabaloth still takes two,
             // a charged believed Po still takes three — and every consequence
             // is stripped out of it.
@@ -835,17 +875,28 @@ data class NightPlan(
                     ),
                     briefing,
                 ),
-                prompt = nightRule?.prompt.orEmpty()
-                    .ifEmpty { believerRule?.prompt.orEmpty() }
-                    .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() },
+                prompt = if (inherited) {
+                    NEW_DEMON_PROMPT
+                } else {
+                    nightRule?.prompt.orEmpty()
+                        .ifEmpty { believerRule?.prompt.orEmpty() }
+                        .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() }
+                },
                 action = action,
                 badges = badges,
-                cards = nightRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule),
+                cards = if (inherited) {
+                    emptyList()
+                } else {
+                    nightRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule)
+                },
                 promptId = promptId,
-                wakeCounts = nightRule?.wakeCounts ?: WakeCount.ACT,
+                // An inherited Demon is not woken at all tonight, so a
+                // Chambermaid must not count them (lead D13).
+                wakeCounts = if (inherited) WakeCount.NONE else nightRule?.wakeCounts ?: WakeCount.ACT,
                 // A believer's row changes nothing at all, deferred half
-                // included (lead D70) — so it promises nothing either.
-                deferredDeaths = if (role.alwaysFalse) {
+                // included (lead D70) — so it promises nothing either. Nor does
+                // a row for a Demon that inherited the token tonight.
+                deferredDeaths = if (role.alwaysFalse || inherited) {
                     emptyList()
                 } else {
                     namedDeaths(nightRule?.pending?.invoke(nightCtx).orEmpty())
@@ -1563,6 +1614,15 @@ data class NightPlan(
                 extraBadges = listOf("new character"),
             )
         }
+
+        /** Why an heir's row is a marker and not a kill (playtest B2-1). */
+        const val NEW_DEMON_TONIGHT: String =
+            "they became the Demon tonight — the new Demon does not act tonight"
+
+        /** What the storyteller does on that row instead. */
+        private const val NEW_DEMON_PROMPT: String =
+            "They are the Demon now. The Demon's attack tonight has already been spent, " +
+                "so they do not act tonight — show them their new token and carry on."
 
         /** Character changes that make a new Demon rather than a new character. */
         private val PROMOTIONS = setOf(

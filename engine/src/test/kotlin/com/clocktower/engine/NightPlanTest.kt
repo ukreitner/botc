@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -207,6 +208,52 @@ class NightPlanTest {
             NightPlan.OUT_OF_ORDER in promoted.badges,
             "and badged out of order: ${promoted.badges}",
         )
+        // …and it is a MARKER, never a second kill (playtest B2-1).
+        assertEquals(StepGate.Skip(NightPlan.NEW_DEMON_TONIGHT), promoted.gate)
+        assertNull(promoted.action, "the new Demon does not act tonight")
+        assertTrue(promoted.deferredDeaths.isEmpty())
+        assertEquals(WakeCount.NONE, promoted.wakeCounts, "and nobody is woken, so nothing is counted")
+    }
+
+    @Test
+    fun `the heir of a star pass gets no kill on the night of the pass`() {
+        var state = atNight(game(tb, "imp", "poisoner", "chef", "empath", "monk", "mayor"), 2)
+        val imp = 0L
+        val heir = 1L
+
+        // The Imp chooses itself; answering the star pass makes the Poisoner the Imp.
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            assertNotNull(step(state, "imp")).key,
+            NightInput(playerIds = listOf(imp)),
+        )
+        val pass = assertNotNull(state.prompts.firstOrNull { it.sourceId == "imp" && !it.resolved })
+        state = Prompts.answerWithPlayer(state, lookup, pass.id, heir)
+        assertEquals("imp", state.player(heir)?.characterId)
+
+        val rows = plan(state).steps.filter { it.abilityId == "imp" && it.holderId == heir }
+        assertTrue(rows.isNotEmpty(), "the heir is on the sheet: ${plan(state).steps.map { it.key.token }}")
+        for (row in rows) {
+            assertEquals(StepGate.Skip(NightPlan.NEW_DEMON_TONIGHT), row.gate)
+            assertNull(row.action, "no picker, so no second death: ${row.title}")
+            assertFalse(row.required, "and it never blocks the dawn")
+        }
+        assertEquals(1, state.deaths.count { it.day == state.cycle && it.atNight }, "one death tonight")
+    }
+
+    @Test
+    fun `a Pit-Hag-created Demon still acts when its slot is still to come`() {
+        var state = atNight(game(sv, "vortox", "pithag", "saint", "chef", "oracle", "seamstress"), 3)
+        val saint = 2L
+        state = Identity.changeCharacter(state, lookup, saint, "nodashii", ChangeReason.PIT_HAG, newEvil = true)
+
+        val demon = assertNotNull(
+            plan(state).steps.firstOrNull { it.abilityId == "nodashii" && it.holderId == saint },
+            "the Pit-Hag's Demon is on the sheet: ${plan(state).steps.map { it.key.token }}",
+        )
+        assertNotNull(demon.action, "a created Demon is not an heir — lead D67 keeps its turn")
+        assertTrue(demon.required)
     }
 
     // ==================================================================
