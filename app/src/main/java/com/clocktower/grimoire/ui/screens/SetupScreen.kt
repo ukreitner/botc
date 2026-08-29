@@ -422,8 +422,6 @@ fun SetupScreen(
                             selected = selected,
                             targets = targets,
                             counts = bagCounts,
-                            allowDuplicates = allowDuplicates,
-                            onAllowDuplicates = { allowDuplicates = it },
                             seatlessNote = seatlessCandidates.firstOrNull()?.second?.note.orEmpty(),
                             seatlessAck = seatlessAck,
                             // The box PUTS the centre token in the bag and takes
@@ -513,7 +511,10 @@ fun SetupScreen(
                                     .joinToString(", ")
                             },
                         )
-                        val rules = houseRuleLabels(houseRules)
+                        // A2-8: the duplicates rule is counted here too, so the
+                        // summary cannot read "by the book" while it is on.
+                        val rules = houseRuleLabels(houseRules) +
+                            if (allowDuplicates) listOf("allow duplicates") else emptyList()
                         append(" · ")
                         append(if (rules.isEmpty()) "by the book" else rules.joinToString(", "))
                     },
@@ -525,6 +526,30 @@ fun SetupScreen(
                         rules = houseRules,
                         onRules = { secretVotes = it.secretVotes },
                     )
+                    // A2-8: this one bends the BAG, but it is still a rule the
+                    // table agreed on, and having it alone in card 3 meant
+                    // looking in two places for "house rules". It is not a
+                    // `HouseRules` field — the bag is built before there is a
+                    // GameState to put one in — so per D80 only the control
+                    // moves and the storage stays exactly where it was.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { allowDuplicates = !allowDuplicates }
+                            .padding(vertical = 6.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Allow duplicates", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Any character may be put in the bag more than once. " +
+                                    "(The Village Idiot and Legion do this by the book.)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Checkbox(checked = allowDuplicates, onCheckedChange = { allowDuplicates = it })
+                    }
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "FABLED",
@@ -942,8 +967,6 @@ private fun BagHeader(
     targets: Map<Team, com.clocktower.engine.TeamTarget>,
     /** What the bag actually holds per team, seatless tokens excluded. */
     counts: Map<Team, Int>,
-    allowDuplicates: Boolean,
-    onAllowDuplicates: (Boolean) -> Unit,
     /** The BagShape note for a character in play with no bag token; "" for none. */
     seatlessNote: String,
     seatlessAck: Boolean,
@@ -1045,13 +1068,10 @@ private fun BagHeader(
             },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = allowDuplicates, onCheckedChange = onAllowDuplicates)
-            Text(
-                "House rule: allow duplicates of any character",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+        // A2-8: "House rule: allow duplicates" used to sit here, so the
+        // storyteller had to look in two cards for "house rules" and card 4's
+        // summary could read "by the book" with it on. It lives in card 4's
+        // HOUSE RULES section now, next to secret votes.
     }
 }
 
