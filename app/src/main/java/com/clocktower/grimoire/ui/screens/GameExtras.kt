@@ -43,6 +43,7 @@ import com.clocktower.engine.SetupRequirements
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -497,31 +498,84 @@ object SetupChecklist {
     }
 }
 
+/**
+ * The obligations whose ARRIVAL is not, on its own, worth interrupting for
+ * (FW3-1).
+ *
+ * The bag's legality and the bluff lists are what the storyteller is actively
+ * composing: every hand-assignment rewrites the bag rows ("Outsider: 0 in bag,
+ * expected 0" becomes "Outsider: 1 in bag, expected 0"), and seating the Demon
+ * conjures "Demon bluffs" out of nothing. Neither is a hidden obligation — the
+ * bag is on the setup screen and in the begin-night guard, the bluffs are on the
+ * Demon's own night step — while a Drunk's believed character, a Marionette's
+ * seat or a Traveller's alignment exist NOWHERE else and gate the hand-out.
+ *
+ * So they are collapsed to one id apiece: they still fill the checklist, they
+ * still block "Begin night", and they still raise it the first time the list has
+ * anything in it — they just stop re-raising it over every second seat.
+ */
+private val QUIET_REQUIREMENTS = setOf("bag", "bluffs")
+
+/** [QUIET_REQUIREMENTS] folding: `bag.3` -> `bag`, any bluff row -> `bluffs`. */
+private fun raiseId(row: SetupRequirement): String = when {
+    row.id.startsWith("bag.") -> "bag"
+    row.kind == RequirementKind.BLUFFS -> "bluffs"
+    else -> row.id
+}
+
 @Composable
 fun SetupIdentityPrompts(
     viewModel: GameViewModel,
     state: GameState,
 ) {
     val lookup = viewModel::characterById
-    val blockingKey = remember(state) {
-        SetupRequirements.unmet(state, lookup).filter { it.blocking }.joinToString("|") { it.id }
+    val blockingIds = remember(state) {
+        SetupRequirements.unmet(state, lookup).filter { it.blocking }.map(::raiseId).distinct()
     }
     // "Seen" is the set of blocking rows the storyteller has already dismissed.
     // A NEW blocking row (a mid-game identity change) re-raises the sheet.
     var dismissedKey by rememberSaveable { mutableStateOf("") }
     var open by rememberSaveable { mutableStateOf(false) }
+    // FW3-1: the auto-raise is OWED, not taken. Assigning the Drunk from the
+    // seat sheet adds a requirement row, and the checklist used to slide up on
+    // top of the sheet the storyteller was working in — `back` then closed the
+    // checklist, not the sheet, so it cost a tap on every assignment and blocked
+    // `C_setup10` / `C_setup_rest` outright. It is D78's complaint about
+    // openers, now about the auto-raise: nothing raises itself over an open
+    // sheet; it waits for that sheet to close.
+    var owed by rememberSaveable { mutableStateOf(false) }
+    // Every sheet and dialog in this app is a window of its own, so while one is
+    // up the main window is NOT focused. That is the whole test — it needs no
+    // cooperation from the sheets themselves, which is what keeps this local.
+    val topmost = LocalWindowInfo.current.isWindowFocused
 
-    LaunchedEffect(blockingKey) {
+    val seen = dismissedKey.split('|').filter { it.isNotEmpty() }.toSet()
+    // The list raises itself the first time it has anything in it, and after
+    // that only for an obligation the storyteller has not been shown — never for
+    // a [QUIET_REQUIREMENTS] id on its own.
+    val shouldRaise = blockingIds.isNotEmpty() && (
+        seen.isEmpty() ||
+            blockingIds.any { it !in seen && it !in QUIET_REQUIREMENTS }
+        )
+
+    LaunchedEffect(blockingIds) {
         when {
             // Nothing outstanding: forget what was dismissed, so the SAME set
             // of rows raised again later (a Pit-Hag re-creating a Drunk) still
             // re-opens the sheet.
-            blockingKey.isEmpty() -> dismissedKey = ""
-            blockingKey != dismissedKey -> open = true
+            blockingIds.isEmpty() -> { dismissedKey = ""; owed = false }
+            shouldRaise -> owed = true
+        }
+    }
+    LaunchedEffect(owed, topmost, open) {
+        if (owed && topmost && !open) {
+            open = true
+            owed = false
         }
     }
     // Someone asked for it explicitly ("Fix setup", the hand-out screen): open
-    // it whatever the checklist currently owes, including nothing at all.
+    // it whatever the checklist currently owes, including nothing at all. A
+    // request is the storyteller's own tap, so it is never deferred.
     val requests = SetupChecklist.openRequests
     LaunchedEffect(requests) { if (requests > 0) open = true }
     if (open) {
@@ -530,7 +584,11 @@ fun SetupIdentityPrompts(
             state = state,
             onDismiss = {
                 open = false
-                dismissedKey = blockingKey
+                dismissedKey = blockingIds.joinToString("|")
+                // Answering a row from inside the sheet changes the id list,
+                // which would otherwise leave a raise owed and re-open the sheet
+                // the instant it closed.
+                owed = false
             },
         )
     }

@@ -46,6 +46,7 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.GameState
 import com.clocktower.engine.NotesState
 import com.clocktower.engine.Phase
+import com.clocktower.engine.Setup
 import com.clocktower.engine.Time
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.theme.AgedGold
@@ -457,6 +458,16 @@ private fun archiveSummary(game: GameState, lookup: (String?) -> Character?): Li
             else -> "dead"
         }
         lines += "${index + 1} ${p.name}  $character$shown  $fate"
+    }
+    // A2-9: a Lil' Monsta game read back as a game with NO Demon — twelve
+    // seats, not one of them a Demon, and nothing on the sheet to say why. A
+    // character in play that holds no seat belongs in the record too.
+    val seatless = Setup.seatlessInPlayIds(game)
+    if (seatless.isNotEmpty()) {
+        lines += ""
+        for (id in seatless) {
+            lines += "— ${lookup(id)?.name ?: id}  centre token, no seat"
+        }
     }
     if (game.nominations.isNotEmpty()) {
         lines += ""

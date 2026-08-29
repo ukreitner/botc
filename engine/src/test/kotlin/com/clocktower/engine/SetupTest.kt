@@ -69,14 +69,108 @@ class SetupTest {
     fun `lil monsta swaps the demon slot for a minion`() {
         // Lead D18/D54: 10 players -> 7 / 0 / 3 / 0, and Lil' Monsta is a
         // token in the centre, never a seat.
+        //
+        // A2-1: the swap is a DELTA now, not four pinned counts — pinning the
+        // Townsfolk/Outsider halves replaced the distribution check and threw
+        // every other bracket in the bag away.
         val shape = assertNotNull(
             Setup.bagShapeFor("lilmonsta", Setup.distributionFor(10), 10),
         )
-        assertEquals(7..7, shape.townsfolk)
-        assertEquals(0..0, shape.outsiders)
-        assertEquals(3..3, shape.minions)
+        assertNull(shape.townsfolk)
+        assertNull(shape.outsiders)
+        assertNull(shape.minions)
         assertEquals(0..0, shape.demons)
+        assertEquals(1, assertNotNull(shape.delta).minionDelta)
+        assertEquals(-1, assertNotNull(shape.delta).demonDelta)
         assertEquals(setOf("lilmonsta"), shape.forbidInBag)
+
+        // …and it still lands where D18 says it does.
+        val targets = Setup.bagTargets(emptyList(), 10, inPlayIds = listOf("lilmonsta"))
+        assertEquals(listOf(7), targets.getValue(Team.TOWNSFOLK).counts)
+        assertEquals(listOf(0), targets.getValue(Team.OUTSIDER).counts)
+        assertEquals(listOf(3), targets.getValue(Team.MINION).counts)
+        assertEquals(listOf(0), targets.getValue(Team.DEMON).counts)
+    }
+
+    /**
+     * A2-1, the finding itself: a 12-player Baron game on a Lil' Monsta script
+     * wants 5/4/3/0, and the two-Outsider bag the app used to accept (and deal)
+     * must be rejected.
+     */
+    @Test
+    fun `lil monsta composes with the baron`() {
+        val targets = Setup.bagTargets(
+            bag = chars("baron"),
+            playerCount = 12,
+            inPlayIds = listOf("lilmonsta"),
+        )
+        assertEquals(listOf(5), targets.getValue(Team.TOWNSFOLK).counts)
+        assertEquals(listOf(4), targets.getValue(Team.OUTSIDER).counts)
+        assertEquals(listOf(3), targets.getValue(Team.MINION).counts)
+        assertEquals(listOf(0), targets.getValue(Team.DEMON).counts)
+
+        val legal = teamPool(Team.TOWNSFOLK, 5) + teamPool(Team.OUTSIDER, 4) +
+            chars("baron") + teamPool(Team.MINION, 2) + chars("lilmonsta")
+        assertEquals(
+            emptyList(),
+            Setup.validateBag(legal, 12, inPlayIds = listOf("lilmonsta")),
+        )
+
+        val printed = teamPool(Team.TOWNSFOLK, 7) + teamPool(Team.OUTSIDER, 2) +
+            chars("baron") + teamPool(Team.MINION, 2) + chars("lilmonsta")
+        val issues = Setup.validateBag(printed, 12, inPlayIds = listOf("lilmonsta"))
+        assertTrue(
+            issues.any { it.startsWith("Outsider: 2 in bag, expected 4") },
+            issues.toString(),
+        )
+    }
+
+    /** The Godfather's "-1 or +1 Outsider" keeps BOTH branches beside the token. */
+    @Test
+    fun `lil monsta composes with the godfather`() {
+        val targets = Setup.bagTargets(
+            bag = chars("godfather"),
+            playerCount = 12,
+            inPlayIds = listOf("lilmonsta"),
+        )
+        assertEquals(listOf(1, 3), targets.getValue(Team.OUTSIDER).counts)
+        assertEquals(listOf(6, 8), targets.getValue(Team.TOWNSFOLK).counts)
+        assertEquals(listOf(3), targets.getValue(Team.MINION).counts)
+        assertEquals(listOf(0), targets.getValue(Team.DEMON).counts)
+
+        for (outsiders in listOf(1, 3)) {
+            val bag = teamPool(Team.TOWNSFOLK, 9 - outsiders) +
+                teamPool(Team.OUTSIDER, outsiders) +
+                chars("godfather") + teamPool(Team.MINION, 2) + chars("lilmonsta")
+            assertEquals(
+                emptyList(),
+                Setup.validateBag(bag, 12, inPlayIds = listOf("lilmonsta")),
+                "$outsiders outsiders",
+            )
+        }
+    }
+
+    /** Lil' Monsta alone, at every count the tester played. */
+    @Test
+    fun `lil monsta alone trades one demon for one minion at every count`() {
+        for (players in listOf(7, 10, 12, 15)) {
+            val base = Setup.distributionFor(players)
+            val targets = Setup.bagTargets(emptyList(), players, inPlayIds = listOf("lilmonsta"))
+            assertEquals(listOf(base.townsfolk), targets.getValue(Team.TOWNSFOLK).counts, "$players")
+            assertEquals(listOf(base.outsiders), targets.getValue(Team.OUTSIDER).counts, "$players")
+            assertEquals(listOf(base.minions + 1), targets.getValue(Team.MINION).counts, "$players")
+            assertEquals(listOf(0), targets.getValue(Team.DEMON).counts, "$players")
+
+            val bag = teamPool(Team.TOWNSFOLK, base.townsfolk) +
+                teamPool(Team.OUTSIDER, base.outsiders) +
+                teamPool(Team.MINION, base.minions + 1) +
+                chars("lilmonsta")
+            assertEquals(
+                emptyList(),
+                Setup.validateBag(bag, players, inPlayIds = listOf("lilmonsta")),
+                "$players players",
+            )
+        }
     }
 
     @Test
@@ -170,6 +264,21 @@ class SetupTest {
             emptyList(),
             Setup.validateBag(bag, 10, inPlayIds = listOf("lilmonsta")),
         )
+    }
+
+    /**
+     * A2-3's belt and braces: with no centre token in play a Demon-less bag is
+     * rejected like any other. The app dealt exactly this shape — eight seats,
+     * two Minions, no Demon anywhere — because a stale acknowledgement kept the
+     * shape alive after the Lil' Monsta token left the bag.
+     */
+    @Test
+    fun `a bag with no demon and no centre token is rejected`() {
+        val bag = teamPool(Team.TOWNSFOLK, 5) + teamPool(Team.OUTSIDER, 1) +
+            teamPool(Team.MINION, 2)
+        assertEquals(8, bag.size)
+        val issues = Setup.validateBag(bag, 8)
+        assertTrue(issues.any { it.startsWith("Demon: 0 in bag, expected 1") }, issues.toString())
     }
 
     @Test

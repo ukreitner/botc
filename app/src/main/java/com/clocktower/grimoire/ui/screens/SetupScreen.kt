@@ -123,7 +123,6 @@ fun SetupScreen(
     // rotation that lost them would change how the whole game votes.
     var secretVotes by rememberSaveable { mutableStateOf(false) }
     val houseRules = HouseRules(secretVotes = secretVotes)
-    var seatlessAck by rememberSaveable { mutableStateOf(false) }
     var outsiderBranch by rememberSaveable { mutableStateOf<Int?>(null) }
     var bagMessage by rememberSaveable { mutableStateOf<String?>(null) }
     /** Filters the character list in card 3 (A-11). */
@@ -132,7 +131,6 @@ fun SetupScreen(
     // (A-19). The store writes asynchronously, so the confirmation is raised
     // when the new script actually appears rather than when Import was pressed.
     var awaitingImport by rememberSaveable { mutableStateOf(false) }
-    var knownScriptIds by rememberSaveable { mutableStateOf(ArrayList<String>() as List<String>) }
     var importNotice by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmCancel by rememberSaveable { mutableStateOf(false) }
     // Seat indices marked as Travellers: they fill no distribution slot and are
@@ -155,14 +153,20 @@ fun SetupScreen(
     val liveGame by viewModel.game.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(imported) {
-        val added = imported.lastOrNull { it.id !in knownScriptIds }
+        // A2-5: this used to look for a script whose id it had never seen. An
+        // import that reused an id (every unnamed paste did) found none, so the
+        // banner kept the PREVIOUS import's text — "22 characters" over a
+        // 12-character script — and the selection never moved either, which made
+        // re-importing look like it had done nothing at all. The store appends
+        // the script it just wrote, so while an import is in flight the last
+        // entry IS it, new id or not.
+        val added = imported.lastOrNull()
         if (awaitingImport && added != null) {
             importNotice = "Imported \"${added.name}\" — " +
                 "${plural(added.characterIds.size, "character")}, now selected."
             scriptId = added.id
             awaitingImport = false
         }
-        knownScriptIds = ArrayList(imported.map { it.id })
     }
 
     if (handingOut) {
@@ -205,7 +209,22 @@ fun SetupScreen(
             }
         }
     }
-    val seatlessIds = if (seatlessAck) seatlessCandidates.map { it.first.id } else emptyList()
+    // A2-2 / A2-3: the tick-box and the bag are ONE bit, and the bag holds it.
+    //
+    // It used to be a free-floating `rememberSaveable` boolean. Unticking it
+    // while the token sat in the bag changed nothing on screen (the engine
+    // raises the shape from the bag as well as from the acknowledgement) yet it
+    // was the only thing that wrote the decision into the dealt game, so the
+    // deal opened on four blocking rows; and ticking it SURVIVED the token
+    // leaving the bag, which dealt an eight-player table with no Demon on any
+    // seat while the checklist said "✓ Lil' Monsta is in play — Confirmed" and
+    // the first night still scheduled its step.
+    //
+    // Derived from `bagIds`, the box drives the bag maths, the header, the bars
+    // and the badge the moment it is pressed, it cannot survive the token's
+    // removal, and the deal can never disagree with the screen.
+    val seatlessIds = seatlessCandidates.map { it.first.id }.filter { it in bagIds }
+    val seatlessAck = seatlessIds.isNotEmpty()
     val issues = if (script == null || !validCount) {
         emptyList()
     } else {
@@ -368,7 +387,10 @@ fun SetupScreen(
                     TableCard(
                         names = names,
                         travellerSeats = travellerSeats,
-                        rosters = rosters.map { it.names },
+                        // A2-10: dedupe by ROSTER. Four chips all reading
+                        // "Last table (N)" were indistinguishable, and two
+                        // tables of the same size were the same chip twice.
+                        rosters = rosters.map { it.names }.distinct(),
                         onNames = { names = it },
                         onTravellers = setTravellers,
                         onPaste = { showPaste = true },
@@ -403,11 +425,19 @@ fun SetupScreen(
                             selected = selected,
                             targets = targets,
                             counts = bagCounts,
-                            allowDuplicates = allowDuplicates,
-                            onAllowDuplicates = { allowDuplicates = it },
                             seatlessNote = seatlessCandidates.firstOrNull()?.second?.note.orEmpty(),
                             seatlessAck = seatlessAck,
-                            onSeatlessAck = { seatlessAck = it },
+                            // The box PUTS the centre token in the bag and takes
+                            // it out again — one decision, one place it is
+                            // stored, so nothing on this screen can disagree
+                            // with anything else on it (A2-2 / A2-3).
+                            onSeatlessAck = { wanted ->
+                                val ids = seatlessCandidates.map { it.first.id }
+                                bagIds = ArrayList(
+                                    if (wanted) bagIds + ids.filterNot { it in bagIds } else bagIds - ids.toSet(),
+                                )
+                                bagMessage = null
+                            },
                             query = bagQuery,
                             onQuery = { bagQuery = it },
                             onRandomize = { keep ->
@@ -430,16 +460,12 @@ fun SetupScreen(
                                     // acknowledgement they are shown beside. The
                                     // acknowledged centre token fills no seat, so
                                     // the roll never draws it — put it back, so
-                                    // the tray shows what is actually in play…
-                                    for ((character, _) in seatlessCandidates) {
-                                        if (seatlessAck && character.id !in ids) ids.add(character.id)
-                                    }
-                                    // …and the other way round: a roll that came
-                                    // back holding one IS a seatless game, so tick
-                                    // the box rather than leaving the storyteller
-                                    // with a bag its own validator rejects.
-                                    if (!seatlessAck && seatlessCandidates.any { it.first.id in ids }) {
-                                        seatlessAck = true
+                                    // the tray shows what is actually in play.
+                                    // (The other direction needs no code now: a
+                                    // roll that DID come back holding one leaves
+                                    // it in `bagIds`, and the box reads the bag.)
+                                    for (id in seatlessIds) {
+                                        if (id !in ids) ids.add(id)
                                     }
                                     bagIds = ids
                                 }
@@ -488,7 +514,10 @@ fun SetupScreen(
                                     .joinToString(", ")
                             },
                         )
-                        val rules = houseRuleLabels(houseRules)
+                        // A2-8: the duplicates rule is counted here too, so the
+                        // summary cannot read "by the book" while it is on.
+                        val rules = houseRuleLabels(houseRules) +
+                            if (allowDuplicates) listOf("allow duplicates") else emptyList()
                         append(" · ")
                         append(if (rules.isEmpty()) "by the book" else rules.joinToString(", "))
                     },
@@ -500,6 +529,30 @@ fun SetupScreen(
                         rules = houseRules,
                         onRules = { secretVotes = it.secretVotes },
                     )
+                    // A2-8: this one bends the BAG, but it is still a rule the
+                    // table agreed on, and having it alone in card 3 meant
+                    // looking in two places for "house rules". It is not a
+                    // `HouseRules` field — the bag is built before there is a
+                    // GameState to put one in — so per D80 only the control
+                    // moves and the storage stays exactly where it was.
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { allowDuplicates = !allowDuplicates }
+                            .padding(vertical = 6.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Allow duplicates", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Any character may be put in the bag more than once. " +
+                                    "(The Village Idiot and Legion do this by the book.)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Checkbox(checked = allowDuplicates, onCheckedChange = { allowDuplicates = it })
+                    }
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "FABLED",
@@ -565,8 +618,13 @@ fun SetupScreen(
                 viewModel.game.value?.players?.forEachIndexed { index, seat ->
                     if (index in travellerSeats) viewModel.setTraveller(seat.id, true)
                 }
-                if (seatlessAck) {
-                    // `Setup.seatlessInPlayIds` reads exactly this decision.
+                // A2-3: written ONLY when the centre token is actually in the
+                // bag. `Setup.seatlessInPlayIds` reads exactly this decision,
+                // and a game that was given it without the token ran a seatless
+                // Demon nobody held — no Demon on any seat, "✓ Lil' Monsta is in
+                // play — Confirmed" on the checklist, and a first-night step for
+                // a token that was never dealt.
+                if (seatlessIds.isNotEmpty()) {
                     viewModel.applySetupRequirementAck(SetupRequirements.LILMONSTA_NO_DEMON_SEAT)
                 }
                 outsiderBranch?.let { viewModel.setDecisionNumber(Decisions.OUTSIDER_BRANCH, it) }
@@ -809,7 +867,17 @@ private fun TableCard(
                             onNames(ArrayList(roster))
                             onTravellers(travellerSeats.filter { it < roster.size }.toSet())
                         },
-                        label = { Text("Last table (${roster.size})") },
+                        // A2-10: the seat count was the only thing telling four
+                        // "Last table (N)" chips apart, so two tables of the
+                        // same size were indistinguishable and only one of them
+                        // could be "last". The table's first name names it.
+                        label = {
+                            Text(
+                                roster.firstOrNull()?.takeIf { it.isNotBlank() }
+                                    ?.let { "$it +${roster.size - 1}" }
+                                    ?: "Table of ${roster.size}",
+                            )
+                        },
                     )
                 }
             }
@@ -912,8 +980,6 @@ private fun BagHeader(
     targets: Map<Team, com.clocktower.engine.TeamTarget>,
     /** What the bag actually holds per team, seatless tokens excluded. */
     counts: Map<Team, Int>,
-    allowDuplicates: Boolean,
-    onAllowDuplicates: (Boolean) -> Unit,
     /** The BagShape note for a character in play with no bag token; "" for none. */
     seatlessNote: String,
     seatlessAck: Boolean,
@@ -1015,13 +1081,10 @@ private fun BagHeader(
             },
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = allowDuplicates, onCheckedChange = onAllowDuplicates)
-            Text(
-                "House rule: allow duplicates of any character",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
+        // A2-8: "House rule: allow duplicates" used to sit here, so the
+        // storyteller had to look in two cards for "house rules" and card 4's
+        // summary could read "by the book" with it on. It lives in card 4's
+        // HOUSE RULES section now, next to secret votes.
     }
 }
 
