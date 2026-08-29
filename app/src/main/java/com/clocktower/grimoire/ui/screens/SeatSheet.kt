@@ -74,6 +74,7 @@ import com.clocktower.grimoire.ui.components.OverlayInsets
 import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.components.StatusPip
 import com.clocktower.grimoire.ui.components.TokenCopies
+import com.clocktower.grimoire.ui.components.BottomActionMargin
 import com.clocktower.grimoire.ui.components.bottomActionPadding
 import com.clocktower.grimoire.ui.components.labelCopies
 import com.clocktower.grimoire.ui.components.rememberOverlayInsets
@@ -708,11 +709,14 @@ private fun seatHistory(
  * measures and that a finger actually cannot reach (playtest D2-6, B2's
  * "bottom 59px" on the character picker).
  *
- * This is exactly that difference, and it is the only part that may be spent as
- * LAYOUT padding: 21 px off the viewport is invisible, where the full inset was
- * what made the list too short to hold a search result (D82's `imePadding`
- * lesson). The content padding gives back the same amount so the total scroll
- * clearance is unchanged.
+ * This is exactly that difference, plus [BottomActionMargin] — "a finger aiming
+ * at the last 24 dp of a phone screen hits the system gesture strip instead"
+ * (components/SafeArea.kt), which is as true of a list's last row as of a
+ * pinned button, and it is what keeps a half-drawn row from being offered at
+ * all. Together they are the only part spent as LAYOUT padding: ~31 dp off the
+ * viewport is invisible, where the full inset was what made the list too short
+ * to hold a search result (D82's `imePadding` lesson). The content padding
+ * gives the same amount back, so the total scroll clearance is unchanged.
  *
  * `asPaddingValues` reads the RAW window inset, which is what makes this
  * readable from inside the sheet at all; zero on the web, where Compose knows
@@ -722,7 +726,7 @@ private fun seatHistory(
 private fun sheetGestureOverrun(): Dp {
     val safe = WindowInsets.safeContent.asPaddingValues().calculateBottomPadding()
     val consumedBySheet = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    return (safe - consumedBySheet).coerceAtLeast(0.dp)
+    return (safe - consumedBySheet).coerceAtLeast(0.dp) + BottomActionMargin
 }
 
 /**
