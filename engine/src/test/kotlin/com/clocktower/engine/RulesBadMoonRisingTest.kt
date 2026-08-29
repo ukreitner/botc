@@ -297,7 +297,10 @@ class RulesBadMoonRisingTest {
 
         val row = require(state, "pukka")
         assertEquals(
-            listOf(DeferredDeath(victim, DeathCause.DEMON_KILL)),
+            // `deferred` says the attack was made on an EARLIER night, so the
+            // preview scopes tonight's suppression the way the resolution does
+            // (lead D63/D68; playtest D2-1).
+            listOf(DeferredDeath(victim, DeathCause.DEMON_KILL, deferred = true)),
             row.deferredDeaths,
             "the standing victim, with the cause the registry declared",
         )
@@ -436,6 +439,52 @@ class RulesBadMoonRisingTest {
         assertTrue(
             victimName in row.banner,
             "and the death it still carries is not hidden behind it: '${row.banner}'",
+        )
+
+        // Playtest D2-1: the PREVIEW dropped `Attack.deferred`, so the screen
+        // re-ran the funnel as an ordinary attack, hit the un-narrowed veto and
+        // put "DEV SURVIVES — NOBODY DIES" on the button of a card that said the
+        // opposite — and holding it killed them. The step now carries the flag
+        // and the funnel scopes the veto (lead D63/D68).
+        assertEquals(
+            listOf(DeferredDeath(victim, DeathCause.DEMON_KILL, respectProtection = true, deferred = true)),
+            row.deferredDeaths,
+        )
+        val standing = row.deferredDeaths.single()
+        assertIs<KillOutcome.Dies>(
+            Deaths.killOutcome(
+                state,
+                lookup,
+                standing.playerId,
+                KillCause(
+                    cause = standing.cause,
+                    sourceCharacterId = row.abilityId,
+                    sourcePlayerId = row.holderId,
+                    ignoresProtection = !standing.respectProtection,
+                    deferred = standing.deferred,
+                ),
+            ),
+            "the preview must promise what the button does",
+        )
+
+        // A Lycanthrope-style suppression on the same seat stops it (D68).
+        val noKill = Effects.place(
+            state = state,
+            target = pukka,
+            kind = EffectKind.DEMON_CANNOT_KILL,
+            sourceCharacterId = "lycanthrope",
+            sourcePlayerId = seat(state, "professor"),
+            until = Until.DAWN,
+            label = "Faux Paw",
+            suppression = KillSuppression.NO_KILL_TONIGHT,
+        ).state
+        assertIs<KillOutcome.Prevented>(
+            Deaths.killOutcome(
+                noKill,
+                lookup,
+                standing.playerId,
+                KillCause(DeathCause.DEMON_KILL, row.abilityId, row.holderId, deferred = true),
+            ),
         )
     }
 

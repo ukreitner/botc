@@ -215,6 +215,11 @@ fun NightCard(
                         sourceCharacterId = step.abilityId,
                         sourcePlayerId = step.holderId,
                         ignoresProtection = !death.respectProtection,
+                        // Set up on an EARLIER night: an Exorcised source still
+                        // lands it, a "no kill tonight" source does not (D63/D68).
+                        // The preview dropped this and promised the opposite of
+                        // what the button then did (playtest D2-1).
+                        deferred = death.deferred,
                     ),
                 )
             }

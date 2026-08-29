@@ -117,6 +117,14 @@ data class DeferredDeath(
     val cause: DeathCause = DeathCause.DEMON_KILL,
     /** false => nothing stops it (an unstoppable standing effect). */
     val respectProtection: Boolean = true,
+    /**
+     * [NightEffect.Attack.deferred]: this death was set up on an EARLIER night,
+     * so an Exorcised source still lands it and a `NO_KILL_TONIGHT` source does
+     * not (lead D63/D68). Without it the preview re-ran the funnel as an
+     * ordinary attack, and an Exorcised Pukka's card said "Dev dies now" over a
+     * button reading "DEV SURVIVES — NOBODY DIES" (playtest D2-1).
+     */
+    val deferred: Boolean = false,
 )
 
 /**
@@ -957,7 +965,12 @@ data class NightPlan(
             .filterIsInstance<NightEffect.Attack>()
             .mapNotNull { attack ->
                 (attack.on as? Ref.Seat)?.let {
-                    DeferredDeath(it.playerId, attack.cause, attack.respectProtection)
+                    DeferredDeath(
+                        playerId = it.playerId,
+                        cause = attack.cause,
+                        respectProtection = attack.respectProtection,
+                        deferred = attack.deferred,
+                    )
                 }
             }
             .distinctBy { it.playerId }
@@ -2036,6 +2049,10 @@ data class NightPlan(
                                 sourceCharacterId = scope.sourceCharacterId,
                                 sourcePlayerId = if (silencedNow) null else scope.sourceId,
                                 ignoresProtection = !effect.respectProtection,
+                                // The funnel now scopes the veto itself (D63/D68);
+                                // saying so here keeps the preview and the
+                                // resolution literally the same call.
+                                deferred = effect.deferred,
                             ),
                         ).state
                     }
