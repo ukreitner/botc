@@ -1,5 +1,6 @@
 package com.clocktower.grimoire.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -62,8 +63,10 @@ import com.clocktower.grimoire.ui.screens.day.ExecutionSheet
 import com.clocktower.grimoire.ui.screens.day.DayStats
 import com.clocktower.grimoire.ui.screens.day.ExileSheet
 import com.clocktower.grimoire.ui.screens.day.NominationDetail
+import com.clocktower.grimoire.ui.screens.day.NominationModel
 import com.clocktower.grimoire.ui.screens.day.SeatRingPanel
 import com.clocktower.grimoire.ui.screens.day.SaidModel
+import com.clocktower.grimoire.ui.screens.day.SaidEditDialog
 import com.clocktower.grimoire.ui.screens.day.SaidRow
 import com.clocktower.grimoire.ui.screens.day.SaidSheet
 import com.clocktower.grimoire.ui.screens.day.StageCard
@@ -120,6 +123,8 @@ fun DayScreen(
     var executeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var exileId by rememberSaveable { mutableStateOf<Long?>(null) }
     var timerOpen by rememberSaveable { mutableStateOf(false) }
+    /** [Change] on the collapsed ring brings the seats back (C2-9). */
+    var ringForcedOpen by rememberSaveable { mutableStateOf(false) }
 
     val currentPlayerIds = state.players.map { it.id }.toSet()
     LaunchedEffect(currentPlayerIds) {
@@ -144,6 +149,7 @@ fun DayScreen(
         nomineeId = null
         voters = emptySet()
         forceNomination = false
+        ringForcedOpen = false
     }
 
     fun openSay(speakerId: Long?, sourceId: String?) {
@@ -165,6 +171,11 @@ fun DayScreen(
                 nominatorId = nominatorId,
                 nomineeId = nomineeId,
                 reopened = reopenedDay,
+                collapsed = NominationModel.ringCollapsed(
+                    nominatorId,
+                    nomineeId,
+                    ringForcedOpen,
+                ),
                 onPickSeat = { id ->
                     when {
                         nominatorId == id -> nominatorId = null
@@ -175,6 +186,9 @@ fun DayScreen(
                             voters = emptySet()
                         }
                     }
+                    // A fresh pair collapses the ring again; picking one half
+                    // apart leaves it open until the second tap lands.
+                    ringForcedOpen = false
                     // A day the storyteller reopened stays overridden across
                     // the two ring taps; anything else asks again.
                     forceNomination = reopenedDay
@@ -184,6 +198,7 @@ fun DayScreen(
                     reopenedDay = true
                     forceNomination = true
                 },
+                onChangePair = { ringForcedOpen = true },
             )
         }
 
@@ -261,6 +276,7 @@ fun DayScreen(
                                 state = state,
                                 onDusk = onDusk,
                                 onExecute = { executeId = it },
+                                onExile = { exileId = it },
                             )
                         }
                     }
@@ -338,6 +354,17 @@ private fun DayStatStrip(stats: DayStats) {
                 fontWeight = FontWeight.Bold,
                 color = if (stats.onBlockId != null) EmberRed else FadedInk,
             )
+            // A passed exile nobody carried out is as load-bearing as the block
+            // and was invisible everywhere (C2-3): it changes the alive count
+            // and tomorrow's threshold the moment the night begins.
+            if (stats.exileLine.isNotBlank()) {
+                Text(
+                    stats.exileLine,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                )
+            }
             // Whatever rewrote today's vote, said once, where the numbers are.
             if (stats.voteNote.isNotBlank()) {
                 Text(
@@ -527,6 +554,11 @@ private fun SaidBody(
     }
     var showEarlier by rememberSaveable { mutableStateOf(false) }
 
+    // C2-8: every recorded line opens. The row itself is the tap target, and
+    // the ✎ says so — a mistyped or mis-attributed statement used to be
+    // permanent, with no edit, no delete and no verdict outside the Gossip gate.
+    var editing by rememberSaveable { mutableStateOf<Long?>(null) }
+
     if (today.isEmpty()) {
         Text(
             "Nothing recorded today. Tap a seat, then type or dictate one line — " +
@@ -536,7 +568,7 @@ private fun SaidBody(
         )
     }
     for (row in today) {
-        SaidRowView(viewModel, row)
+        SaidRowView(viewModel, row, onOpen = { editing = row.entryId })
     }
     FilledTonalButton(onClick = onCompose, modifier = Modifier.fillMaxWidth()) {
         Text("+ Record what was said")
@@ -558,16 +590,38 @@ private fun SaidBody(
                         style = MaterialTheme.typography.labelMedium,
                         color = PaleGold,
                     )
-                    for (row in rows) SaidRowView(viewModel, row)
+                    for (row in rows) SaidRowView(viewModel, row, onOpen = { editing = row.entryId })
                 }
             }
+        }
+    }
+
+    // Earlier days are editable too — a Gossip claim recorded on day 1 is
+    // exactly the kind of line that turns out to be wrong on day 3.
+    editing?.let { entryId ->
+        val all = remember(state, entryId) {
+            (1..state.cycle).flatMap { SaidModel.rows(state, lookup, it) }
+        }
+        val row = all.firstOrNull { it.entryId == entryId }
+        if (row == null) {
+            editing = null
+        } else {
+            SaidEditDialog(viewModel, row, onDismiss = { editing = null })
         }
     }
 }
 
 @Composable
-private fun SaidRowView(viewModel: GameViewModel, row: SaidRow) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+private fun SaidRowView(viewModel: GameViewModel, row: SaidRow, onOpen: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            // The whole row is the target — the storyteller is aiming with a
+            // thumb while the table talks, not hunting a 24 dp pencil.
+            .clickable(onClick = onOpen)
+            .heightIn(min = 48.dp),
+    ) {
         Column(Modifier.weight(1f)) {
             Text(row.line, style = MaterialTheme.typography.bodyMedium)
             if (row.kind == LedgerKind.ANNOUNCE && row.announcePending) {
@@ -597,6 +651,8 @@ private fun SaidRowView(viewModel: GameViewModel, row: SaidRow) {
                 }
             }
         }
+        // The affordance, so a dead-looking row visibly is not one.
+        TextButton(onClick = onOpen) { Text("✎", color = FadedInk) }
     }
 }
 
@@ -743,10 +799,12 @@ private fun DuskBody(
     state: GameState,
     onDusk: (() -> Unit)?,
     onExecute: (Long) -> Unit,
+    onExile: (Long) -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
     val record = viewModel.executionToday(state)
     val onBlock = DayRules.aboutToDie(state)?.let { state.player(it) }
+    val exileOwed = DayRules.exileOwed(state)?.let { state.player(it) }
 
     when {
         record?.outcome == ExecutionOutcome.NO_EXECUTION -> Text(
@@ -806,6 +864,28 @@ private fun DuskBody(
             style = MaterialTheme.typography.bodyMedium,
             color = PaleGold,
         )
+    }
+
+    // An exile is not the day's execution, so it is owed whatever the record
+    // says — including on a settled day (C2-3). The button is right here, next
+    // to the one that closes the day.
+    if (exileOwed != null) {
+        Text(
+            "${exileOwed.name} was exiled and has not left the game.",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = EmberRed,
+        )
+        Text(
+            "Until you carry it out they are still seated, still hold a vote, and " +
+                "still count towards tomorrow's execution threshold.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = FadedInk,
+        )
+        Button(
+            onClick = { onExile(exileOwed.id) },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Exile ${exileOwed.name}", fontWeight = FontWeight.Bold) }
     }
 
     if (onDusk != null) {

@@ -120,4 +120,29 @@ class GameLogTest {
     fun `an empty game has an empty transcript`() {
         assertEquals(emptyList(), GameLog.rows(day1(), lookup))
     }
+
+    /**
+     * B2-8: the false branch of "did they wake for their OWN ability" was a
+     * bare " (shown to)" that used neither the source nor anything else, so a
+     * Minion woken for the Minion-info step logged as "P8 wakes (shown to)".
+     */
+    @Test
+    fun `a wake names what it was for, and never trails off`() {
+        var state = GameActions.advancePhase(GameActions.newGame(tb, (1..8).map { "P$it" }))
+        state = Ledger.woke(state, playerId = 1L, sourceId = "empath", ownAbility = true)
+        state = Ledger.woke(state, playerId = 2L, sourceId = NightMarkers.MINION_INFO, ownAbility = false)
+        state = Ledger.woke(state, playerId = 3L, sourceId = NightMarkers.DEMON_INFO, ownAbility = false)
+        state = Ledger.woke(state, playerId = 4L, sourceId = "washerwoman", ownAbility = false)
+        state = Ledger.woke(state, playerId = 5L, sourceId = "", ownAbility = false)
+
+        val rows = texts(state)
+        assertTrue(rows.none { "(shown to)" in it }, rows.toString())
+        assertTrue(rows.none { it.trimEnd().endsWith("for") }, rows.toString())
+        assertTrue(rows.any { it == "P2 wakes for Empath" }, rows.toString())
+        assertTrue(rows.any { it == "P3 wakes (Minion info)" }, rows.toString())
+        assertTrue(rows.any { it == "P4 wakes (Demon info)" }, rows.toString())
+        assertTrue(rows.any { it == "P5 wakes (for the Washerwoman)" }, rows.toString())
+        // No source at all: nothing to name, and nothing dangling either.
+        assertTrue(rows.any { it == "P6 wakes" }, rows.toString())
+    }
 }

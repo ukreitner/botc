@@ -380,7 +380,7 @@ object WinCheck {
         val who = state.player(executedSaint.playerId)?.name ?: "The Saint"
         return Advisory(
             goodWins = false,
-            reason = "The Saint died by execution - the good team loses.",
+            reason = "The Saint died by execution — the good team loses.",
             cautions = listOf("$who was executed on day ${executedSaint.day}."),
             ruleId = RULE_SAINT,
         )

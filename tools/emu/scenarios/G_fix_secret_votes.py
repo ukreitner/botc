@@ -89,12 +89,19 @@ STEPS = [
     ("audit", None),
 
     # Four hands up, and the tally still says nothing out loud.
-    ("swipe", ["up", "400"]),
-    ("sleep", 0.8),
-    ("tapxy", [176, 1620]),
-    ("tapxy", [407, 1620]),
-    ("tapxy", [638, 1620]),
-    ("tapxy", [869, 1620]),
+    #
+    # By NAME, not by coordinate: since C2-9 the ring collapses to the pair
+    # once both halves are picked, so the vote panel sits ~350 px higher and
+    # the old fixed chip coordinates addressed the card above it. The chips are
+    # unambiguous here — the collapsed pair reads "Player 1 » Player 5", which
+    # an anchored "^Player N$" does not match.
+    ("tap", "^Player 6$"),
+    ("sleep", 0.4),
+    ("tap", "^Player 7$"),
+    ("sleep", 0.4),
+    ("tap", "^Player 8$"),
+    ("sleep", 0.4),
+    ("tap", "^Player 1$"),
     ("sleep", 1.0),
     ("find", "•••"),
     ("screenshot", None),
@@ -108,6 +115,10 @@ STEPS = [
     ("tap", "Lock in silently"),
     ("sleep", 1.5),
     ("find", "Someone is about to die"),
+    # Locking in clears the draft, so the ring comes back (C2-9) and the
+    # recorded row is one swipe below it.
+    ("swipe", ["up", "500"]),
+    ("sleep", 0.8),
     ("find", "••• votes"),
     ("screenshot", None),
     ("audit", None),

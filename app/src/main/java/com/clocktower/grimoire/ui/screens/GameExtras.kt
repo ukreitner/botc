@@ -51,6 +51,7 @@ import com.clocktower.engine.DeathCause
 import com.clocktower.engine.GameLog
 import com.clocktower.engine.GameState
 import com.clocktower.engine.HouseRules
+import com.clocktower.engine.Phase
 import com.clocktower.engine.Team
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameActionsApi
@@ -343,6 +344,39 @@ fun ActiveJinxesDialog(
     )
 }
 
+// ---------------------------------------------------------------------------
+// Endings — ONE decision, wherever a `WinCheck.Advisory` surfaces (C2-1)
+// ---------------------------------------------------------------------------
+//
+// The Saint's ending raised "Is the game over?" with [Declare evil victory];
+// the Vortox's, detected at dusk, was printed in red on the dusk sheet and then
+// thrown away when the primary advanced to night 2. The three functions below
+// are the shared half: whether an advisory ENDS the game, which side it hands
+// it to, and what the button says. Every surface renders those the same way.
+
+/**
+ * True when this advisory ends the game, so it must be OFFERED rather than
+ * merely printed. `goodWins == null` is a briefing — the Zombuul's "nobody
+ * died today" is the canonical one — and never gets a declare button.
+ */
+fun endsTheGame(advisory: WinCheck.Advisory): Boolean = advisory.goodWins != null
+
+/** Which side an accepted advisory hands the game to. */
+fun declaredWinner(advisory: WinCheck.Advisory): Boolean = advisory.goodWins ?: true
+
+/** The words on the button that ends the game. */
+fun declareLabel(advisory: WinCheck.Advisory): String =
+    if (advisory.goodWins == false) "Declare evil victory" else "Declare good victory"
+
+/** The advisory as prose: its reason, then every caution that could overturn it. */
+@Composable
+fun AdvisoryLines(advisory: WinCheck.Advisory) {
+    Text(advisory.reason, style = MaterialTheme.typography.bodyLarge, color = EmberRed)
+    for (c in advisory.cautions) {
+        Text("! $c", color = EmberRed, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
 /** Win-condition advisory with a path to the reveal screen. */
 @Composable
 fun WinAdvisoryDialog(
@@ -356,16 +390,13 @@ fun WinAdvisoryDialog(
         title = { Text("Is the game over?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(advisory.reason, style = MaterialTheme.typography.bodyLarge)
-                for (c in advisory.cautions) {
-                    Text("! $c", color = EmberRed, style = MaterialTheme.typography.bodySmall)
-                }
+                AdvisoryLines(advisory)
             }
         },
         confirmButton = {
             Column {
-                FilledTonalButton(onClick = { onDeclare(advisory.goodWins ?: true) }) {
-                    Text(if (advisory.goodWins == false) "Declare evil victory" else "Declare good victory")
+                FilledTonalButton(onClick = { onDeclare(declaredWinner(advisory)) }) {
+                    Text(declareLabel(advisory))
                 }
                 if (onMastermindDay != null && advisory.cautions.any { "Mastermind" in it }) {
                     TextButton(onClick = onMastermindDay) { Text("Play the Mastermind day") }
@@ -595,6 +626,32 @@ fun SetupIdentityPrompts(
 }
 
 /**
+ * The checklist's own header, which has to follow the PHASE (playtest C2-7,
+ * D2-9).
+ *
+ * The sheet is deliberately not gated on `phase == SETUP` — a Pit-Hag creating
+ * a Drunk on night 3, or a traveller seated on day 2, raises real rows — but
+ * both strings were written for setup and stayed hard-coded, so seating a
+ * traveller on day 2 raised a sheet headed "Before the first night" over a
+ * running game.
+ *
+ * Pure, so `tools/uicheck` can measure it, and storyteller-facing in every
+ * phase: what the sheet lists is what the game still owes.
+ */
+fun checklistTitle(phase: Phase): String =
+    if (phase == Phase.SETUP) "Before the first night" else "Setup still owed"
+
+/** The caption under the rows — the begin-night guard only exists in setup. */
+fun checklistFooter(phase: Phase): String =
+    if (phase == Phase.SETUP) {
+        "\"Begin night\" still works with rows outstanding — the guard " +
+            "tells you what is missing and lets you start anyway."
+    } else {
+        "Nothing is blocked while these are outstanding — answer them " +
+            "whenever the table gives you a moment."
+    }
+
+/**
  * The checklist itself: one row per `SetupRequirement`, ticked when satisfied,
  * every row openable, and every row's answer applied through the requirement's
  * own `apply` — no character ids and no per-character UI anywhere.
@@ -661,7 +718,7 @@ fun SetupChecklistSheet(
             ) {
                 item {
                     Text(
-                        "Before the first night",
+                        checklistTitle(state.phase),
                         style = MaterialTheme.typography.headlineSmall,
                         color = AgedGold,
                     )
@@ -731,8 +788,7 @@ fun SetupChecklistSheet(
                 item {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "\"Begin night\" still works with rows outstanding — the guard " +
-                            "tells you what is missing and lets you start anyway.",
+                        checklistFooter(state.phase),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

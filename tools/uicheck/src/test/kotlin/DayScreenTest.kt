@@ -9,11 +9,13 @@ import com.clocktower.engine.Character
 import com.clocktower.engine.DayRules
 import com.clocktower.engine.Effects
 import com.clocktower.engine.Execution
+import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.GameActions
 import com.clocktower.engine.GameData
 import com.clocktower.engine.GameState
 import com.clocktower.engine.HouseRules
+import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.Ledger
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Nomination
@@ -32,6 +34,9 @@ import com.clocktower.grimoire.ui.screens.day.DayStage
 import com.clocktower.grimoire.ui.screens.day.NominationModel
 import com.clocktower.grimoire.ui.screens.day.SaidModel
 import com.clocktower.grimoire.ui.screens.day.SeatPick
+import com.clocktower.grimoire.ui.screens.day.verdictLabel
+import com.clocktower.grimoire.ui.screens.day.previewText
+import com.clocktower.grimoire.ui.screens.day.visibleConsequences
 import com.clocktower.grimoire.ui.screens.day.StageTone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -660,6 +665,24 @@ class DayScreenTest {
         assertTrue("the tie names both: '$line'", line.contains("Fay") && line.contains("Gus"))
         assertTrue("and the number to beat: '$line'", line.contains("to beat it"))
         assertNull("nobody is on the block after a tie", DayRules.aboutToDie(state))
+
+        // C2-10: the strip printed the standing high-water ("· 5 to beat") one
+        // line above the tie line's "6 to beat it". One meaning, one number.
+        val toBeat = DayRules.votesToBeat(state)
+        assertEquals(DayRules.highestVotesToday(state) + 1, toBeat)
+        assertTrue("the tie line uses it: '$line'", line.contains("$toBeat to beat it"))
+        val detail = DayModel.stats(state, lookup).detail
+        assertTrue("and so does the strip: '$detail'", detail.contains("· $toBeat to beat"))
+    }
+
+    @Test
+    fun `nothing standing prints no number to beat`() {
+        val state = day()
+        assertEquals(0, DayRules.votesToBeat(state))
+        assertFalse(
+            "'${DayModel.stats(state, lookup).detail}'",
+            DayModel.stats(state, lookup).detail.contains("to beat"),
+        )
     }
 
     @Test
@@ -939,5 +962,190 @@ class DayScreenTest {
         timer.start(1)
         val past = com.clocktower.engine.Time.epochMillis() + 5_000
         assertEquals("TIME", TimerFormat.barLabel(timer, past))
+    }
+
+    // ------------------------------------------------------------------
+    // Secret voting hides the verdict too (D80, C2-12)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `the concealed outcome names nobody and points at the peek`() {
+        val hidden = NominationModel.HIDDEN_OUTCOME
+        assertTrue(hidden, hidden.contains("•••"))
+        assertTrue("it says how to read it: '$hidden'", hidden.contains("peek"))
+        // Whatever the outcome, the concealed line can never carry a name or
+        // the words that give the verdict away.
+        for (word in listOf("about to die", "is safe", "exiled", "Tie at")) {
+            assertFalse("'$hidden' leaks '$word'", hidden.contains(word))
+        }
+    }
+
+    @Test
+    fun `under an Organ Grinder the panel's own verdict is a secret worth keeping`() {
+        var state = day()
+        state = GameActions.assignCharacter(state, seat(state, "Kit"), "organgrinder")
+        assertTrue("the fixture must actually be secret", DayRules.secretVoting(state, lookup))
+
+        val view = NominationModel.voteView(
+            state,
+            lookup,
+            nominatorId = seat(state, "Ana"),
+            nomineeId = seat(state, "Fay"),
+            voterIds = state.alivePlayers.take(7).map { it.id }.toSet(),
+        )
+        assertTrue(view.secret)
+        // The clear-text line still exists — it is what a PEEK reveals — and it
+        // is exactly the line the panel must not print unpeeked.
+        assertTrue(view.outcomeLine, view.outcomeLine.contains("Fay"))
+        assertFalse(NominationModel.HIDDEN_OUTCOME.contains("Fay"))
+    }
+
+    // ------------------------------------------------------------------
+    // The ring stands down once its two taps have landed (C-15 / C2-9)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `the ring collapses only when both halves are picked`() {
+        assertFalse(NominationModel.ringCollapsed(null, null, forcedOpen = false))
+        assertFalse("one tap in, the seats are still needed",
+            NominationModel.ringCollapsed(1L, null, forcedOpen = false))
+        assertFalse(NominationModel.ringCollapsed(null, 2L, forcedOpen = false))
+        assertTrue(NominationModel.ringCollapsed(1L, 2L, forcedOpen = false))
+        assertFalse("[Change] brings the seats back",
+            NominationModel.ringCollapsed(1L, 2L, forcedOpen = true))
+    }
+
+    @Test
+    fun `a collapsed ring frees more than the ring could ever give back by shrinking`() {
+        // The reason the ring collapses instead of shrinking: at 12 seats the
+        // radius search is already at its floor, so there is nothing to give.
+        val width = 360f
+        val twelve = NominationModel.ringHeightDp(12, width)
+        val squeezed = NominationModel.ringHeightDp(12, width, maxRadiusYDp = 96f)
+        assertTrue("a 12-seat ring cannot be squeezed into a header's height: $squeezed", squeezed > 200f)
+        assertTrue(twelve >= squeezed)
+    }
+
+    // ------------------------------------------------------------------
+    // A recorded line is editable (C2-8)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `a recorded row carries the words the edit dialog opens with`() {
+        val state = day()
+        val bo = seat(state, "Bo")
+        val after = Ledger.statement(state, bo, Ledger.Sources.CLAIM, "Fay is the Imp")
+        val row = SaidModel.rows(after, lookup, after.cycle).single()
+        // The formatted line is for reading; `text` is what gets edited.
+        assertEquals("Fay is the Imp", row.text)
+        assertTrue(row.line, row.line.contains("“Fay is the Imp”"))
+
+        val edited = Ledger.edit(after, row.entryId) { it.copy(text = "Fay is the Poisoner") }
+        assertEquals(
+            "Fay is the Poisoner",
+            SaidModel.rows(edited, lookup, edited.cycle).single().text,
+        )
+        assertTrue(Ledger.delete(edited, row.entryId).ledger.none { it.id == row.entryId })
+    }
+
+    @Test
+    fun `the verdict chips read as words, and every verdict has a label`() {
+        assertEquals("✓ true", verdictLabel(Verdict.TRUE))
+        assertEquals("✗ false", verdictLabel(Verdict.FALSE))
+        assertEquals("? not judged", verdictLabel(Verdict.UNJUDGED))
+        for (verdict in Verdict.entries) {
+            assertTrue(verdict.name, verdictLabel(verdict).isNotBlank())
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // An exile the table voted for and nobody carried out (C2-3)
+    // ------------------------------------------------------------------
+
+    /** Day 1 with Jo as a Beggar, exiled by a passing vote nobody acted on. */
+    private fun exileOwed(): GameState {
+        var state = day()
+        state = Seats.assignCharacter(state, seat(state, "Jo"), "beggar", isTraveller = true)
+        return DayRules.record(
+            state,
+            lookup,
+            Nomination(
+                day = state.cycle,
+                nominatorId = seat(state, "Ana"),
+                nomineeId = seat(state, "Jo"),
+                isExile = true,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+    }
+
+    @Test
+    fun `the stat strip names an exile that has not happened`() {
+        val plain = DayModel.stats(day(), lookup)
+        assertEquals("", plain.exileLine)
+        assertNull(plain.exileOwedId)
+
+        val stats = DayModel.stats(exileOwed(), lookup)
+        assertEquals(seat(exileOwed(), "Jo"), stats.exileOwedId)
+        assertTrue(stats.exileLine, stats.exileLine.startsWith("Jo was exiled"))
+        assertTrue(stats.exileLine, stats.exileLine.contains("has not left the game"))
+        // The block line is untouched — these are two different obligations.
+        assertNull(stats.onBlockId)
+    }
+
+    @Test
+    fun `the DUSK row says so and does not read as complete`() {
+        val state = exileOwed()
+        val dusk = DayModel.stages(state, lookup, null, emptyBriefing(), emptySet())
+            .single { it.stage == DayStage.DUSK }
+        assertTrue(dusk.summary, dusk.summary.contains("Jo was exiled and has not left the game."))
+        assertEquals(StageTone.ALERT, dusk.tone)
+        assertFalse("a day that still owes an exile is not finished", dusk.complete)
+    }
+
+    @Test
+    fun `a recorded day still owes the exile`() {
+        // An exile is not the day's execution: recording one does not clear it.
+        val state = Execution.noExecution(exileOwed())
+        val dusk = DayModel.stages(state, lookup, null, emptyBriefing(), emptySet())
+            .single { it.stage == DayStage.DUSK }
+        assertTrue(dusk.summary, dusk.summary.contains("No execution today"))
+        assertTrue(dusk.summary, dusk.summary.contains("has not left the game"))
+        assertFalse(dusk.complete)
+    }
+
+    // ------------------------------------------------------------------
+    // Execution sheet — one fact, once (C2-5)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `a consequence the verdict line already says is not printed again`() {
+        val preview = KillOutcome.Prevented(
+            by = null,
+            reason = "Fay cannot die during the day.",
+            announce = "Say: 'Fay was executed… and remains alive.' Do not say why.",
+        )
+        val rows = listOf(
+            ExecutionConsequence(
+                sourceId = "vizier",
+                headline = "Say: 'Fay was executed… and remains alive.' Do not say why.",
+                detail = "Credited to the Vizier.",
+            ),
+            ExecutionConsequence(sourceId = "vizier", headline = "Fay cannot die during the day."),
+            ExecutionConsequence(sourceId = "undertaker", headline = "Gus learns Fay's character."),
+        )
+        val visible = visibleConsequences(preview, rows)
+        assertEquals(visible.map { it.headline }.toString(), 1, visible.size)
+        assertEquals("undertaker", visible.single().sourceId)
+    }
+
+    @Test
+    fun `a verdict line that says nothing extra keeps every row`() {
+        val preview = KillOutcome.Dies(reason = "Nothing stops it — they die.")
+        val rows = listOf(
+            ExecutionConsequence(sourceId = "saint", headline = "Jo was the Saint — EVIL WINS."),
+        )
+        assertEquals(rows, visibleConsequences(preview, rows))
+        assertEquals("Nothing stops it — they die.", previewText(preview))
     }
 }

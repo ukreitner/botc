@@ -611,7 +611,13 @@ interface GameActionsApi {
         ruling: String = "",
     ) = update {
         val after = Deaths.attempt(it, lookup, targetId, cause, optionId).state
-        if (ruling.isBlank()) after else withRuling(after, targetId, "st", ruling.trim())
+        // A death entered as an EXECUTION is the day's execution wherever it was
+        // entered from — the seat sheet's Kill… offers the cause, and the record
+        // is the one "was there an execution today" the Undertaker, the Vortox,
+        // the Mayor, the Zombuul and the dusk sheet all read (lead D30, B2-4).
+        // No-op for every other cause, phase and already-settled day.
+        val recorded = Execution.recordDeathAsExecution(after, lookup, targetId, cause)
+        if (ruling.isBlank()) recorded else withRuling(recorded, targetId, "st", ruling.trim())
     }
 
     /** Removes one effect by id — the rule behind a rendered token. */

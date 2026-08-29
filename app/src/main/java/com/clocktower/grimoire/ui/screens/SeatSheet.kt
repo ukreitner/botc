@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -48,6 +52,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
 import com.clocktower.engine.ChangeReason
@@ -69,6 +74,7 @@ import com.clocktower.grimoire.ui.components.OverlayInsets
 import com.clocktower.grimoire.ui.components.ReminderToken
 import com.clocktower.grimoire.ui.components.StatusPip
 import com.clocktower.grimoire.ui.components.TokenCopies
+import com.clocktower.grimoire.ui.components.BottomActionMargin
 import com.clocktower.grimoire.ui.components.bottomActionPadding
 import com.clocktower.grimoire.ui.components.labelCopies
 import com.clocktower.grimoire.ui.components.rememberOverlayInsets
@@ -694,6 +700,36 @@ private fun seatHistory(
 }
 
 /**
+ * The bottom safe area the enclosing `ModalBottomSheet` did NOT take for itself.
+ *
+ * D82 gave the pickers their insets as CONTENT padding, which fixed the last
+ * ROW — and left the CONTAINER wrong: the sheet pads itself by `navigationBars`
+ * (63 px on the reference phone), so its child was still laid out to y=2337,
+ * 21 px past the `mandatorySystemGestures` edge at 2316 that `ui.py audit`
+ * measures and that a finger actually cannot reach (playtest D2-6, B2's
+ * "bottom 59px" on the character picker).
+ *
+ * This is exactly that difference, plus [BottomActionMargin] — "a finger aiming
+ * at the last 24 dp of a phone screen hits the system gesture strip instead"
+ * (components/SafeArea.kt), which is as true of a list's last row as of a
+ * pinned button, and it is what keeps a half-drawn row from being offered at
+ * all. Together they are the only part spent as LAYOUT padding: ~31 dp off the
+ * viewport is invisible, where the full inset was what made the list too short
+ * to hold a search result (D82's `imePadding` lesson). The content padding
+ * gives the same amount back, so the total scroll clearance is unchanged.
+ *
+ * `asPaddingValues` reads the RAW window inset, which is what makes this
+ * readable from inside the sheet at all; zero on the web, where Compose knows
+ * nothing about either.
+ */
+@Composable
+private fun sheetGestureOverrun(): Dp {
+    val safe = WindowInsets.safeContent.asPaddingValues().calculateBottomPadding()
+    val consumedBySheet = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    return (safe - consumedBySheet).coerceAtLeast(0.dp) + BottomActionMargin
+}
+
+/**
  * Grid of script characters (plus travellers) to assign to a seat.
  *
  * [insets] must be measured at the SHEET's call site
@@ -721,11 +757,17 @@ fun CharacterPicker(
         search.isBlank() || c.name.contains(search, ignoreCase = true) ||
             c.ability.contains(search, ignoreCase = true)
 
+    val overrun = sheetGestureOverrun()
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp)
+            // The CONTAINER stops at the safe edge (D2-6): the sheet took the
+            // navigation bar, this takes what the home indicator swallows on
+            // top of it. See [sheetGestureOverrun] — 21 px, given straight back
+            // below so nothing scrolls any further than it used to.
+            .padding(bottom = overrun),
         // CONTENT padding, not layout padding, and the difference matters:
         //
         // * top 8 dp — a full-height `ModalBottomSheet` starts 8 px ABOVE the
@@ -745,7 +787,7 @@ fun CharacterPicker(
         // what "the last row must clear the home indicator" actually means.
         contentPadding = PaddingValues(
             top = 8.dp,
-            bottom = bottomActionPadding(insets.bottom),
+            bottom = (bottomActionPadding(insets.bottom) - overrun).coerceAtLeast(0.dp),
         ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -903,11 +945,16 @@ fun ReminderPicker(
         labelCopies(listOf("Drunk", "Poisoned", "Protected", "Mad", "Used", "No Ability", "Good", "Evil", "?"))
     }
 
+    val overrun = sheetGestureOverrun()
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             .imePadding()
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp)
+            // …and the container itself stops at the safe edge, so the Tea
+            // Lady's last `Cannot Die ×2` is not drawn into the gesture strip
+            // where `ui.py tap` refuses it (D2-6).
+            .padding(bottom = overrun),
         // The character picker's reasoning, verbatim (see there): 8 dp of top
         // so [Back] clears the status bar a full-height sheet starts 8 px
         // above, the measured inset at the bottom so the last chip clears the
@@ -915,7 +962,7 @@ fun ReminderPicker(
         // the safe area do not eat the viewport between them.
         contentPadding = PaddingValues(
             top = 8.dp,
-            bottom = bottomActionPadding(insets.bottom),
+            bottom = (bottomActionPadding(insets.bottom) - overrun).coerceAtLeast(0.dp),
         ),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {

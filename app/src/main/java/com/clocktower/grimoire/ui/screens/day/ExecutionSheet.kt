@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Deaths
+import com.clocktower.engine.ExecutionConsequence
 import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameState
 import com.clocktower.engine.KillOutcome
@@ -126,7 +127,10 @@ private fun ExecutionSheetBody(
 
         Text("Before you execute:", style = MaterialTheme.typography.titleSmall)
         PreviewLine(preview)
-        for (consequence in consequences) {
+        // The funnel's verdict line above already carries the reason AND the
+        // sentence to say; a row that repeats either of them is the same fact a
+        // third time on the one screen that must be read (C2-5).
+        for (consequence in visibleConsequences(preview, consequences)) {
             Text(
                 "! ${consequence.headline}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -291,20 +295,49 @@ fun executeLabel(preview: KillOutcome, name: String): String = when (preview) {
 
 @Composable
 private fun PreviewLine(preview: KillOutcome) {
-    val (text, color) = when (preview) {
-        is KillOutcome.Dies ->
-            preview.reason.ifBlank { "Nothing stops it — they die." } to EmberRed
-
-        is KillOutcome.Prevented -> "${preview.reason}\n${preview.announce}" to PoisonGreen
-        is KillOutcome.Spends ->
-            ((preview.inner as? KillOutcome.Prevented)?.reason
-                ?: "They survive, and the ability is spent.") to PoisonGreen
-
-        is KillOutcome.RegistersDead -> preview.reason to PaleGold
-        is KillOutcome.Redirect -> preview.reason to PaleGold
-        is KillOutcome.Choice -> preview.question to AgedGold
-        KillOutcome.AlreadyDead ->
-            "A dead player cannot die again — but the execution still counts." to FadedInk
+    val color = when (preview) {
+        is KillOutcome.Dies -> EmberRed
+        is KillOutcome.Prevented, is KillOutcome.Spends -> PoisonGreen
+        is KillOutcome.RegistersDead, is KillOutcome.Redirect -> PaleGold
+        is KillOutcome.Choice -> AgedGold
+        KillOutcome.AlreadyDead -> FadedInk
     }
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
+    Text(previewText(preview), style = MaterialTheme.typography.bodyMedium, color = color)
+}
+
+/**
+ * The funnel's verdict, in the words the sheet prints it in. Pure so
+ * [visibleConsequences] can compare against exactly what is on screen (and so
+ * `tools/uicheck` can measure both).
+ */
+fun previewText(preview: KillOutcome): String = when (preview) {
+    is KillOutcome.Dies -> preview.reason.ifBlank { "Nothing stops it — they die." }
+    is KillOutcome.Prevented -> "${preview.reason}\n${preview.announce}"
+    is KillOutcome.Spends ->
+        (preview.inner as? KillOutcome.Prevented)?.reason
+            ?: "They survive, and the ability is spent."
+
+    is KillOutcome.RegistersDead -> preview.reason
+    is KillOutcome.Redirect -> preview.reason
+    is KillOutcome.Choice -> preview.question
+    KillOutcome.AlreadyDead -> "A dead player cannot die again — but the execution still counts."
+}
+
+/**
+ * The consequence rows worth printing under [preview].
+ *
+ * A row whose headline the verdict line already says is dropped: the Vizier's
+ * sheet stated one protection three times — the verdict line, a
+ * `carries DAY_IMMUNE` row and a per-character row — on the last screen before
+ * an irreversible action (playtest C2-5). The row is only dropped when the
+ * verbatim sentence is already up there, so a row that ADDS something (the
+ * Saint's "EVIL WINS", the Undertaker's learn, a Pacifist choice) always
+ * survives.
+ */
+fun visibleConsequences(
+    preview: KillOutcome,
+    consequences: List<ExecutionConsequence>,
+): List<ExecutionConsequence> {
+    val said = previewText(preview)
+    return consequences.filterNot { it.headline.isNotBlank() && it.headline.trim() in said }
 }

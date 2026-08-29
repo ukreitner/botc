@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -40,10 +41,12 @@ import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Character
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Ledger
+import com.clocktower.engine.Verdict
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.platform.rememberDictation
 import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.theme.AgedGold
+import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.FadedInk
 
 /**
@@ -275,3 +278,104 @@ private fun ClaimsGrid(
 
 /** Source ids the composer always offers, even with an empty collect list. */
 val DEFAULT_STATEMENT_SOURCES: List<String> = listOf(Ledger.Sources.CLAIM)
+
+/**
+ * One recorded line, opened (§C, playtest C2-8).
+ *
+ * The composer and the game log were both good; the ROW was dead — no tap, no
+ * ✎, no delete, and the tri-state verdict only where a rule reads it. A
+ * mis-attributed or mistyped statement could only be left standing. Everything
+ * a row can owe is here: the words, the verdict where one is wanted, and the
+ * delete for a line that was never said.
+ *
+ * The verbs are the engine's own (`Ledger.edit` / `setVerdict` / `delete`
+ * through the view model), so every change is one undoable update.
+ */
+@Composable
+fun SaidEditDialog(
+    viewModel: GameViewModel,
+    row: SaidRow,
+    onDismiss: () -> Unit,
+) {
+    var text by rememberSaveable(row.entryId) { mutableStateOf(row.text) }
+    var confirmDelete by rememberSaveable(row.entryId) { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(row.speaker + " said") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("In their words") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (row.sourceName.isNotEmpty()) {
+                    Text(
+                        "Recorded as ${row.sourceName}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = FadedInk,
+                    )
+                }
+                if (row.wantsVerdict) {
+                    Text("Was it true?", style = MaterialTheme.typography.titleSmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (verdict in listOf(Verdict.TRUE, Verdict.FALSE, Verdict.UNJUDGED)) {
+                            FilterChip(
+                                selected = row.verdict == verdict,
+                                onClick = { viewModel.setLedgerVerdict(row.entryId, verdict) },
+                                label = { Text(verdictLabel(verdict)) },
+                            )
+                        }
+                    }
+                }
+                if (confirmDelete) {
+                    Text(
+                        "Delete this line? It leaves the log as well.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = EmberRed,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                enabled = text.isNotBlank(),
+                onClick = {
+                    if (text.trim() != row.text) {
+                        viewModel.editLedgerEntry(row.entryId) { it.copy(text = text.trim()) }
+                    }
+                    onDismiss()
+                },
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                TextButton(
+                    onClick = {
+                        if (confirmDelete) {
+                            viewModel.deleteLedgerEntry(row.entryId)
+                            onDismiss()
+                        } else {
+                            confirmDelete = true
+                        }
+                    },
+                ) { Text(if (confirmDelete) "Yes, delete it" else "Delete") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+/**
+ * The verdict in words, not only as a glyph. The three the day screen offers
+ * are the tri-state; the Savant's pair verdicts get their own wording so a row
+ * that already carries one is never mislabelled.
+ */
+fun verdictLabel(verdict: Verdict): String = when (verdict) {
+    Verdict.TRUE -> "✓ true"
+    Verdict.FALSE -> "✗ false"
+    Verdict.UNJUDGED -> "? not judged"
+    else -> verdict.name.lowercase().replace('_', ' ')
+}

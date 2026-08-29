@@ -76,9 +76,13 @@ fun SeatRingPanel(
     nomineeId: Long?,
     /** The storyteller has explicitly reopened a closed day. */
     reopened: Boolean,
+    /** Both taps have landed: the ring stands down so the tally fits (C2-9). */
+    collapsed: Boolean,
     onPickSeat: (Long) -> Unit,
     onSay: (Long) -> Unit,
     onReopen: () -> Unit,
+    /** Brings the ring back to change either half of the pair. */
+    onChangePair: () -> Unit,
 ) {
     val lookup: (String) -> Character? = viewModel::characterById
     val ring = remember(state, nominatorId, nomineeId) {
@@ -106,6 +110,30 @@ fun SeatRingPanel(
                     TextButton(onClick = onReopen) { Text("Nominate anyway") }
                 }
             }
+        }
+        if (collapsed) {
+            // The ring's whole job was the two taps; done, it hands the screen
+            // to the tally (C2-9). What it was showing in its centre — the pair
+            // — is all that is left, plus the way back.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${ring.firstOrNull { it.pick == SeatPick.NOMINATOR }?.name ?: "?"} » " +
+                        (ring.firstOrNull { it.pick == SeatPick.NOMINEE }?.name ?: "?"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = EmberRed,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = onChangePair) { Text("Change") }
+            }
+            return@Column
         }
         Text(
             if (locked) {
@@ -597,18 +625,32 @@ private fun VotePanel(
         Text("· $reason", style = MaterialTheme.typography.bodyMedium, color = FadedInk)
     }
 
-    if (!hidden) {
-        Text(
-            view.outcomeLine,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = if (view.result == NominationResult.ABOUT_TO_DIE) {
-                EmberRed
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-        )
-    }
+    // The verdict is the one thing the whole secret-vote surface exists to
+    // keep (D80, C2-12): concealed like the tally, revealed by the same
+    // hold-to-peek, and rendered even while hidden so the row never simply
+    // vanishes and leaves the panel looking unfinished.
+    Text(
+        if (hidden) NominationModel.HIDDEN_OUTCOME else view.outcomeLine,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = when {
+            hidden -> FadedInk
+            view.result == NominationResult.ABOUT_TO_DIE -> EmberRed
+            else -> MaterialTheme.colorScheme.onSurface
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (view.secret) {
+                    Modifier.combinedClickable(
+                        onClick = { peek = false },
+                        onLongClick = { peek = true },
+                    )
+                } else {
+                    Modifier
+                },
+            ),
+    )
 
     // `DayRules.record` refuses an illegal nomination and returns the state
     // untouched, so a live Lock in on a closed day cleared the draft and wrote

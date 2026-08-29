@@ -22,6 +22,12 @@ data class SaidRow(
     val speaker: String,
     /** The whole row in one line: `Bo » "Fay is the Imp"`. */
     val line: String,
+    /**
+     * The words as recorded, with none of the row's framing — what the edit
+     * dialog opens with, so a mistyped statement can be corrected rather than
+     * left standing (C2-8).
+     */
+    val text: String,
     val sourceId: String,
     /** Character name for the source, or "" for a plain claim / free note. */
     val sourceName: String,
@@ -58,6 +64,7 @@ object SaidModel {
             speakerId = entry.actorId,
             speaker = speaker ?: storytellerLabel(entry.kind),
             line = line(speaker, sourceName, entry),
+            text = entry.text.ifBlank { entry.shown },
             sourceId = entry.sourceId,
             sourceName = sourceName,
             verdict = entry.verdict,

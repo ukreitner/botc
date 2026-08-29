@@ -283,8 +283,14 @@ object DayRules {
         val triggers = triggersFor(state, lookup, nominatorId, nomineeId)
         return NominationCheck(
             legal = blockers.isEmpty(),
-            blockers = blockers,
-            cautions = cautions,
+            // One reason, one row, one override. A closed day is a fact about
+            // the DAY, so `canNominate` and `canBeNominated` both refuse with
+            // the byte-identical sentence — and the panel drew it twice, each
+            // with its own [Allow anyway] (playtest C2-6, the residue of C-8).
+            // Deduping here rather than in the panel keeps every caller honest:
+            // the log and the web build read the same list.
+            blockers = blockers.distinct(),
+            cautions = cautions.distinct(),
             triggers = triggers,
         )
     }
@@ -1084,6 +1090,42 @@ object DayRules {
     }
 
     // ---- existing helpers, moved here from GameActions in WP0 ----
+
+    /**
+     * A Traveller the table voted out today who is still in the game.
+     *
+     * The exile itself is a separate, explicit tap ([Exile] on the nomination
+     * row), and until playtest C2-3 nothing anywhere noticed when it was
+     * missed: the strip said "No one is about to die.", the DUSK card said
+     * there was no execution today, and the dusk sheet's BEFORE YOU MOVE ON —
+     * the same section that warns about an un-executed block — was empty. The
+     * night then ran with the traveller seated, holding their vote and counted
+     * in the execution threshold.
+     *
+     * NOT scoped to today, unlike [aboutToDie]: a passing exile vote *is* the
+     * exile by the rules, so the obligation outlives the day it was taken on
+     * and the warning keeps standing until the seat leaves. Withdrawing the
+     * nomination is the way out for a vote the storyteller ruled did not count.
+     */
+    fun exileOwed(state: GameState): Long? = state.nominations
+        .lastOrNull {
+            it.isExile &&
+                it.result == NominationResult.ABOUT_TO_DIE &&
+                state.player(it.nomineeId)?.alive == true
+        }
+        ?.nomineeId
+
+    /**
+     * How many votes the NEXT nomination must reach to beat today's standing
+     * high — the one meaning of "to beat" anywhere in the app.
+     *
+     * The day screen had two: the stat strip appended "· 5 to beat" (the
+     * standing high-water) while the tie line one row below said "6 to beat it"
+     * (the number a vote must reach). Same words, different numbers, one line
+     * apart on screen (playtest C2-10). Zero when nothing is standing.
+     */
+    fun votesToBeat(state: GameState): Int =
+        highestVotesToday(state).takeIf { it > 0 }?.plus(1) ?: 0
 
     /** Highest passing vote tally so far today (for tie/beat logic). */
     fun highestVotesToday(state: GameState): Int =

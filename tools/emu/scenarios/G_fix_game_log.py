@@ -56,15 +56,19 @@ STEPS = [
     ("sleep", 0.8),
     ("tap", "^Player 5$"),
     ("sleep", 1.2),
-    ("swipe", ["up", "400"]),
-    ("sleep", 0.8),
-    ("tapxy", [176, 1620]),
-    ("tapxy", [407, 1620]),
-    ("tapxy", [638, 1620]),
-    ("tapxy", [869, 1620]),
+    # By NAME, not by coordinate: since C2-9 the ring collapses to the pair
+    # once both halves are picked, so the whole vote panel is on screen and the
+    # old fixed chip coordinates addressed the card above it. The collapsed
+    # pair reads "Player 1 » Player 5", which an anchored "^Player N$" does not
+    # match, so the chips stay unambiguous.
+    ("tap", "^Player 6$"),
+    ("sleep", 0.4),
+    ("tap", "^Player 7$"),
+    ("sleep", 0.4),
+    ("tap", "^Player 8$"),
+    ("sleep", 0.4),
+    ("tap", "^Player 1$"),
     ("sleep", 1.0),
-    ("swipe", ["up", "500"]),
-    ("sleep", 0.8),
     ("tap", "Lock in:"),
     ("sleep", 1.5),
     ("tap", "^Execute$"),

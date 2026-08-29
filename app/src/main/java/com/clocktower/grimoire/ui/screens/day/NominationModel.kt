@@ -320,6 +320,25 @@ object NominationModel {
         closedReason.isNotBlank() && !reopened
 
     /**
+     * True once the ring has done its job and should get out of the way (C-15,
+     * C2-9).
+     *
+     * The ring is pinned so the two taps never cost a scroll — but it kept its
+     * whole share of the screen afterwards, leaving the list a 760 px viewport
+     * for a card far taller than that: the vote chips landed at y 1925–1938 (13
+     * visible pixels of 126) and **Lock in** was not rendered at all. Every
+     * nomination therefore cost one deliberate swipe between "who nominates"
+     * and a countable tally, with the table waiting.
+     *
+     * Shrinking the ring is not available: `ringRadiusYDp` already returns the
+     * SMALLEST radius that keeps two 48 dp targets apart, so anything less
+     * overlaps. So the ring collapses to the one line it was showing in its
+     * centre anyway — the pair — with the taps one [Change] away.
+     */
+    fun ringCollapsed(nominatorId: Long?, nomineeId: Long?, forcedOpen: Boolean): Boolean =
+        nominatorId != null && nomineeId != null && !forcedOpen
+
+    /**
      * True when **Lock in** would write nothing: `DayRules.record` refuses an
      * illegal nomination and returns the state untouched, so the button must
      * say so instead of clearing the draft.
@@ -412,4 +431,18 @@ object NominationModel {
 
     /** How many "may not vote" lines the panel prints before it summarises. */
     const val MAX_INELIGIBLE_LINES: Int = 3
+
+    /**
+     * The outcome line while the vote is secret and nobody is peeking (D80,
+     * playtest C2-12).
+     *
+     * The tally is `•••`, the recorded row is `••• votes · •••` and the button
+     * reads "Lock in silently" — and between them the panel printed
+     * "Player 6 is about to die." in plain text, which is the one thing the
+     * whole surface exists to keep. The line is concealed the same way and
+     * revealed by the same hold-to-peek. It never says "someone", either: the
+     * stat strip already carries that much, and this row is where a shoulder is
+     * most likely to be reading.
+     */
+    const val HIDDEN_OUTCOME: String = "••• — hold the tally to peek"
 }

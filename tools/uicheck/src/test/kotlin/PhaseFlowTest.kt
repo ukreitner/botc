@@ -20,6 +20,11 @@ import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.StepGate
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.screens.DuskActions
+import com.clocktower.grimoire.ui.screens.checklistFooter
+import com.clocktower.grimoire.ui.screens.checklistTitle
+import com.clocktower.grimoire.ui.screens.declareLabel
+import com.clocktower.grimoire.ui.screens.declaredWinner
+import com.clocktower.grimoire.ui.screens.endsTheGame
 import com.clocktower.grimoire.ui.screens.PhaseFlow
 import com.clocktower.grimoire.ui.screens.PhaseRequest
 import org.junit.Assert.assertEquals
@@ -237,6 +242,108 @@ class PhaseFlowTest {
         )
         assertEquals("No execution", DuskActions.secondaryLabel("Bea", executionSpent = false))
         assertTrue(DuskActions.secondaryRecordsNoExecution("Bea", executionSpent = false))
+    }
+
+    // ------------------------------------------------------------------
+    // ENDINGS — one decision, wherever an advisory surfaces (C2-1, C2-2)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `an ending advisory is offered, a briefing advisory is not`() {
+        val vortox = WinCheck.Advisory(
+            goodWins = false,
+            reason = "No execution today and the Vortox is alive and sober — evil wins.",
+            ruleId = WinCheck.RULE_VORTOX_DUSK,
+            blocking = true,
+        )
+        assertTrue("the dusk sheet must offer it, not print it", endsTheGame(vortox))
+        assertFalse(declaredWinner(vortox))
+        assertEquals("Declare evil victory", declareLabel(vortox))
+
+        val mayor = WinCheck.Advisory(
+            goodWins = true,
+            reason = "Three players live and nobody was executed — the Mayor wins for good.",
+            ruleId = WinCheck.RULE_MAYOR_DUSK,
+            blocking = true,
+        )
+        assertTrue(endsTheGame(mayor))
+        assertTrue(declaredWinner(mayor))
+        assertEquals("Declare good victory", declareLabel(mayor))
+
+        // The Zombuul's row is a briefing: no winner, so no declare button.
+        val zombuul = WinCheck.Advisory(
+            goodWins = null,
+            reason = "Nobody died today — the Zombuul kills tonight.",
+            ruleId = WinCheck.RULE_ZOMBUUL_NIGHT,
+        )
+        assertFalse("a conditional wake does not end a game", endsTheGame(zombuul))
+    }
+
+    @Test
+    fun `the dusk briefing carries the same advisory the sheet renders, keyed for dedupe`() {
+        // C2-2: the sheet rendered `advisories` AND the briefing line the same
+        // advisory produced. Both are keyed on `ruleId` via BriefingItem.sourceId,
+        // which is what the sheet filters on.
+        var state = Phases.advancePhase(seated(), lookup) // night 1
+        state = Phases.advancePhase(state, lookup) // day 1
+        val dusk = PhaseFlow.request(state, lookup) as PhaseRequest.ConfirmDusk
+        val ruleIds = WinCheck.duskCheck(state, lookup).map { it.ruleId }.toSet()
+        assertTrue(ruleIds.isNotEmpty())
+        assertTrue(
+            "every advisory reaches the briefing under its own ruleId: " +
+                dusk.briefing.items.map { it.sourceId to it.text },
+            ruleIds.all { id -> dusk.briefing.items.any { it.sourceId == id } },
+        )
+    }
+
+    // ------------------------------------------------------------------
+    // The checklist header follows the phase (C2-7, D2-9)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `the checklist is titled for the phase it is raised in`() {
+        assertEquals("Before the first night", checklistTitle(Phase.SETUP))
+        assertTrue(
+            "the guard the caption talks about only exists in setup",
+            checklistFooter(Phase.SETUP).contains("Begin night"),
+        )
+
+        for (phase in listOf(Phase.NIGHT, Phase.DAY)) {
+            val title = checklistTitle(phase)
+            assertFalse("no 'first night' on day 2: '$title'", title.contains("first night"))
+            assertEquals("Setup still owed", title)
+            val footer = checklistFooter(phase)
+            assertFalse(
+                "no guard the storyteller passed two phases ago: '$footer'",
+                footer.contains("Begin night"),
+            )
+            assertTrue(footer, footer.contains("Nothing is blocked"))
+        }
+    }
+
+    @Test
+    fun `an owed exile is named on the primary without disturbing the three D77 labels`() {
+        // With nothing owed the labels are byte-identical to D77's.
+        assertEquals(
+            "NO EXECUTION — BEGIN NIGHT 4 →",
+            DuskActions.confirmLabel(4, onBlockName = null, executionSpent = false),
+        )
+        // C2-3: the exile the table voted for is named, and the record it is
+        // about to write is still readable behind it.
+        assertEquals(
+            "EXILE BEGGED · NO EXECUTION — BEGIN NIGHT 4 →",
+            DuskActions.confirmLabel(4, null, executionSpent = false, exileName = "Begged"),
+        )
+        assertEquals(
+            "EXILE BEGGED · EXECUTE BEA & BEGIN NIGHT",
+            DuskActions.confirmLabel(4, "Bea", executionSpent = false, exileName = "Begged"),
+        )
+        assertEquals(
+            "EXILE BEGGED · BEGIN NIGHT 4 →",
+            DuskActions.confirmLabel(4, null, executionSpent = true, exileName = "Begged"),
+        )
+        // The exile is not the day's execution: it never changes what is recorded.
+        assertTrue(DuskActions.confirmRecordsNoExecution(onBlockName = null, executionSpent = false))
     }
 
     @Test

@@ -413,6 +413,150 @@ class DayEngineTest {
         assertFalse(assertNotNull(exile.player(2)).ghostVoteUsed, "an exile spends no ghost vote")
     }
 
+    /**
+     * C2-3: a passed exile the storyteller never carried out was invisible —
+     * the strip, the DUSK card and the dusk sheet's BEFORE YOU MOVE ON all said
+     * nothing, and the night ran with the traveller seated and voting.
+     */
+    @Test
+    fun `a passed exile nobody carried out is owed, and says so at dusk`() {
+        var state = day1(9)
+        state = assign(state, 8L, "beggar", traveller = true)
+        assertNull(DayRules.exileOwed(state), "nothing is owed before the vote")
+
+        state = DayRules.record(
+            state,
+            lookup,
+            nomination(state, 0L, 8L).copy(
+                isExile = true,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+        assertEquals(8L, DayRules.exileOwed(state))
+
+        val owed = Briefings.at(state, lookup, BriefingSlot.DUSK)
+            .of(BriefingKind.TODO_ASK)
+            .single { it.key.contains(":exile-owed:") }
+        assertEquals(BriefingSeverity.ALERT, owed.severity)
+        assertEquals(8L, owed.playerId)
+        assertEquals("${Briefings.ACTION_EXILE}8", owed.actionId)
+        assertTrue("has not left the game" in owed.text, owed.text)
+
+        // Carrying it out clears the obligation and the alive count with it.
+        val before = state.aliveCountWithTravellers
+        state = Execution.exile(state, lookup, 8L)
+        assertNull(DayRules.exileOwed(state))
+        assertEquals(before - 1, state.aliveCountWithTravellers)
+        assertTrue(
+            Briefings.at(state, lookup, BriefingSlot.DUSK).items.none {
+                it.key.contains(":exile-owed:")
+            },
+        )
+    }
+
+    @Test
+    fun `an exile owed outlives the day it was voted on, and a withdrawal clears it`() {
+        var state = day1(9)
+        state = assign(state, 8L, "beggar", traveller = true)
+        state = DayRules.record(
+            state,
+            lookup,
+            nomination(state, 0L, 8L).copy(
+                isExile = true,
+                result = NominationResult.ABOUT_TO_DIE,
+            ),
+        )
+        // A passing exile vote IS the exile: the obligation does not expire.
+        val tomorrow = state.copy(cycle = state.cycle + 1)
+        assertEquals(8L, DayRules.exileOwed(tomorrow))
+
+        // Withdrawing the nomination is the way out for a vote that did not count.
+        val withdrawn = tomorrow.copy(
+            nominations = tomorrow.nominations.map {
+                if (it.isExile) it.copy(result = NominationResult.WITHDRAWN) else it
+            },
+        )
+        assertNull(DayRules.exileOwed(withdrawn))
+    }
+
+    /**
+     * B2-4's other half: a death entered from the seat sheet with cause
+     * EXECUTION left the day looking un-executed, so the dusk sheet then wrote
+     * NO_EXECUTION over it and the Vortox/Mayor/Zombuul read the wrong day.
+     */
+    @Test
+    fun `a death entered as an execution records the day's execution`() {
+        var state = day1()
+        assertNull(DayRules.executionToday(state))
+
+        val cause = KillCause(DeathCause.EXECUTION)
+        state = Deaths.attempt(state, lookup, 3L, cause).state
+        state = Execution.recordDeathAsExecution(state, lookup, 3L, cause)
+
+        val record = assertNotNull(DayRules.executionToday(state))
+        assertEquals(ExecutionOutcome.DIED, record.outcome)
+        assertEquals(ExecutionVia.STORYTELLER, record.via)
+        assertEquals(3L, record.playerId)
+        assertTrue(DayRules.executionSpent(state))
+        // …and the dusk sheet can no longer declare the day execution-free.
+        assertEquals(state, Execution.noExecution(state))
+        assertTrue(DayRules.nominationsClosed(state, lookup))
+    }
+
+    @Test
+    fun `an execution the funnel prevented is still the day's execution`() {
+        var state = day1()
+        state = assign(state, 3L, "vizier")
+        val cause = KillCause(DeathCause.EXECUTION)
+        state = Deaths.attempt(state, lookup, 3L, cause).state
+        state = Execution.recordDeathAsExecution(state, lookup, 3L, cause)
+
+        val record = assertNotNull(DayRules.executionToday(state))
+        assertEquals(ExecutionOutcome.SURVIVED, record.outcome)
+        assertTrue(assertNotNull(state.player(3)).alive)
+        assertTrue(DayRules.executionSpent(state), "SURVIVED still spends the day's execution")
+    }
+
+    @Test
+    fun `only an execution by day, on a seat that can be executed, writes a record`() {
+        val day = day1()
+        // Not an execution.
+        assertEquals(
+            day,
+            Execution.recordDeathAsExecution(day, lookup, 3L, KillCause(DeathCause.DEMON_KILL)),
+        )
+        // Not by day.
+        val night = GameActions.advancePhase(day)
+        assertEquals(
+            night,
+            Execution.recordDeathAsExecution(night, lookup, 3L, KillCause(DeathCause.EXECUTION)),
+        )
+        // Travellers are exiled, never executed.
+        val traveller = assign(day, 3L, "beggar", traveller = true)
+        assertEquals(
+            traveller,
+            Execution.recordDeathAsExecution(traveller, lookup, 3L, KillCause(DeathCause.EXECUTION)),
+        )
+        // A day that already has its execution is not given a second one.
+        val settled = Execution.execute(day, lookup, playerId = 2L)
+        assertEquals(
+            settled,
+            Execution.recordDeathAsExecution(settled, lookup, 3L, KillCause(DeathCause.EXECUTION)),
+        )
+    }
+
+    @Test
+    fun `an exile that failed the vote owes nothing`() {
+        var state = day1(9)
+        state = assign(state, 8L, "beggar", traveller = true)
+        state = DayRules.record(
+            state,
+            lookup,
+            nomination(state, 0L, 8L).copy(isExile = true, result = NominationResult.SAFE),
+        )
+        assertNull(DayRules.exileOwed(state))
+    }
+
     @Test
     fun `the Butler's Master is a standing fact of the day briefing`() {
         // Playtest C-6: a living Butler with a placed Master read
@@ -999,6 +1143,74 @@ class DayEngineTest {
         assertTrue(assertNotNull(state.player(3)).alive)
         assertEquals(ExecutionOutcome.SURVIVED, state.executions.single().outcome)
         assertEquals("vizier", state.executions.single().preventedBy)
+    }
+
+    /**
+     * C2-4 / C2-5: the Vizier's confirmation sheet stated one protection three
+     * times, once of them as the raw enum constant `DAY_IMMUNE`.
+     */
+    @Test
+    fun `the Vizier's execution preview states the protection once, in English`() {
+        var state = day1()
+        state = assign(state, 3L, "vizier")
+        val rows = Execution.previewConsequences(state, lookup, playerId = 3L)
+        val text = rows.joinToString("\n") { it.headline + " " + it.detail }
+
+        assertFalse("DAY_IMMUNE" in text, "no enum constant reaches the storyteller: $text")
+        // The funnel's verdict line already states the protection; the rows say
+        // what to DO about it, exactly once, and never repeat the sentence.
+        assertEquals(
+            0,
+            rows.count { "cannot die during the day" in it.headline },
+            "the verdict line owns the sentence; the rows must not repeat it: $text",
+        )
+        val credited = rows.single { it.sourceId == "vizier" }
+        assertTrue("remains alive" in credited.headline, credited.headline)
+        assertTrue("Vizier" in credited.detail, credited.detail)
+    }
+
+    /**
+     * The same preview has to CARRY the credit now — without it every dedupe
+     * that compares against `preventedBy` runs against an empty string.
+     */
+    @Test
+    fun `an execution preview credits the save the way the record will`() {
+        var state = day1()
+        state = assign(state, 3L, "vizier")
+        state = assign(state, 4L, "sailor")
+        assertEquals("vizier", Execution.previewRecord(state, lookup, 3L).preventedBy)
+        assertEquals("sailor", Execution.previewRecord(state, lookup, 4L).preventedBy)
+        // …and a plain seat is credited to nobody.
+        assertEquals("", Execution.previewRecord(state, lookup, 5L).preventedBy)
+        assertEquals(ExecutionOutcome.DIED, Execution.previewRecord(state, lookup, 5L).outcome)
+
+        // The applied record agrees with the preview it was shown.
+        val applied = Execution.execute(state, lookup, playerId = 3L).executions.single()
+        assertEquals(Execution.previewRecord(state, lookup, 3L).preventedBy, applied.preventedBy)
+    }
+
+    /** A hand-placed protection with a real label is named by that label. */
+    @Test
+    fun `a labelled protection is named by its token, not by its kind`() {
+        var state = day1()
+        state = Effects.place(
+            state = state,
+            target = 5L,
+            kind = EffectKind.SURVIVES_EXECUTION,
+            sourceCharacterId = "devilsadvocate",
+            sourcePlayerId = 0L,
+            until = Until.DUSK,
+            label = "Survives Execution",
+        ).state
+        val rows = Execution.previewConsequences(state, lookup, playerId = 5L)
+        assertTrue(
+            rows.any { it.sourceId == "devilsadvocate" },
+            rows.joinToString("\n") { it.headline },
+        )
+        assertFalse(
+            rows.any { "SURVIVES_EXECUTION" in it.headline },
+            "never the enum constant",
+        )
     }
 
     // ==================================================================
