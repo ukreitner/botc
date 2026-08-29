@@ -119,4 +119,36 @@ class DayRulesTest {
         )
         assertTrue(back.houseRules.secretVotes, "and the flag survives a round trip")
     }
+
+    /**
+     * C2-6: a closed day refuses BOTH halves of a nomination with the same
+     * sentence, and the panel drew one row (and one [Allow anyway]) per entry.
+     */
+    @Test
+    fun `a closed day states its blocker once, not once per half`() {
+        val closed = Execution.noExecution(day1())
+        assertTrue(DayRules.nominationsClosed(closed, lookup))
+        // Both halves refuse, in the same words.
+        val reason = DayRules.canNominate(closed, lookup, 0L).reason
+        assertEquals(reason, DayRules.canBeNominated(closed, lookup, 1L).reason)
+        assertTrue(reason.isNotBlank())
+
+        val check = DayRules.checkNomination(closed, lookup, nominatorId = 0L, nomineeId = 1L)
+        assertFalse(check.legal)
+        assertEquals(listOf(reason), check.blockers, "one reason, one row, one override")
+    }
+
+    @Test
+    fun `an ordinary blocked nomination still lists both distinct reasons`() {
+        var state = day1()
+        state = DayRules.record(
+            state,
+            lookup,
+            Nomination(day = state.cycle, nominatorId = 0L, nomineeId = 1L, votes = 0),
+        )
+        // Ana has nominated; Bo has been nominated. Two different sentences.
+        val check = DayRules.checkNomination(state, lookup, nominatorId = 0L, nomineeId = 1L)
+        assertEquals(2, check.blockers.size, check.blockers.toString())
+        assertEquals(check.blockers, check.blockers.distinct())
+    }
 }

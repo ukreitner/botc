@@ -283,8 +283,14 @@ object DayRules {
         val triggers = triggersFor(state, lookup, nominatorId, nomineeId)
         return NominationCheck(
             legal = blockers.isEmpty(),
-            blockers = blockers,
-            cautions = cautions,
+            // One reason, one row, one override. A closed day is a fact about
+            // the DAY, so `canNominate` and `canBeNominated` both refuse with
+            // the byte-identical sentence — and the panel drew it twice, each
+            // with its own [Allow anyway] (playtest C2-6, the residue of C-8).
+            // Deduping here rather than in the panel keeps every caller honest:
+            // the log and the web build read the same list.
+            blockers = blockers.distinct(),
+            cautions = cautions.distinct(),
             triggers = triggers,
         )
     }
