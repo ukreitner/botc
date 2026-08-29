@@ -212,6 +212,12 @@ fun NightScreen(
                 } else {
                     NightRowLine(
                         row = row,
+                        // While an obligation holds a row open (the Imp's star
+                        // pass), no other row can be opened. It used to be
+                        // drawn as an ordinary control that silently did
+                        // nothing (playtest B2-6): the card now says the sheet
+                        // is on hold and the rows stop offering a tap.
+                        locked = pinned != null,
                         onOpen = { openRow = openRowKey(state.cycle, row.token) },
                         onRunAnyway = {
                             forced = forced + row.token
@@ -343,6 +349,8 @@ private fun NightRowLine(
     onOpen: () -> Unit,
     onRunAnyway: () -> Unit,
     onUndo: () -> Unit,
+    /** An unanswered obligation is holding another row open: this one cannot be. */
+    locked: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -355,7 +363,7 @@ private fun NightRowLine(
                     MaterialTheme.colorScheme.surface
                 },
             )
-            .clickable(onClick = onOpen)
+            .then(if (locked) Modifier else Modifier.clickable(onClick = onOpen))
             .padding(horizontal = 8.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 44.dp)) {
@@ -395,7 +403,7 @@ private fun NightRowLine(
             // The ONE way to un-tick a step. Every primary is idempotent, so
             // correcting yourself is a deliberate, separate act and it lives
             // here, on the collapsed line (fix wave 1, Fix-B).
-            if (row.undo) {
+            if (row.undo && !locked) {
                 Text(
                     text = "[Undo]",
                     fontSize = NIGHT_MIN_SP.sp,
@@ -418,17 +426,19 @@ private fun NightRowLine(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                Text(
-                    text = "[Run anyway]",
-                    fontSize = NIGHT_MIN_SP.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AgedGold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onRunAnyway)
-                        .heightIn(min = 44.dp)
-                        .padding(horizontal = 10.dp, vertical = 12.dp),
-                )
+                if (!locked) {
+                    Text(
+                        text = "[Run anyway]",
+                        fontSize = NIGHT_MIN_SP.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AgedGold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onRunAnyway)
+                            .heightIn(min = 44.dp)
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                    )
+                }
             }
         }
     }

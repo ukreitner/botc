@@ -611,6 +611,15 @@ private fun NightPromptAsk(
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
+    // The sheet IS pinned here until this is answered, and nothing said so:
+    // every collapsed row was drawn normally, dumped as clickable and did
+    // nothing at all when tapped (playtest B2-6).
+    Text(
+        text = SHEET_ON_HOLD,
+        fontSize = NIGHT_MIN_SP.sp,
+        lineHeight = nightSp(19f).sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     if (choices.isEmpty()) {
         if (card != null) {
             CardOffers(
@@ -883,6 +892,10 @@ private fun TokenPlacer(viewModel: GameViewModel, state: GameState, step: NightS
 
 /** How many false cards the card itself offers before the rest go in the drawer. */
 private const val MAX_LIE_CHIPS = 3
+
+/** Why the rest of the sheet does not respond while an obligation is owed (B2-6). */
+const val SHEET_ON_HOLD: String =
+    "Finish this first — the rest of tonight's sheet is on hold until this question is answered."
 
 /** Said out loud on a row whose computed answer is the storyteller's own (B2-2). */
 private const val STORYTELLER_ONLY_NOTE =
