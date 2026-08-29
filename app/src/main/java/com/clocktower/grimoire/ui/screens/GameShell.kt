@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.mandatorySystemGestures
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
@@ -30,6 +31,8 @@ import com.clocktower.grimoire.ui.components.ShowToolSheet
 import com.clocktower.grimoire.ui.components.dialogWindowBottomFix
 import com.clocktower.grimoire.ui.components.overlayBottomPadding
 import com.clocktower.grimoire.ui.components.overlaySafeAreaPadding
+import com.clocktower.grimoire.ui.components.rememberOverlayInsets
+import com.clocktower.grimoire.ui.components.sheetActionPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -51,6 +54,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
@@ -59,6 +63,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -637,13 +642,29 @@ fun GameShell(
 }
 
 /**
- * A Traveller joins mid-game: one dialog, one confirm (grimoire-and-seats §10).
+ * A Traveller joins mid-game: one sheet, one confirm (grimoire-and-seats §10).
  *
  * The old path was "Add seat" and then roughly sixteen taps across the grimoire
  * to give the seat a character and an alignment — and the alignment, which is
  * always the storyteller's choice for a Traveller, was never actually asked.
+ *
+ * ## Why this is a bottom sheet and not an `AlertDialog` (C2-11 / A2-6)
+ *
+ * The flow starts in a text field, so the IME is up for all of it. An
+ * `AlertDialog` is centred in the WHOLE window: with the content at its 440 dp
+ * maximum the button row landed at y 1522..1648 while the keyboard's top edge
+ * was y≈1506, so **[Seat them]** and **[Cancel]** were completely covered —
+ * and uiautomator still reported them as tappable, so a scripted or mis-aimed
+ * tap landed on the keyboard and the traveller was never seated. `audit`
+ * cannot see this: the nodes are inside the safe area and inside their own
+ * container.
+ *
+ * The statement composer never had the problem, and this now uses its shape:
+ * `imePadding()` on the whole sheet so it sits ON the keyboard, the rows
+ * scrolling in what is left, and the actions PINNED below them inside the safe
+ * area ([sheetActionPadding], measured outside the sheet).
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun TravellerJoinDialog(
     viewModel: GameViewModel,
@@ -667,14 +688,32 @@ private fun TravellerJoinDialog(
         character?.let { append(" as the ").append(it.name) }
     }
 
-    AlertDialog(
+    // Measured OUTSIDE the sheet: a ModalBottomSheet reports its insets as
+    // already consumed (components/SafeArea.kt).
+    val insets = rememberOverlayInsets()
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("A traveller joins") },
-        text = {
+        // Full height, so the content is bounded by the screen and `weight`
+        // below can give the list what is left after the pinned actions.
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .padding(horizontal = 20.dp),
+        ) {
             LazyColumn(
-                modifier = Modifier.heightIn(max = 440.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                item {
+                    Text(
+                        "A traveller joins",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = AgedGold,
+                    )
+                }
                 item {
                     OutlinedTextField(
                         value = name,
@@ -737,24 +776,33 @@ private fun TravellerJoinDialog(
                     Text(announce, style = MaterialTheme.typography.bodyMedium, color = AgedGold)
                 }
             }
-        },
-        confirmButton = {
-            FilledTonalButton(
-                enabled = name.isNotBlank(),
-                onClick = {
-                    viewModel.joinTraveller(
-                        name = name.trim(),
-                        afterPlayerId = afterId,
-                        characterId = characterId,
-                        evil = evil,
-                        announce = announce,
-                    )
-                    onDismiss()
-                },
-            ) { Text("Seat them") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+            // Pinned above the keyboard AND above the home indicator.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .sheetActionPadding(insets),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilledTonalButton(
+                    enabled = name.isNotBlank(),
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        viewModel.joinTraveller(
+                            name = name.trim(),
+                            afterPlayerId = afterId,
+                            characterId = characterId,
+                            evil = evil,
+                            announce = announce,
+                        )
+                        onDismiss()
+                    },
+                ) { Text("Seat them") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
+    }
 }
 
 /**
