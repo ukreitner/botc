@@ -503,6 +503,12 @@ fun NightCard(
                                         characterIds = pick.characterIds,
                                         yes = pick.yes,
                                         none = pick.none,
+                                        // A pick the constraints advise against
+                                        // (a dead target, say) was confirmed on
+                                        // the picker — resolve must not drop it.
+                                        overrideConstraints = picksOverrideConstraints(
+                                            state, viewModel::characterById, step, action, pick,
+                                        ),
                                     ),
                                 )
                                 if (isDawn) onDawn()

@@ -101,6 +101,26 @@ fun sortOf(action: NightAction?): TargetSort =
     (action as? ChoosePlayers)?.sort ?: TargetSort.SEAT_ORDER
 
 /**
+ * True when a confirmed answer includes a seat the ability's constraints
+ * advise against (dead, chosen last night…). The engine re-validates at
+ * resolve time and would silently DROP such a pick, so the input must carry
+ * the storyteller's override for the advised-against choice to land.
+ */
+fun picksOverrideConstraints(
+    state: GameState,
+    lookup: (String) -> Character?,
+    step: NightStep,
+    action: NightAction?,
+    pick: PickState,
+): Boolean {
+    if (pick.playerIds.isEmpty()) return false
+    val constraints = constraintsOf(action)
+    if (constraints.isEmpty()) return false
+    val byId = seatOptions(state, lookup, step).associateBy { it.id }
+    return pick.playerIds.any { id -> byId[id]?.let { blockedBecause(it, constraints) } != null }
+}
+
+/**
  * THE picker. One component for every ask on the night sheet, replacing the
  * four inconsistent ones the screen used to carry (defect #13) and the
  * horizontally scrolling seat row that had to be dragged to reach seat 11 of 12
@@ -166,8 +186,11 @@ private fun YesNoAsk(action: YesNo, pick: PickState, onPick: (PickState) -> Unit
 
 /**
  * Seats as a two-column grid of 64 dp rows in seat order, with the seat number
- * always visible. Seats this ability may not choose sit under a disclosure with
- * the reason — never selectable-then-disabled (defect #14).
+ * always visible. Seats the ability's constraints advise against sit under a
+ * disclosure with the reason — but they stay PICKABLE there (never a dead
+ * control that does nothing, defect #14, and never a wall: the storyteller
+ * overrules the app, not the other way round). Dead seats don't even go under
+ * the disclosure — "choose a player" at a real table includes the dead.
  */
 @Composable
 private fun SeatGrid(
@@ -183,8 +206,18 @@ private fun SeatGrid(
         sortOptions(seatOptions(state, viewModel::characterById, step), sortOf(action))
     }
     val max = picksAllowed(action)
-    val (open, blocked) = options.partition { blockedBecause(it, constraints) == null }
+    // "Alive" is ADVISORY: dead seats stay in the main grid, dimmed and
+    // captioned "dead", because at a real table players point at dead players
+    // all the time and the storyteller decides what stands. Every other
+    // constraint parks the seat under the disclosure — where it is still
+    // pickable, with its reason, never a wall.
+    val (open, blocked) = options.partition {
+        blockedBecause(it, constraints.filterNot { c -> c == TargetConstraint.ALIVE }) == null
+    }
     var showBlocked by remember(step.key.token) { mutableStateOf(false) }
+    // A blocked seat that IS picked (override) keeps its section open so the
+    // selection can be seen and un-tapped.
+    val expanded = showBlocked || blocked.any { it.id in pick.playerIds }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
         for (pair in open.chunked(2)) {
@@ -211,11 +244,17 @@ private fun SeatGrid(
         }
         if (blocked.isNotEmpty()) {
             NightChip(
-                label = if (showBlocked) "⌃ hide ${blocked.size} they cannot choose" else "⌄ ${blocked.size} they cannot choose",
+                label = if (expanded) {
+                    "⌃ hide ${blocked.size} they normally cannot choose"
+                } else {
+                    "⌄ ${blocked.size} they normally cannot choose"
+                },
                 tone = Tone.MUTED,
-                onClick = { showBlocked = !showBlocked },
+                onClick = { showBlocked = !expanded },
             )
-            if (showBlocked) {
+            if (expanded) {
+                // Pickable with the reason on the cell: the rule advises, the
+                // storyteller overrules (nothing in the app hard-blocks play).
                 for (pair in blocked.chunked(2)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                         for (option in pair) {
@@ -223,11 +262,17 @@ private fun SeatGrid(
                                 viewModel = viewModel,
                                 state = state,
                                 option = option,
-                                selected = false,
+                                selected = option.id in pick.playerIds,
                                 blockedReason = blockedBecause(option, constraints),
                                 modifier = Modifier.weight(1f),
-                                onClick = null,
-                            )
+                            ) {
+                                onPick(
+                                    pick.copy(
+                                        playerIds = togglePick(pick.playerIds, option.id, max),
+                                        none = false,
+                                    ),
+                                )
+                            }
                         }
                         if (pair.size == 1) Spacer(Modifier.weight(1f))
                     }

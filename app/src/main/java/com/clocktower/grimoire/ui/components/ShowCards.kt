@@ -161,14 +161,44 @@ private fun alignmentWord(evil: Boolean?): String = when (evil) {
 }
 
 /**
+ * True for a card the phone is physically handed over for — a token reveal the
+ * player studies, the bluffs, the sheet they point at. Exiting one of those
+ * lands on the privacy cover so the grimoire is never the next thing the
+ * player sees.
+ *
+ * Quick signals — a number, GOOD/EVIL, a phrase, pointing at names — are shown
+ * ACROSS the table while the storyteller keeps hold of the phone, so they
+ * close with a plain tap and skip the cover entirely (two press-and-holds to
+ * flash a "1" at the Chambermaid was theatre nobody asked for).
+ */
+val ShowCard.handOver: Boolean
+    get() = when (this) {
+        is ShowCard.CharacterCard,
+        is ShowCard.BluffsCard,
+        is ShowCard.SheetCard,
+        is ShowCard.MultiTokenCard,
+        -> true
+
+        is ShowCard.Message,
+        is ShowCard.NumberCard,
+        is ShowCard.AlignmentCard,
+        is ShowCard.PointCard,
+        -> false
+    }
+
+/**
  * Full-screen presentation of a [ShowCard].
  *
  * **The card body is not tappable** (defect #2 — a tap anywhere used to dismiss
  * it, including a tap by the player it was being shown to, dropping straight
- * back to the night sheet while the phone still pointed at their face). Exit is
- * a press-and-hold on a bottom-edge control, and **releasing it lands on the
- * privacy cover**, never on the grimoire: the storyteller turns the phone back
- * around and holds again (ux/night-screen §E).
+ * back to the night sheet while the phone still pointed at their face).
+ *
+ * For a [ShowCard.handOver] card the exit is a press-and-hold on a bottom-edge
+ * control, and **releasing it lands on the privacy cover**, never on the
+ * grimoire: the storyteller turns the phone back around and holds again
+ * (ux/night-screen §E). A quick signal — a number, GOOD/EVIL, a phrase, a
+ * point — never leaves the storyteller's hands, so its exit is a plain TAP TO
+ * CLOSE straight back to the sheet, no cover.
  *
  * ⟳ FLIP rotates the content 180° for a card held out to a player sitting
  * opposite — every card used to be upside down to its intended reader.
@@ -181,6 +211,7 @@ fun FullScreenShow(
     /** Shown on the cover the card exits onto: "Night 3". */
     coverCaption: String = "",
 ) {
+    val handed = card.handOver
     var covered by remember { mutableStateOf(false) }
     if (covered) {
         PrivacyCover(caption = coverCaption, onUnlock = onDismiss)
@@ -188,9 +219,12 @@ fun FullScreenShow(
     }
     var flipped by remember { mutableStateOf(false) }
     Dialog(
-        onDismissRequest = { /* the card is not dismissible by a tap; hold to close */ },
+        onDismissRequest = { if (!handed) onDismiss() },
         properties = DialogProperties(
-            dismissOnBackPress = false,
+            // A handed-over card refuses back-press: the player holding the
+            // phone must not be able to drop it onto the grimoire. A signal
+            // stays in the storyteller's hands, so back closes it like a tap.
+            dismissOnBackPress = !handed,
             dismissOnClickOutside = false,
             usePlatformDefaultWidth = false,
         ),
@@ -235,7 +269,13 @@ fun FullScreenShow(
                 FilledTonalButton(onClick = { flipped = !flipped }, modifier = Modifier.heightIn(min = 56.dp)) {
                     Text("⟳ FLIP", fontSize = 16.sp)
                 }
-                HoldToClose(onClose = { covered = true })
+                if (handed) {
+                    HoldToClose(onClose = { covered = true })
+                } else {
+                    FilledTonalButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 56.dp)) {
+                        Text("TAP TO CLOSE", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
@@ -560,8 +600,9 @@ fun ShowToolSheet(
             item {
                 Text("Show a card", style = MaterialTheme.typography.headlineSmall, color = AgedGold)
                 Text(
-                    "Hold the phone up to a player. The card cannot be tapped away — " +
-                        "hold the button at the bottom to close it.",
+                    "Hold the phone up to a player. Signals — numbers, GOOD/EVIL, phrases, " +
+                        "pointing — close with a tap. A card you hand over closes with a " +
+                        "press-and-hold and lands on the cover.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

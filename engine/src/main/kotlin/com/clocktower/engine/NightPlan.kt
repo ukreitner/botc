@@ -245,6 +245,14 @@ data class NightInput(
     val optionIds: List<String> = emptyList(),
     /** True when the storyteller made the choice rather than the player (Goon, lead D1). */
     val byStoryteller: Boolean = false,
+    /**
+     * True when the storyteller knowingly picked a seat the ability's
+     * constraints advise against — a dead target under an "alive" ability,
+     * last night's target again. Resolve-time constraint validation is skipped
+     * for this input: the guard advises, it never blocks. Seats must still
+     * exist; unknown ids are dropped as before.
+     */
+    val overrideConstraints: Boolean = false,
 )
 
 /**
@@ -1815,7 +1823,11 @@ data class NightPlan(
             }
             return picked
                 .distinct()
-                .filter { allowed(state, lookup, step, constraints, it) }
+                .filter { state.player(it) != null }
+                // An explicit storyteller override keeps every pick the UI let
+                // through — the picker showed the "dead" / "chosen last night"
+                // warning and the storyteller confirmed anyway.
+                .filter { input.overrideConstraints || allowed(state, lookup, step, constraints, it) }
                 .take(max.coerceAtLeast(0))
         }
 

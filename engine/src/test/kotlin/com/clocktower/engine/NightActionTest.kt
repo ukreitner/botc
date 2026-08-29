@@ -127,6 +127,42 @@ class NightActionTest {
     }
 
     @Test
+    fun `the storyteller's explicit override keeps an advised-against pick`() {
+        var state = game(bmr, "zombuul", "sailor", "tealady", "fool", "gossip", "professor")
+            .copy(cycle = 2)
+        state = Deaths.attempt(state, lookup, 5L, KillCause(DeathCause.STORYTELLER)).state
+
+        // The Sailor's picker is ALIVE-only, but the storyteller confirmed a
+        // dead seat on a picker that showed the "dead" warning. The guard
+        // advises — it never blocks (user rule: everything overridable).
+        val sailor = step(state, "sailor")
+        assertTrue(TargetConstraint.ALIVE in constraintsOfAction(sailor.action))
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            sailor.key,
+            NightInput(playerIds = listOf(5L), overrideConstraints = true),
+        )
+
+        assertEquals(
+            listOf(5L),
+            assertNotNull(entries(state, LedgerKind.CHOICE).lastOrNull()).targetIds,
+            "the overridden pick is recorded as the real choice",
+        )
+        assertTrue(
+            Status.effectsOn(state, lookup, 5L).any { it.kind == EffectKind.DRUNK },
+            "and the Sailor's drunkenness lands on the dead seat",
+        )
+    }
+
+    /** The player-pick constraints of an action, whatever its shape. */
+    private fun constraintsOfAction(action: NightAction?): List<TargetConstraint> = when (action) {
+        is ChoosePlayers -> action.constraints
+        is ShowInfo -> action.constraints
+        else -> emptyList()
+    }
+
+    @Test
     fun `an attack goes through the kill funnel, so protection still applies`() {
         var state = game(bmr, "zombuul", "sailor", "tealady", "fool", "gossip", "professor")
             .copy(cycle = 2)
