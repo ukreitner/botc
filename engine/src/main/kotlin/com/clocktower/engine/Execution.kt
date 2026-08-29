@@ -194,6 +194,62 @@ object Execution {
         return Effects.reconcile(next, lookup)
     }
 
+    /**
+     * The day's `ExecutionRecord` for a death entered somewhere OTHER than the
+     * execution sheet — the seat sheet's `Kill…`, whose cause list offers
+     * EXECUTION (playtest B2-4).
+     *
+     * The record is the day-closed signal and the only "was there an execution
+     * today" there is (lead D30): the Undertaker, the Vortox, the Mayor and the
+     * Zombuul all read it, and the dusk sheet decides between
+     * `NO EXECUTION — BEGIN NIGHT` and `BEGIN NIGHT` from it. A storyteller who
+     * killed the executee from the grimoire instead left the day looking
+     * un-executed, and the dusk sheet would then write NO_EXECUTION over it.
+     *
+     * Call it with the state the kill funnel already returned: the outcome is
+     * read off the board (dead ⇒ DIED), so a Vizier or a Fool that survived
+     * gets SURVIVED, which is still the day's execution. `via = STORYTELLER`
+     * (lead D34) because no vote put them there. Returns the state untouched
+     * for anything that is not an execution, for a day that already has one
+     * (unless the Butcher's second is legal), and outside the day.
+     */
+    fun recordDeathAsExecution(
+        state: GameState,
+        lookup: (String) -> Character?,
+        playerId: Long,
+        cause: KillCause,
+    ): GameState {
+        if (cause.cause != DeathCause.EXECUTION) return state
+        if (state.phase != Phase.DAY) return state
+        if (DayRules.executionSpent(state) && !DayRules.secondExecutionAllowed(state, lookup)) {
+            return state
+        }
+        val target = state.player(playerId) ?: return state
+        if (target.isTraveller) return state // travellers are exiled, never executed
+        val died = state.deaths.lastOrNull {
+            it.playerId == playerId && it.day == state.cycle && !it.atNight && !it.resurrected
+        }
+        return append(
+            state,
+            ExecutionRecord(
+                day = state.cycle,
+                outcome = if (target.alive && died == null) {
+                    ExecutionOutcome.SURVIVED
+                } else {
+                    ExecutionOutcome.DIED
+                },
+                playerId = playerId,
+                via = ExecutionVia.STORYTELLER,
+                characterIdAtExecution = died?.characterIdAtDeath ?: target.characterId,
+                wasEvilAtExecution = Registration.registersEvil(state, lookup, target),
+                abilityImpairedAtExecution = died?.abilityImpairedAtDeath
+                    ?: Status.isImpaired(state, lookup, playerId),
+                deathEventId = died?.id,
+                threshold = state.executionThreshold,
+            ),
+        )
+    }
+
     /** Records that today had no execution. Idempotent; replaced if an execution follows. */
     fun noExecution(state: GameState): GameState {
         if (DayRules.executionSpent(state)) return state

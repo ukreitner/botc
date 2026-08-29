@@ -479,6 +479,72 @@ class DayEngineTest {
         assertNull(DayRules.exileOwed(withdrawn))
     }
 
+    /**
+     * B2-4's other half: a death entered from the seat sheet with cause
+     * EXECUTION left the day looking un-executed, so the dusk sheet then wrote
+     * NO_EXECUTION over it and the Vortox/Mayor/Zombuul read the wrong day.
+     */
+    @Test
+    fun `a death entered as an execution records the day's execution`() {
+        var state = day1()
+        assertNull(DayRules.executionToday(state))
+
+        val cause = KillCause(DeathCause.EXECUTION)
+        state = Deaths.attempt(state, lookup, 3L, cause).state
+        state = Execution.recordDeathAsExecution(state, lookup, 3L, cause)
+
+        val record = assertNotNull(DayRules.executionToday(state))
+        assertEquals(ExecutionOutcome.DIED, record.outcome)
+        assertEquals(ExecutionVia.STORYTELLER, record.via)
+        assertEquals(3L, record.playerId)
+        assertTrue(DayRules.executionSpent(state))
+        // …and the dusk sheet can no longer declare the day execution-free.
+        assertEquals(state, Execution.noExecution(state))
+        assertTrue(DayRules.nominationsClosed(state, lookup))
+    }
+
+    @Test
+    fun `an execution the funnel prevented is still the day's execution`() {
+        var state = day1()
+        state = assign(state, 3L, "vizier")
+        val cause = KillCause(DeathCause.EXECUTION)
+        state = Deaths.attempt(state, lookup, 3L, cause).state
+        state = Execution.recordDeathAsExecution(state, lookup, 3L, cause)
+
+        val record = assertNotNull(DayRules.executionToday(state))
+        assertEquals(ExecutionOutcome.SURVIVED, record.outcome)
+        assertTrue(assertNotNull(state.player(3)).alive)
+        assertTrue(DayRules.executionSpent(state), "SURVIVED still spends the day's execution")
+    }
+
+    @Test
+    fun `only an execution by day, on a seat that can be executed, writes a record`() {
+        val day = day1()
+        // Not an execution.
+        assertEquals(
+            day,
+            Execution.recordDeathAsExecution(day, lookup, 3L, KillCause(DeathCause.DEMON_KILL)),
+        )
+        // Not by day.
+        val night = GameActions.advancePhase(day)
+        assertEquals(
+            night,
+            Execution.recordDeathAsExecution(night, lookup, 3L, KillCause(DeathCause.EXECUTION)),
+        )
+        // Travellers are exiled, never executed.
+        val traveller = assign(day, 3L, "beggar", traveller = true)
+        assertEquals(
+            traveller,
+            Execution.recordDeathAsExecution(traveller, lookup, 3L, KillCause(DeathCause.EXECUTION)),
+        )
+        // A day that already has its execution is not given a second one.
+        val settled = Execution.execute(day, lookup, playerId = 2L)
+        assertEquals(
+            settled,
+            Execution.recordDeathAsExecution(settled, lookup, 3L, KillCause(DeathCause.EXECUTION)),
+        )
+    }
+
     @Test
     fun `an exile that failed the vote owes nothing`() {
         var state = day1(9)
