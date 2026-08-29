@@ -34,6 +34,7 @@ import com.clocktower.grimoire.ui.screens.day.DayStage
 import com.clocktower.grimoire.ui.screens.day.NominationModel
 import com.clocktower.grimoire.ui.screens.day.SaidModel
 import com.clocktower.grimoire.ui.screens.day.SeatPick
+import com.clocktower.grimoire.ui.screens.day.verdictLabel
 import com.clocktower.grimoire.ui.screens.day.previewText
 import com.clocktower.grimoire.ui.screens.day.visibleConsequences
 import com.clocktower.grimoire.ui.screens.day.StageTone
@@ -961,6 +962,38 @@ class DayScreenTest {
         timer.start(1)
         val past = com.clocktower.engine.Time.epochMillis() + 5_000
         assertEquals("TIME", TimerFormat.barLabel(timer, past))
+    }
+
+    // ------------------------------------------------------------------
+    // A recorded line is editable (C2-8)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `a recorded row carries the words the edit dialog opens with`() {
+        val state = day()
+        val bo = seat(state, "Bo")
+        val after = Ledger.statement(state, bo, Ledger.Sources.CLAIM, "Fay is the Imp")
+        val row = SaidModel.rows(after, lookup, after.cycle).single()
+        // The formatted line is for reading; `text` is what gets edited.
+        assertEquals("Fay is the Imp", row.text)
+        assertTrue(row.line, row.line.contains("“Fay is the Imp”"))
+
+        val edited = Ledger.edit(after, row.entryId) { it.copy(text = "Fay is the Poisoner") }
+        assertEquals(
+            "Fay is the Poisoner",
+            SaidModel.rows(edited, lookup, edited.cycle).single().text,
+        )
+        assertTrue(Ledger.delete(edited, row.entryId).ledger.none { it.id == row.entryId })
+    }
+
+    @Test
+    fun `the verdict chips read as words, and every verdict has a label`() {
+        assertEquals("✓ true", verdictLabel(Verdict.TRUE))
+        assertEquals("✗ false", verdictLabel(Verdict.FALSE))
+        assertEquals("? not judged", verdictLabel(Verdict.UNJUDGED))
+        for (verdict in Verdict.entries) {
+            assertTrue(verdict.name, verdictLabel(verdict).isNotBlank())
+        }
     }
 
     // ------------------------------------------------------------------

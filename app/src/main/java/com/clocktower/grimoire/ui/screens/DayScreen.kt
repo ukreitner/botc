@@ -1,5 +1,6 @@
 package com.clocktower.grimoire.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -64,6 +65,7 @@ import com.clocktower.grimoire.ui.screens.day.ExileSheet
 import com.clocktower.grimoire.ui.screens.day.NominationDetail
 import com.clocktower.grimoire.ui.screens.day.SeatRingPanel
 import com.clocktower.grimoire.ui.screens.day.SaidModel
+import com.clocktower.grimoire.ui.screens.day.SaidEditDialog
 import com.clocktower.grimoire.ui.screens.day.SaidRow
 import com.clocktower.grimoire.ui.screens.day.SaidSheet
 import com.clocktower.grimoire.ui.screens.day.StageCard
@@ -539,6 +541,11 @@ private fun SaidBody(
     }
     var showEarlier by rememberSaveable { mutableStateOf(false) }
 
+    // C2-8: every recorded line opens. The row itself is the tap target, and
+    // the ✎ says so — a mistyped or mis-attributed statement used to be
+    // permanent, with no edit, no delete and no verdict outside the Gossip gate.
+    var editing by rememberSaveable { mutableStateOf<Long?>(null) }
+
     if (today.isEmpty()) {
         Text(
             "Nothing recorded today. Tap a seat, then type or dictate one line — " +
@@ -548,7 +555,7 @@ private fun SaidBody(
         )
     }
     for (row in today) {
-        SaidRowView(viewModel, row)
+        SaidRowView(viewModel, row, onOpen = { editing = row.entryId })
     }
     FilledTonalButton(onClick = onCompose, modifier = Modifier.fillMaxWidth()) {
         Text("+ Record what was said")
@@ -570,16 +577,38 @@ private fun SaidBody(
                         style = MaterialTheme.typography.labelMedium,
                         color = PaleGold,
                     )
-                    for (row in rows) SaidRowView(viewModel, row)
+                    for (row in rows) SaidRowView(viewModel, row, onOpen = { editing = row.entryId })
                 }
             }
+        }
+    }
+
+    // Earlier days are editable too — a Gossip claim recorded on day 1 is
+    // exactly the kind of line that turns out to be wrong on day 3.
+    editing?.let { entryId ->
+        val all = remember(state, entryId) {
+            (1..state.cycle).flatMap { SaidModel.rows(state, lookup, it) }
+        }
+        val row = all.firstOrNull { it.entryId == entryId }
+        if (row == null) {
+            editing = null
+        } else {
+            SaidEditDialog(viewModel, row, onDismiss = { editing = null })
         }
     }
 }
 
 @Composable
-private fun SaidRowView(viewModel: GameViewModel, row: SaidRow) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+private fun SaidRowView(viewModel: GameViewModel, row: SaidRow, onOpen: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            // The whole row is the target — the storyteller is aiming with a
+            // thumb while the table talks, not hunting a 24 dp pencil.
+            .clickable(onClick = onOpen)
+            .heightIn(min = 48.dp),
+    ) {
         Column(Modifier.weight(1f)) {
             Text(row.line, style = MaterialTheme.typography.bodyMedium)
             if (row.kind == LedgerKind.ANNOUNCE && row.announcePending) {
@@ -609,6 +638,8 @@ private fun SaidRowView(viewModel: GameViewModel, row: SaidRow) {
                 }
             }
         }
+        // The affordance, so a dead-looking row visibly is not one.
+        TextButton(onClick = onOpen) { Text("✎", color = FadedInk) }
     }
 }
 
