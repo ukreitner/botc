@@ -568,14 +568,6 @@ fun SetupIdentityPrompts(
 }
 
 /**
- * The checklist itself: one row per `SetupRequirement`, ticked when satisfied,
- * every row openable, and every row's answer applied through the requirement's
- * own `apply` — no character ids and no per-character UI anywhere.
- *
- * Advisory rows (`blocking = false`) are shown too, greyed and labelled, so a
- * default is never silent (lead D54).
- */
-/**
  * The checklist's own header, which has to follow the PHASE (playtest C2-7,
  * D2-9).
  *
@@ -601,6 +593,14 @@ fun checklistFooter(phase: Phase): String =
             "whenever the table gives you a moment."
     }
 
+/**
+ * The checklist itself: one row per `SetupRequirement`, ticked when satisfied,
+ * every row openable, and every row's answer applied through the requirement's
+ * own `apply` — no character ids and no per-character UI anywhere.
+ *
+ * Advisory rows (`blocking = false`) are shown too, greyed and labelled, so a
+ * default is never silent (lead D54).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SetupChecklistSheet(
