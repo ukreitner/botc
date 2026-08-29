@@ -135,10 +135,21 @@ fun needsGateAnswer(gate: StepGate, answered: Boolean): Boolean =
  */
 fun isSkipped(step: NightStep, forced: Boolean): Boolean = step.gate is StepGate.Skip && !forced
 
-/** The gutter mark for one row. */
+/**
+ * The gutter mark for one row.
+ *
+ * **A row that was RUN stays run.** Gates are evaluated against the state as it
+ * is now, so a Sailor whose holder is killed later the same night suddenly
+ * gated "dead — no ability" and the finished row re-drew itself as
+ * `⊘ skipped` — the recorded target vanished, `[Undo]` went with it, and the
+ * only control left was `[Run anyway]`, which would have placed a second Drunk
+ * (playtest D2-4). Nothing in the engine puts a token in `nightStepsDone`
+ * except a storyteller finishing or ticking the row, so the record wins over
+ * whatever the gate now says.
+ */
 fun rowMark(step: NightStep, done: Set<String>, current: Boolean, forced: Boolean): RowMark = when {
-    isSkipped(step, forced) -> RowMark.SKIPPED
     step.key.token in done -> RowMark.DONE
+    isSkipped(step, forced) -> RowMark.SKIPPED
     current -> RowMark.CURRENT
     else -> RowMark.PENDING
 }

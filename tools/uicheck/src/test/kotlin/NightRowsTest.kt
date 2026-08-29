@@ -338,6 +338,31 @@ class NightRowsTest {
     }
 
     @Test
+    fun `a row that was run stays run when its holder dies later the same night`() {
+        // Playtest D2-4: the Sailor resolved, then the Pukka killed the Sailor,
+        // and the finished row re-drew as "⊘ skipped · dead — no ability" —
+        // losing the recorded target and [Undo], and offering [Run anyway],
+        // which would have placed a second Drunk.
+        val resolved = step(gate = StepGate.Skip("dead — no ability"))
+        val done = setOf(resolved.key.token)
+        val mark = rowMark(resolved, done = done, current = false, forced = false)
+        assertEquals(RowMark.DONE, mark)
+        assertEquals("→ P4 drunk", rowRight(resolved, mark, result = "→ P4 drunk"))
+
+        val plan = NightPlan(cycle = 2, isFirstNight = false, steps = listOf(resolved))
+        val row = rowViews(
+            plan = plan,
+            done = done,
+            activeToken = null,
+            forced = emptySet(),
+            holderNames = { "P1" },
+            results = { "→ P4 drunk" },
+        ).single()
+        assertTrue("a resolved row keeps its [Undo]", row.undo)
+        assertFalse("and never offers [Run anyway]", row.runAnyway)
+    }
+
+    @Test
     fun `a reduced row is ember, never grey and never removed`() {
         val reduced = step(gate = StepGate.Reduced("the Exorcist silenced them", setOf("pending")))
         val mark = rowMark(reduced, done = emptySet(), current = false, forced = false)
