@@ -756,6 +756,31 @@ data class NightPlan(
             }
         }
 
+        /** During a night, "today" is the day that has just ended. */
+        fun today(state: GameState): Int =
+            if (state.phase == Phase.DAY) state.cycle else state.cycle - 1
+
+        /**
+         * The seat that died by execution today — the ONE truth the Undertaker's
+         * gate and the Undertaker's answer both read.
+         *
+         * The `ExecutionRecord` is canonical (lead D30) and names the seat that
+         * actually died (the Scapegoat, when one stood in). A death recorded
+         * through the seat sheet's kill funnel with cause `EXECUTION` writes no
+         * record, so it counts too: the gate said "nobody was executed today"
+         * and auto-skipped the row while the card underneath printed
+         * "Player 14 was executed today" (playtest B2-4).
+         */
+        fun executedTodayId(state: GameState, day: Int = today(state)): Long? {
+            val record = state.executions.lastOrNull { it.day == day }
+            if (record != null && record.outcome == ExecutionOutcome.DIED) {
+                return record.diedInsteadId ?: record.playerId
+            }
+            return state.deaths
+                .lastOrNull { it.cause == DeathCause.EXECUTION && it.day == day }
+                ?.playerId
+        }
+
         // ---- rows ----------------------------------------------------------
 
         private fun roleStep(
@@ -2593,10 +2618,15 @@ object Gates {
             "a $noun"
         }
 
-    /** Undertaker: only when the day closed with an execution. */
+    /**
+     * Undertaker: only when the day closed with an execution.
+     *
+     * Reads `NightPlan.executedTodayId`, the same fact `InfoCalc.undertaker`
+     * reads, so the row can never be auto-skipped "nobody was executed today"
+     * over a card that names the seat that was (playtest B2-4).
+     */
     fun executedToday(): WakePredicate = WakePredicate { ctx ->
-        val record = ctx.executedToday
-        if (record != null && record.outcome == ExecutionOutcome.DIED) {
+        if (NightPlan.executedTodayId(ctx.state) != null) {
             StepGate.Fire
         } else {
             StepGate.Skip("nobody was executed today")

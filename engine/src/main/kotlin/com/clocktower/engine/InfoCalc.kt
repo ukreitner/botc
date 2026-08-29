@@ -528,14 +528,17 @@ object InfoCalc {
 
     private fun undertaker(ctx: Ctx): InfoResult {
         val day = relevantDay(ctx.state)
-        val executed = ctx.state.deaths.lastOrNull {
-            it.cause == DeathCause.EXECUTION && it.day == day
-        } ?: return InfoResult(
-            Answer.Message("—"),
-            "No one was executed today — the Undertaker doesn't wake",
-        )
-        val player = ctx.state.player(executed.playerId)
-        val characterId = executed.characterIdAtDeath ?: player?.characterId
+        // ONE truth for the gate and the answer (playtest B2-4): the day's
+        // `ExecutionRecord` (canonical, lead D30) or a death the seat sheet
+        // recorded with cause EXECUTION.
+        val executedId = NightPlan.executedTodayId(ctx.state, day)
+            ?: return InfoResult(
+                Answer.Message("—"),
+                "No one was executed today — the Undertaker doesn't wake",
+            )
+        val executed = ctx.state.deaths.lastOrNull { it.playerId == executedId && it.day == day }
+        val player = ctx.state.player(executedId)
+        val characterId = executed?.characterIdAtDeath ?: player?.characterId
         val character = characterId?.let(ctx.lookup)
         return InfoResult(
             answer = Answer.Characters(listOfNotNull(characterId)),
