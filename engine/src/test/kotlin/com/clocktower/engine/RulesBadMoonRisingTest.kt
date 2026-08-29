@@ -297,7 +297,10 @@ class RulesBadMoonRisingTest {
 
         val row = require(state, "pukka")
         assertEquals(
-            listOf(DeferredDeath(victim, DeathCause.DEMON_KILL)),
+            // `deferred` says the attack was made on an EARLIER night, so the
+            // preview scopes tonight's suppression the way the resolution does
+            // (lead D63/D68; playtest D2-1).
+            listOf(DeferredDeath(victim, DeathCause.DEMON_KILL, deferred = true)),
             row.deferredDeaths,
             "the standing victim, with the cause the registry declared",
         )
@@ -391,6 +394,33 @@ class RulesBadMoonRisingTest {
     }
 
     @Test
+    fun `the Grandmother's death row asks nothing — it is not a second reveal`() {
+        // Playtest B2-3: the row has no action and no infoId, so the planner
+        // fell back to the CHARACTER's own calculation and grew a
+        // "WHO DID THEY CHOOSE?" picker; answering it replaced "ERIN DIES" on
+        // the button with "SHOW “SAILOR” TO ERIN". A WakeCount.NONE row wakes
+        // nobody, so there is nobody to show anything to.
+        var state = game("pukka", "grandmother", "gossip", "chambermaid", "gambler", "courtier")
+        val child = seat(state, "gossip")
+        state = Effects.placeExclusiveReminder(state, child, PlacedReminder("grandmother", "Grandchild"))
+        state = nextNight(state)
+        state = Deaths.attempt(
+            state, lookup, child, KillCause(DeathCause.DEMON_KILL, "pukka", seat(state, "pukka")),
+        ).state
+
+        val row = require(state, "grandmother")
+        assertEquals(StepGate.Fire, row.gate, "the row fires — the Grandmother dies")
+        assertNull(row.action, "and asks for nothing: ${row.action}")
+        assertEquals("", row.infoId)
+        assertTrue(row.cards.isEmpty(), "no card either: ${row.cards.map { it.label }}")
+
+        // The first night's row is untouched: that one really does show a token.
+        val firstNight = require(game("pukka", "grandmother", "gossip", "chambermaid"), "grandmother")
+        assertEquals("grandmother", firstNight.infoId)
+        assertIs<ShowInfo>(firstNight.action)
+    }
+
+    @Test
     fun `an Exorcised Pukka still names the victim its silenced row will kill`() {
         var state = game("pukka", "exorcist", "gossip", "chambermaid", "professor", "fool")
         val pukka = seat(state, "pukka")
@@ -409,6 +439,52 @@ class RulesBadMoonRisingTest {
         assertTrue(
             victimName in row.banner,
             "and the death it still carries is not hidden behind it: '${row.banner}'",
+        )
+
+        // Playtest D2-1: the PREVIEW dropped `Attack.deferred`, so the screen
+        // re-ran the funnel as an ordinary attack, hit the un-narrowed veto and
+        // put "DEV SURVIVES — NOBODY DIES" on the button of a card that said the
+        // opposite — and holding it killed them. The step now carries the flag
+        // and the funnel scopes the veto (lead D63/D68).
+        assertEquals(
+            listOf(DeferredDeath(victim, DeathCause.DEMON_KILL, respectProtection = true, deferred = true)),
+            row.deferredDeaths,
+        )
+        val standing = row.deferredDeaths.single()
+        assertIs<KillOutcome.Dies>(
+            Deaths.killOutcome(
+                state,
+                lookup,
+                standing.playerId,
+                KillCause(
+                    cause = standing.cause,
+                    sourceCharacterId = row.abilityId,
+                    sourcePlayerId = row.holderId,
+                    ignoresProtection = !standing.respectProtection,
+                    deferred = standing.deferred,
+                ),
+            ),
+            "the preview must promise what the button does",
+        )
+
+        // A Lycanthrope-style suppression on the same seat stops it (D68).
+        val noKill = Effects.place(
+            state = state,
+            target = pukka,
+            kind = EffectKind.DEMON_CANNOT_KILL,
+            sourceCharacterId = "lycanthrope",
+            sourcePlayerId = seat(state, "professor"),
+            until = Until.DAWN,
+            label = "Faux Paw",
+            suppression = KillSuppression.NO_KILL_TONIGHT,
+        ).state
+        assertIs<KillOutcome.Prevented>(
+            Deaths.killOutcome(
+                noKill,
+                lookup,
+                standing.playerId,
+                KillCause(DeathCause.DEMON_KILL, row.abilityId, row.holderId, deferred = true),
+            ),
         )
     }
 
@@ -936,6 +1012,37 @@ class RulesBadMoonRisingTest {
         val gate = require(state, "zombuul").gate
         assertIs<StepGate.Reduced>(gate)
         assertTrue("Exorcist" in gate.reason, gate.reason)
+    }
+
+    @Test
+    fun `the Courtier's and the Exorcist's answers are for the storyteller and never a card`() {
+        var state = game("courtier", "pukka", "sailor", "exorcist", "fool", "gossip")
+        val courtier = seat(state, "courtier")
+        val exorcist = seat(state, "exorcist")
+        val demon = seat(state, "pukka")
+
+        // The Courtier names a character and learns NOTHING: the answer is the
+        // storyteller's crib of who holds what, so it may not become a card
+        // (playtest B2-2, D2-2).
+        val courtierInfo = assertNotNull(InfoCalc.compute(state, lookup, "courtier", courtier))
+        assertEquals(InfoAudience.STORYTELLER, courtierInfo.audience)
+        assertTrue(
+            NightPlan.cardsFor(state, courtierInfo).isEmpty(),
+            "no card offer: ${NightPlan.cardsFor(state, courtierInfo).map { it.label }}",
+        )
+        assertTrue(
+            require(state, "courtier").cards.isEmpty(),
+            "and none on the row: ${require(state, "courtier").cards.map { it.label }}",
+        )
+
+        // The Exorcist is not told either way — the DEMON is the one who learns
+        // something (playtest B2-2, D2-3).
+        state = state.copy(cycle = 2, nightStepsDone = emptySet())
+        val exorcistInfo =
+            assertNotNull(InfoCalc.compute(state, lookup, "exorcist", exorcist, listOf(demon)))
+        assertEquals(Answer.YesNoAnswer(true), exorcistInfo.answer, "the answer is still computed")
+        assertEquals(InfoAudience.STORYTELLER, exorcistInfo.audience)
+        assertTrue(NightPlan.cardsFor(state, exorcistInfo).isEmpty())
     }
 
     @Test

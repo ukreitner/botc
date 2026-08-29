@@ -49,6 +49,13 @@ data class KillCause(
      * shows one toggle, defaulting to yes. See ARCHITECTURE §6 Q3.
      */
     val demonKillUncertain: Boolean = false,
+    /**
+     * This death resolves an attack made on an EARLIER night — the Pukka's
+     * standing victim — so tonight's suppression of the source reaches it only
+     * if the suppression is "the Demon does not kill tonight" (lead D68).
+     * `NightEffect.Attack.deferred` and `DeferredDeath.deferred` carry it.
+     */
+    val deferred: Boolean = false,
 )
 
 /** The complete record of one death. Supersedes `DeathRecord` (kept as a typealias). */
@@ -206,13 +213,26 @@ object Deaths {
 
         // 2. The SOURCE is silenced (Lycanthrope, Princess, Exorcised Demon,
         //    Toymaker) — checked before any target protection so a deferred Pukka
-        //    kill obeys it too (lead D36).
+        //    kill obeys it too (lead D36), SCOPED by lead D63/D68:
+        //
+        //     - an Exorcised (SILENCED) source still lands a death it set up on
+        //       an earlier night — "the Pukka does not wake to attack tonight,
+        //       but a player still dies because of the Pukka's attack during the
+        //       previous night";
+        //     - a NO_KILL_TONIGHT source (Lycanthrope's Faux Paw, Princess,
+        //       Toymaker's final night) stops even that.
+        //
+        //    The preview and the resolution used to disagree here: the card said
+        //    "Dev dies now", the button said "DEV SURVIVES — NOBODY DIES", and
+        //    holding it killed Dev (playtest D2-1).
         if (isDemonKill) {
             val sourceId = cause.sourcePlayerId
-            val silenced = sourceId?.let {
-                Status.protections(state, lookup, it)
-                    .firstOrNull { e -> e.kind == EffectKind.DEMON_CANNOT_KILL }
-            }
+            val silenced = sourceId
+                ?.let { Status.protections(state, lookup, it) }
+                .orEmpty()
+                .filter { it.kind == EffectKind.DEMON_CANNOT_KILL }
+                .filter { !cause.deferred || it.suppression == KillSuppression.NO_KILL_TONIGHT }
+                .firstOrNull()
             if (silenced != null) {
                 return KillOutcome.Prevented(
                     by = silenced,

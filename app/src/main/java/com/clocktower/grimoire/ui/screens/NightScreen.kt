@@ -85,6 +85,12 @@ fun NightScreen(
     onOpenShowTool: () -> Unit = {},
     /** Runs the phase button once the sheet is finished — the last card opens the day. */
     onDawn: () -> Unit = {},
+    /**
+     * The shell's "show the grimoire to a player…". Null until the shell wires
+     * it; the Spy's row is the one that always needs it and had no link to the
+     * feature at all (playtest B2-12).
+     */
+    onShowGrimoire: (() -> Unit)? = null,
 ) {
     // Pure and cheap: rebuilt on every state change so an insertion (a
     // resurrection's re-run, a Scarlet Woman promotion) appears at once (I6).
@@ -208,10 +214,17 @@ fun NightScreen(
                             openRow = openRowKey(state.cycle, plan.steps.getOrNull(index + 1)?.key?.token)
                         },
                         prompts = owed.filter { promptBelongsTo(it, step) },
+                        onShowGrimoire = onShowGrimoire,
                     )
                 } else {
                     NightRowLine(
                         row = row,
+                        // While an obligation holds a row open (the Imp's star
+                        // pass), no other row can be opened. It used to be
+                        // drawn as an ordinary control that silently did
+                        // nothing (playtest B2-6): the card now says the sheet
+                        // is on hold and the rows stop offering a tap.
+                        locked = pinned != null,
                         onOpen = { openRow = openRowKey(state.cycle, row.token) },
                         onRunAnyway = {
                             forced = forced + row.token
@@ -302,6 +315,14 @@ private fun causeOf(state: GameState, step: NightStep): DeathCause =
  * Read from the LEDGER, which is what survives the dawn token sweep (I3).
  */
 private fun resultOf(state: GameState, step: NightStep): String {
+    // What was SHOWN, when anything was: the Fortune Teller's row recorded
+    // "→ Player 1, Player 5" and dropped the YES that is the whole point of the
+    // step, while the Chef's row beside it read "shown: 0" (playtest B2-13).
+    val shown = Memory.by(state, LedgerKind.TOLD, step.abilityId, step.holderId)
+        .lastOrNull { it.cycle == state.cycle }
+        ?.shown
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "shown: $it" }
     val choice = Memory
         .lastChoice(state, step.abilityId, step.holderId, beforeCycle = state.cycle + 1)
         ?.takeIf { it.cycle == state.cycle }
@@ -315,11 +336,15 @@ private fun resultOf(state: GameState, step: NightStep): String {
             val name = state.player(id)?.name ?: return@mapNotNull null
             if (!attacked) name else "$name ${fateOf(state, id)}"
         }
-        if (names.isNotEmpty()) return "→ ${names.joinToString()}"
+        // The tokens an impaired ability placed are inert, and the collapsed row
+        // is what the storyteller reads in the dark: "→ Player 1" read exactly
+        // like a protection that worked (playtest B2-5).
+        if (names.isNotEmpty()) {
+            val suffix = if (step.abilityImpaired && !attacked) " · no effect" else ""
+            return listOfNotNull("→ ${names.joinToString()}$suffix", shown).joinToString(" · ")
+        }
     }
-    val told = Memory.by(state, LedgerKind.TOLD, step.abilityId, step.holderId)
-        .lastOrNull { it.cycle == state.cycle }
-    return told?.shown?.takeIf { it.isNotBlank() }?.let { "shown: $it" }.orEmpty()
+    return shown.orEmpty()
 }
 
 /** Did tonight's attack on [playerId] land? Read from the deaths, not the tokens. */
@@ -337,6 +362,8 @@ private fun NightRowLine(
     onOpen: () -> Unit,
     onRunAnyway: () -> Unit,
     onUndo: () -> Unit,
+    /** An unanswered obligation is holding another row open: this one cannot be. */
+    locked: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -349,7 +376,7 @@ private fun NightRowLine(
                     MaterialTheme.colorScheme.surface
                 },
             )
-            .clickable(onClick = onOpen)
+            .then(if (locked) Modifier else Modifier.clickable(onClick = onOpen))
             .padding(horizontal = 8.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 44.dp)) {
@@ -389,7 +416,7 @@ private fun NightRowLine(
             // The ONE way to un-tick a step. Every primary is idempotent, so
             // correcting yourself is a deliberate, separate act and it lives
             // here, on the collapsed line (fix wave 1, Fix-B).
-            if (row.undo) {
+            if (row.undo && !locked) {
                 Text(
                     text = "[Undo]",
                     fontSize = NIGHT_MIN_SP.sp,
@@ -412,17 +439,19 @@ private fun NightRowLine(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                Text(
-                    text = "[Run anyway]",
-                    fontSize = NIGHT_MIN_SP.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AgedGold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onRunAnyway)
-                        .heightIn(min = 44.dp)
-                        .padding(horizontal = 10.dp, vertical = 12.dp),
-                )
+                if (!locked) {
+                    Text(
+                        text = "[Run anyway]",
+                        fontSize = NIGHT_MIN_SP.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AgedGold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onRunAnyway)
+                            .heightIn(min = 44.dp)
+                            .padding(horizontal = 10.dp, vertical = 12.dp),
+                    )
+                }
             }
         }
     }

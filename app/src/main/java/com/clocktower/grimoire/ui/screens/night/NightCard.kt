@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.clocktower.engine.Answer
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.GameState
+import com.clocktower.engine.InfoAudience
 import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.InfoResult
 import com.clocktower.engine.KillCause
@@ -52,7 +53,6 @@ import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.ShowCardSpec
-import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
@@ -98,6 +98,8 @@ fun NightCard(
      * (playtest B P0 #3); the sheet keeps the row open until they are answered.
      */
     prompts: List<Prompt> = emptyList(),
+    /** The shell's "show the grimoire to a player…", when it has wired one. */
+    onShowGrimoire: (() -> Unit)? = null,
 ) {
     val key = step.key
     // Keyed on the CYCLE as well as the step: last night's two lit chips must
@@ -123,11 +125,20 @@ fun NightCard(
     val action = step.action?.takeIf { choiceAllowed && !skipped && !awaitingGate }
 
     val holders = step.wakes.mapNotNull { state.player(it) }
-    val holderName = holders.firstOrNull()?.name.orEmpty()
+    // A group row wakes several seats, and the button named only the first of
+    // them: Minion info woke three and promised "…TO PLAYER 2" (playtest B2-11).
+    val holderName = if (holders.size > 1) {
+        "ALL ${holders.size}"
+    } else {
+        holders.firstOrNull()?.name.orEmpty()
+    }
     val character = viewModel.characterById(step.abilityId)
 
     // ---- the information this step gives, and the cards that carry it ----
-    val infoId = (step.action as? ShowInfo)?.sourceId?.ifBlank { step.abilityId } ?: step.abilityId
+    // WHICH answer this row shows is the planner's decision (`NightStep.infoId`),
+    // not a guess from the action: a row with no action at all was computing its
+    // character's information and offering it (playtest B2-3).
+    val infoId = step.infoId
     val info = remember(state, key.token, pick.playerIds) {
         if (InfoCalc.supports(infoId) && pick.playerIds.size >= picksNeeded(step.action)) {
             viewModel.nightInfo(state, infoId, step.holderId, pick.playerIds)
@@ -152,7 +163,12 @@ fun NightCard(
     val truthCard = remember(answerCards) { answerCards.firstOrNull { it.truthful }?.card?.asCard() }
     val truthful = remember(offers) { offers.filter { it.truthful } }
     val lies = remember(offers) { offers.filterNot { it.truthful } }
-    val answer = info?.let {
+    // An answer the engine computed FOR THE STORYTELLER is not shown to anybody:
+    // no card, and no `SHOW … TO …` on the one gold button (B2-2, D2-2, D2-3).
+    // It stays on the card as the headline and the detail, which is what the
+    // storyteller needs to run the step.
+    val forStorytellerOnly = info?.audience == InfoAudience.STORYTELLER
+    val answer = info?.takeUnless { forStorytellerOnly }?.let {
         answerLabel(
             it.answer,
             characterName = { id -> viewModel.characterById(id)?.name ?: id },
@@ -207,6 +223,11 @@ fun NightCard(
                         sourceCharacterId = step.abilityId,
                         sourcePlayerId = step.holderId,
                         ignoresProtection = !death.respectProtection,
+                        // Set up on an EARLIER night: an Exorcised source still
+                        // lands it, a "no kill tonight" source does not (D63/D68).
+                        // The preview dropped this and promised the opposite of
+                        // what the button then did (playtest D2-1).
+                        deferred = death.deferred,
                     ),
                 )
             }
@@ -221,7 +242,10 @@ fun NightCard(
     // holder the card itself says "give false info", and the one gold button
     // must not be the true answer (playtest B P1 #9).
     var chosen by remember(state.cycle, key.token, info) { mutableStateOf<UiOffer?>(null) }
-    val owesFalseInfo = info != null && mustNotShowTruth(info.obligation, info.abilityMalfunctions)
+    // Nothing is shown, so nothing can be shown falsely: an impaired Courtier
+    // must not be held on "PICK WHAT TO SHOW" with no card to pick.
+    val owesFalseInfo = info != null && !forStorytellerOnly &&
+        mustNotShowTruth(info.obligation, info.abilityMalfunctions)
     val shownAnswer = when {
         chosen != null -> offerAnswerText(chosen!!.label)
         owesFalseInfo -> ""
@@ -231,7 +255,9 @@ fun NightCard(
     val isDawn = step.slotId == NightMarkers.DAWN
     val label = primaryLabel(
         picked = pick.playerIds.mapNotNull { state.player(it)?.name },
-        places = placedLabels(effects),
+        pickedCharacters = pick.characterIds.map { viewModel.characterById(it)?.name ?: it },
+        places = placedLabels(sharedEffects(step.action)),
+        lastPickPlaces = placedLabels(lastPickEffects(step.action)),
         deathLine = deathLine,
         deferredLine = deferredLine,
         answer = shownAnswer,
@@ -239,7 +265,12 @@ fun NightCard(
         none = pick.none,
         skipped = skipped,
         dawn = isDawn,
-        impairedHolder = if (owesFalseInfo && chosen == null) holderName else "",
+        impairedHolder = if (owesFalseInfo && chosen == null) {
+            holders.firstOrNull()?.name.orEmpty()
+        } else {
+            ""
+        },
+        abilityImpaired = step.abilityImpaired,
     )
 
     Surface(
@@ -366,6 +397,15 @@ fun NightCard(
                     fontWeight = FontWeight.Bold,
                     color = AgedGold,
                 )
+                if (forStorytellerOnly) {
+                    Text(
+                        text = STORYTELLER_ONLY_NOTE,
+                        fontSize = NIGHT_MIN_SP.sp,
+                        lineHeight = nightSp(19f).sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EmberRed,
+                    )
+                }
                 if (info.detail.isNotBlank()) {
                     Text(
                         text = info.detail,
@@ -513,6 +553,7 @@ fun NightCard(
                     },
                     onOpenShowTool = onOpenShowTool,
                     onKillSheet = onKillSheet,
+                    onShowGrimoire = onShowGrimoire,
                 )
             }
         }
@@ -584,6 +625,15 @@ private fun NightPromptAsk(
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
+    // The sheet IS pinned here until this is answered, and nothing said so:
+    // every collapsed row was drawn normally, dumped as clickable and did
+    // nothing at all when tapped (playtest B2-6).
+    Text(
+        text = SHEET_ON_HOLD,
+        fontSize = NIGHT_MIN_SP.sp,
+        lineHeight = nightSp(19f).sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     if (choices.isEmpty()) {
         if (card != null) {
             CardOffers(
@@ -729,6 +779,13 @@ private fun SecondaryDrawer(
     onShow: (UiOffer) -> Unit,
     onOpenShowTool: () -> Unit,
     onKillSheet: (Long, Long?) -> Unit,
+    /**
+     * Opens the shell's read-only grimoire hand-over. Null when the shell has
+     * not wired it: the one row that always needs it — the Spy's, whose card
+     * says "Show the Grimoire to the Spy for as long as they need" — had no
+     * link to the feature at all (playtest B2-12).
+     */
+    onShowGrimoire: (() -> Unit)? = null,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider()
@@ -753,6 +810,14 @@ private fun SecondaryDrawer(
             modifier = Modifier.fillMaxWidth(),
             onClick = onOpenShowTool,
         )
+        onShowGrimoire?.let { open ->
+            NightChip(
+                label = "show the grimoire to a player…",
+                tone = Tone.NORMAL,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = open,
+            )
+        }
         if (hasAttack) {
             for (id in attacked) {
                 NightChip(
@@ -856,6 +921,14 @@ private fun TokenPlacer(viewModel: GameViewModel, state: GameState, step: NightS
 
 /** How many false cards the card itself offers before the rest go in the drawer. */
 private const val MAX_LIE_CHIPS = 3
+
+/** Why the rest of the sheet does not respond while an obligation is owed (B2-6). */
+const val SHEET_ON_HOLD: String =
+    "Finish this first — the rest of tonight's sheet is on hold until this question is answered."
+
+/** Said out loud on a row whose computed answer is the storyteller's own (B2-2). */
+private const val STORYTELLER_ONLY_NOTE =
+    "FOR YOU ONLY — this is not shown to anybody, and there is no card to hold up."
 
 /** Long-press on an offer: the free-text editor, no longer the default path. */
 @Composable

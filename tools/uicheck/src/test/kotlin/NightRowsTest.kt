@@ -42,7 +42,9 @@ import com.clocktower.grimoire.ui.screens.night.offerAnswerText
 import com.clocktower.grimoire.ui.screens.night.openRowKey
 import com.clocktower.grimoire.ui.screens.night.openRowToken
 import com.clocktower.grimoire.ui.screens.night.openingToken
+import com.clocktower.grimoire.ui.screens.night.lastPickEffects
 import com.clocktower.grimoire.ui.screens.night.placedLabels
+import com.clocktower.grimoire.ui.screens.night.sharedEffects
 import com.clocktower.grimoire.ui.screens.night.pointPrefix
 import com.clocktower.grimoire.ui.screens.night.preselected
 import com.clocktower.grimoire.ui.screens.night.primaryEnabled
@@ -166,6 +168,63 @@ class NightRowsTest {
         assertEquals(
             "BEN — POISONED",
             primaryLabel(picked = listOf("Ben"), places = listOf("Poisoned")),
+        )
+    }
+
+    @Test
+    fun `a token that lands on the last pick only is stated separately`() {
+        // Playtest B2-14: "PLAYER 1, PLAYER 3 — SAFE + DRUNK" reads as though
+        // both were safe AND drunk. The card's prompt already says the SECOND
+        // one tapped is the drunk one; the button threw that away.
+        val innkeeper = ChoosePlayers(
+            sourceId = "step",
+            prompt = "WHICH TWO?",
+            min = 2,
+            max = 2,
+            perTarget = listOf(NightEffect.PlaceToken("step", "Safe", Ref.Target)),
+            onResolve = listOf(NightEffect.PlaceToken("step", "Drunk", Ref.Target)),
+        )
+        assertEquals(listOf("Drunk"), placedLabels(lastPickEffects(innkeeper)))
+        assertEquals(listOf("Safe"), placedLabels(sharedEffects(innkeeper)))
+        assertEquals(
+            "P1, P3 — SAFE · P3 — DRUNK",
+            primaryLabel(
+                picked = listOf("P1", "P3"),
+                places = placedLabels(sharedEffects(innkeeper)),
+                lastPickPlaces = placedLabels(lastPickEffects(innkeeper)),
+            ),
+        )
+        // A single-pick action keeps every token on the one name.
+        val monk = choose(perTarget = listOf(NightEffect.PlaceToken("step", "Safe", Ref.Target)))
+        assertEquals(emptyList<NightEffect>(), lastPickEffects(monk))
+    }
+
+    @Test
+    fun `an impaired ability's placement states that it does nothing`() {
+        // Playtest B2-5: a poisoned Monk's primary read "PLAYER 1 — SAFE",
+        // flat and enabled, under the card's own IMPAIRED banner — and the
+        // Imp killed Player 1 two steps later.
+        assertEquals(
+            "PLAYER 1 — “SAFE” — NO EFFECT (ABILITY NOT WORKING)",
+            primaryLabel(
+                picked = listOf("Player 1"),
+                places = listOf("Safe"),
+                abilityImpaired = true,
+            ),
+        )
+        // The Innkeeper's two tokens, same rule.
+        assertEquals(
+            "P1, P3 — “SAFE” + “DRUNK” — NO EFFECT (ABILITY NOT WORKING)",
+            primaryLabel(
+                picked = listOf("P1", "P3"),
+                places = listOf("Safe", "Drunk"),
+                abilityImpaired = true,
+            ),
+        )
+        // A working ability is unchanged.
+        assertEquals(
+            "PLAYER 1 — SAFE",
+            primaryLabel(picked = listOf("Player 1"), places = listOf("Safe")),
         )
     }
 
@@ -335,6 +394,31 @@ class NightRowsTest {
             RowMark.CURRENT,
             rowMark(skipped, done = emptySet(), current = true, forced = true),
         )
+    }
+
+    @Test
+    fun `a row that was run stays run when its holder dies later the same night`() {
+        // Playtest D2-4: the Sailor resolved, then the Pukka killed the Sailor,
+        // and the finished row re-drew as "⊘ skipped · dead — no ability" —
+        // losing the recorded target and [Undo], and offering [Run anyway],
+        // which would have placed a second Drunk.
+        val resolved = step(gate = StepGate.Skip("dead — no ability"))
+        val done = setOf(resolved.key.token)
+        val mark = rowMark(resolved, done = done, current = false, forced = false)
+        assertEquals(RowMark.DONE, mark)
+        assertEquals("→ P4 drunk", rowRight(resolved, mark, result = "→ P4 drunk"))
+
+        val plan = NightPlan(cycle = 2, isFirstNight = false, steps = listOf(resolved))
+        val row = rowViews(
+            plan = plan,
+            done = done,
+            activeToken = null,
+            forced = emptySet(),
+            holderNames = { "P1" },
+            results = { "→ P4 drunk" },
+        ).single()
+        assertTrue("a resolved row keeps its [Undo]", row.undo)
+        assertFalse("and never offers [Run anyway]", row.runAnyway)
     }
 
     @Test

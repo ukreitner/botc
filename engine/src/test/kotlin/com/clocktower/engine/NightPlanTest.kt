@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -207,6 +208,93 @@ class NightPlanTest {
             NightPlan.OUT_OF_ORDER in promoted.badges,
             "and badged out of order: ${promoted.badges}",
         )
+        // …and it is a MARKER, never a second kill (playtest B2-1).
+        assertEquals(StepGate.Skip(NightPlan.NEW_DEMON_TONIGHT), promoted.gate)
+        assertNull(promoted.action, "the new Demon does not act tonight")
+        assertTrue(promoted.deferredDeaths.isEmpty())
+        assertEquals(WakeCount.NONE, promoted.wakeCounts, "and nobody is woken, so nothing is counted")
+    }
+
+    @Test
+    fun `the heir of a star pass gets no kill on the night of the pass`() {
+        var state = atNight(game(tb, "imp", "poisoner", "chef", "empath", "monk", "mayor"), 2)
+        val imp = 0L
+        val heir = 1L
+
+        // The Imp chooses itself; answering the star pass makes the Poisoner the Imp.
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            assertNotNull(step(state, "imp")).key,
+            NightInput(playerIds = listOf(imp)),
+        )
+        val pass = assertNotNull(state.prompts.firstOrNull { it.sourceId == "imp" && !it.resolved })
+        state = Prompts.answerWithPlayer(state, lookup, pass.id, heir)
+        assertEquals("imp", state.player(heir)?.characterId)
+
+        val rows = plan(state).steps.filter { it.abilityId == "imp" && it.holderId == heir }
+        assertTrue(rows.isNotEmpty(), "the heir is on the sheet: ${plan(state).steps.map { it.key.token }}")
+        for (row in rows) {
+            assertEquals(StepGate.Skip(NightPlan.NEW_DEMON_TONIGHT), row.gate)
+            assertNull(row.action, "no picker, so no second death: ${row.title}")
+            assertFalse(row.required, "and it never blocks the dawn")
+        }
+        assertEquals(1, state.deaths.count { it.day == state.cycle && it.atNight }, "one death tonight")
+    }
+
+    @Test
+    fun `a Pit-Hag-created Demon still acts when its slot is still to come`() {
+        var state = atNight(game(sv, "vortox", "pithag", "saint", "chef", "oracle", "seamstress"), 3)
+        val saint = 2L
+        state = Identity.changeCharacter(state, lookup, saint, "nodashii", ChangeReason.PIT_HAG, newEvil = true)
+
+        val demon = assertNotNull(
+            plan(state).steps.firstOrNull { it.abilityId == "nodashii" && it.holderId == saint },
+            "the Pit-Hag's Demon is on the sheet: ${plan(state).steps.map { it.key.token }}",
+        )
+        assertNotNull(demon.action, "a created Demon is not an heir — lead D67 keeps its turn")
+        assertTrue(demon.required)
+    }
+
+    @Test
+    fun `an information offer prints the character's name, never the engine id`() {
+        // Playtest B2-7: the planner built its offers with the default name
+        // resolver (the raw id) and the screen built the same offers again with
+        // real names, so a multi-word character produced two chips that
+        // `distinctBy { label }` could not collapse — and choosing the first put
+        // "SHOW “SCARLETWOMAN — …”" on the button the storyteller reads out.
+        val state = game(tb, "imp", "scarletwoman", "investigator", "chef", "monk", "mayor", "butler")
+        val row = assertNotNull(step(state, "investigator"))
+        val truthful = row.cards.filter { it.truthful }
+        assertEquals(1, truthful.size, "exactly one truthful offer: ${row.cards.map { it.label }}")
+        assertTrue("Scarlet Woman".uppercase() in truthful.single().label, truthful.single().label)
+        assertTrue(
+            row.cards.none { "scarletwoman" in it.label.lowercase() },
+            "no raw id anywhere: ${row.cards.map { it.label }}",
+        )
+    }
+
+    @Test
+    fun `an info step that picks nobody writes no choice at all`() {
+        // Playtest B2-9: five of night 1's twelve log lines were
+        // "Player 6 (Washerwoman) chooses nobody" — a CHOICE row written for
+        // every "start knowing", count and yes/no step, none of which can pick.
+        var state = game(tb, "imp", "poisoner", "washerwoman", "chef", "empath", "monk", "mayor", "butler")
+        for (id in listOf("washerwoman", "chef", "empath")) {
+            state = NightPlan.resolve(state, lookup, assertNotNull(step(state, id)).key, NightInput())
+        }
+        assertTrue(
+            state.ledger.none { it.kind == LedgerKind.CHOICE },
+            "no invented choices: ${state.ledger.filter { it.kind == LedgerKind.CHOICE }}",
+        )
+        // …while a row that COULD choose and did not still records the answer.
+        state = NightPlan.resolve(
+            state,
+            lookup,
+            assertNotNull(step(state, "poisoner")).key,
+            NightInput(none = true),
+        )
+        assertTrue(state.ledger.any { it.kind == LedgerKind.CHOICE && it.sourceId == "poisoner" })
     }
 
     // ==================================================================

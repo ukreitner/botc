@@ -204,6 +204,32 @@ class RulesTroubleBrewingTest {
     }
 
     @Test
+    fun `an execution recorded through the kill funnel reaches the Undertaker too`() {
+        // Playtest B2-4: the seat sheet's Kill… -> Execution writes a death with
+        // cause EXECUTION but no `ExecutionRecord`, so the gate (which read the
+        // record) auto-skipped the row "nobody was executed today" while the
+        // card underneath printed "P4 was executed today". One fact, one source.
+        var state = game("imp", "poisoner", "undertaker", "chef", "monk", "mayor")
+        state = GameActions.advancePhase(state) // day 1
+        state = Deaths.attempt(state, lookup, 3L, KillCause(DeathCause.EXECUTION)).state
+        assertFalse(alive(state, 3L))
+        assertTrue(state.executions.none { it.day == 1 }, "no ExecutionRecord was written")
+
+        val night2 = atNight(state, 2).copy(phase = Phase.NIGHT)
+        assertEquals(StepGate.Fire, step(night2, "undertaker").gate, "the row must not be skipped")
+        val info = assertNotNull(InfoCalc.compute(night2, lookup, "undertaker", 2L))
+        assertEquals(Answer.Characters(listOf("chef")), info.answer, "and it names the Chef")
+
+        // A NO_EXECUTION record stamped over a real death does not hide it —
+        // which is exactly what the dusk card offered to do.
+        val stamped = Execution.noExecution(state)
+        assertEquals(
+            StepGate.Fire,
+            step(atNight(stamped, 2).copy(phase = Phase.NIGHT), "undertaker").gate,
+        )
+    }
+
+    @Test
     fun `a sober Monk stops the Demon and a poisoned one does not`() {
         // Given a sober Monk protecting the Chef.
         var sober = atNight(game("imp", "poisoner", "monk", "chef", "mayor", "butler"), 2)
@@ -218,9 +244,14 @@ class RulesTroubleBrewingTest {
         assertTrue(sober.deaths.isEmpty())
         assertTrue(sober.ledger.any { it.kind == LedgerKind.RULING && it.actorId == 3L })
 
+        assertFalse(step(sober, "monk").abilityImpaired, "a sober Monk really does protect")
+
         // Given the same board with the Monk poisoned first.
         var poisoned = atNight(game("imp", "poisoner", "monk", "chef", "mayor", "butler"), 2)
         poisoned = run(poisoned, "poisoner", 2L)
+        // Playtest B2-5: the row must SAY the protection will not happen — its
+        // primary read "PLAYER 1 — SAFE" under its own IMPAIRED banner.
+        assertTrue(step(poisoned, "monk").abilityImpaired, "and this one does not")
         poisoned = run(poisoned, "monk", 3L)
         assertTrue(carries(poisoned, 3L, "monk", "Safe"), "the token is still placed — the grimoire must look normal")
 

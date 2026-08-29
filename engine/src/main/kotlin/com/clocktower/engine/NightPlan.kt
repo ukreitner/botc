@@ -117,6 +117,14 @@ data class DeferredDeath(
     val cause: DeathCause = DeathCause.DEMON_KILL,
     /** false => nothing stops it (an unstoppable standing effect). */
     val respectProtection: Boolean = true,
+    /**
+     * [NightEffect.Attack.deferred]: this death was set up on an EARLIER night,
+     * so an Exorcised source still lands it and a `NO_KILL_TONIGHT` source does
+     * not (lead D63/D68). Without it the preview re-ran the funnel as an
+     * ordinary attack, and an Exorcised Pukka's card said "Dev dies now" over a
+     * button reading "DEV SURVIVES — NOBODY DIES" (playtest D2-1).
+     */
+    val deferred: Boolean = false,
 )
 
 /**
@@ -148,6 +156,16 @@ data class NightStep(
     /** Imperative, storyteller voice, at most two lines. */
     val prompt: String = "",
     val action: NightAction? = null,
+    /**
+     * Which [InfoCalc] answer this row shows, "" for none.
+     *
+     * The screen used to guess it from the action (`ShowInfo.sourceId`, else the
+     * ability id), which meant a row with no action at all still computed its
+     * character's information: the Grandmother's "your grandchild was killed"
+     * row grew a picker and a `SHOW … TO …` primary (playtest B2-3). The
+     * planner decides; the screen reads.
+     */
+    val infoId: String = "",
     /** "died tonight", "spent on night 2", "new character", "out of order". */
     val badges: List<String> = emptyList(),
     /** Pre-filled cards this step offers. */
@@ -156,6 +174,18 @@ data class NightStep(
     val promptId: Long? = null,
     /** Whether waking here counts for the Chambermaid (lead D13). */
     val wakeCounts: WakeCount = WakeCount.ACT,
+    /**
+     * True when this holder's ability does not work tonight — drunk, poisoned,
+     * or running an ability that was never theirs.
+     *
+     * The tokens the row places are still placed (a Spy reading the grimoire
+     * must see an ordinary Monk) and they are inert. The button has to SAY so:
+     * a poisoned Monk's primary read "PLAYER 1 — SAFE", flat and enabled,
+     * directly under the card's own IMPAIRED banner, and Player 1 then died
+     * (playtest B2-5). The engine knows; this is how the screen finds out
+     * without asking about any character.
+     */
+    val abilityImpaired: Boolean = false,
     /**
      * Seats this row kills TONIGHT without anybody choosing them — the standing
      * half of the step, which `NightRule.pending` declares and [action] cannot.
@@ -677,6 +707,35 @@ data class NightPlan(
             val changedTonight: List<IdentityRecord> = state.identityLog
                 .filter { it.cycle == state.cycle && it.atNight }
 
+            /**
+             * True when [holder] became THIS Demon tonight by inheriting the
+             * token from a Demon that died — a star pass, a Scarlet Woman catch,
+             * a Fang Gu jump. *"If you kill yourself this way, a Minion becomes
+             * the Imp"* hands the token over; the attack has already been spent,
+             * so the new Demon does not act tonight
+             * (<https://wiki.bloodontheclocktower.com/Imp>), which is exactly
+             * what the hand-over card already tells the storyteller
+             * ([Identity] `changeNotes`).
+             *
+             * Only inheritance FROM A DEATH is suppressed. A Demon a Pit-Hag
+             * created out of a living seat is not an heir: they act if their slot
+             * is still to come (lead D67), and their reason is not in
+             * [PROMOTIONS].
+             */
+            fun inheritedDemonTonight(
+                holder: Player?,
+                abilityId: String,
+                character: Character?,
+            ): Boolean {
+                if (holder == null || character?.team != Team.DEMON) return false
+                val id = Character.normalizeId(abilityId)
+                return changedTonight.any {
+                    it.playerId == holder.id &&
+                        it.reason in PROMOTIONS &&
+                        Character.normalizeId(it.toCharacterId.orEmpty()) == id
+                }
+            }
+
             fun holder(role: ActingRole?): Player? = role?.let { state.player(it.playerId) }
 
             fun wakeContext(role: ActingRole?, holder: Player?) = WakeContext(
@@ -717,6 +776,31 @@ data class NightPlan(
             }
         }
 
+        /** During a night, "today" is the day that has just ended. */
+        fun today(state: GameState): Int =
+            if (state.phase == Phase.DAY) state.cycle else state.cycle - 1
+
+        /**
+         * The seat that died by execution today — the ONE truth the Undertaker's
+         * gate and the Undertaker's answer both read.
+         *
+         * The `ExecutionRecord` is canonical (lead D30) and names the seat that
+         * actually died (the Scapegoat, when one stood in). A death recorded
+         * through the seat sheet's kill funnel with cause `EXECUTION` writes no
+         * record, so it counts too: the gate said "nobody was executed today"
+         * and auto-skipped the row while the card underneath printed
+         * "Player 14 was executed today" (playtest B2-4).
+         */
+        fun executedTodayId(state: GameState, day: Int = today(state)): Long? {
+            val record = state.executions.lastOrNull { it.day == day }
+            if (record != null && record.outcome == ExecutionOutcome.DIED) {
+                return record.diedInsteadId ?: record.playerId
+            }
+            return state.deaths
+                .lastOrNull { it.cause == DeathCause.EXECUTION && it.day == day }
+                ?.playerId
+        }
+
         // ---- rows ----------------------------------------------------------
 
         private fun roleStep(
@@ -754,13 +838,24 @@ data class NightPlan(
             val believerRule = role.sourceId
                 ?.takeIf { role.alwaysFalse }
                 ?.let { CharacterRules.of(it, ctx.lookup(it)).nightRule(firstNightRules) }
+            // A seat that INHERITED the Demon tonight does not act as the Demon
+            // tonight (playtest B2-1): the Imp's attack was spent on itself, and
+            // the hand-over card says so in as many words. The row stays on the
+            // sheet as a marker so the storyteller can see the new Demon; it
+            // never carries a kill.
+            val inherited = ctx.inheritedDemonTonight(holder, role.abilityId, character)
             val gate = when {
+                inherited -> StepGate.Skip(NEW_DEMON_TONIGHT)
                 nightRule != null -> nightRule.gate.gate(ctx.wakeContext(role, holder))
                 // A believer's row is never "nothing to do".
                 believerRule != null -> believerRule.gate.gate(ctx.wakeContext(role, holder))
                 else -> StepGate.Skip("no ability on this night")
             }
-            val chosen = nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
+            val chosen = if (inherited) {
+                null
+            } else {
+                nightRule?.action?.invoke(nightCtx) ?: infoAction(role.abilityId, nightRule)
+            }
             // The picker shape is kept — a believed Shabaloth still takes two,
             // a charged believed Po still takes three — and every consequence
             // is stripped out of it.
@@ -835,17 +930,34 @@ data class NightPlan(
                     ),
                     briefing,
                 ),
-                prompt = nightRule?.prompt.orEmpty()
-                    .ifEmpty { believerRule?.prompt.orEmpty() }
-                    .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() },
+                prompt = if (inherited) {
+                    NEW_DEMON_PROMPT
+                } else {
+                    nightRule?.prompt.orEmpty()
+                        .ifEmpty { believerRule?.prompt.orEmpty() }
+                        .ifEmpty { NightGuide.forStep(role.abilityId, style)?.instructions.orEmpty() }
+                },
                 action = action,
+                infoId = if (inherited) {
+                    ""
+                } else {
+                    infoIdFor(role.abilityId, nightRule)?.takeIf(InfoCalc::supports).orEmpty()
+                },
                 badges = badges,
-                cards = nightRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule),
+                cards = if (inherited) {
+                    emptyList()
+                } else {
+                    nightRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule)
+                },
                 promptId = promptId,
-                wakeCounts = nightRule?.wakeCounts ?: WakeCount.ACT,
+                // An inherited Demon is not woken at all tonight, so a
+                // Chambermaid must not count them (lead D13).
+                wakeCounts = if (inherited) WakeCount.NONE else nightRule?.wakeCounts ?: WakeCount.ACT,
+                abilityImpaired = impairedNow(ctx, role, holder),
                 // A believer's row changes nothing at all, deferred half
-                // included (lead D70) — so it promises nothing either.
-                deferredDeaths = if (role.alwaysFalse) {
+                // included (lead D70) — so it promises nothing either. Nor does
+                // a row for a Demon that inherited the token tonight.
+                deferredDeaths = if (role.alwaysFalse || inherited) {
                     emptyList()
                 } else {
                     namedDeaths(nightRule?.pending?.invoke(nightCtx).orEmpty())
@@ -866,7 +978,12 @@ data class NightPlan(
             .filterIsInstance<NightEffect.Attack>()
             .mapNotNull { attack ->
                 (attack.on as? Ref.Seat)?.let {
-                    DeferredDeath(it.playerId, attack.cause, attack.respectProtection)
+                    DeferredDeath(
+                        playerId = it.playerId,
+                        cause = attack.cause,
+                        respectProtection = attack.respectProtection,
+                        deferred = attack.deferred,
+                    )
                 }
             }
             .distinctBy { it.playerId }
@@ -1078,6 +1195,17 @@ data class NightPlan(
         }
 
         /** The one derived fact worth ember: why this ability will not work tonight. */
+        /**
+         * Whether this row's ability is dead on arrival tonight — the fact the
+         * IMPAIRED banner states, as data ([NightStep.abilityImpaired]).
+         */
+        private fun impairedNow(ctx: PlanContext, role: ActingRole, holder: Player?): Boolean {
+            if (role.alwaysFalse) return true
+            holder ?: return false
+            if (role.worksWhileImpaired) return false
+            return Status.impairment(ctx.state, ctx.lookup, holder.id).isNotEmpty()
+        }
+
         private fun bannerFor(
             ctx: PlanContext,
             role: ActingRole,
@@ -1101,12 +1229,29 @@ data class NightPlan(
         }
 
         /**
-         * A supported information step still gets its picker when no rule
-         * declares one. `infoId = ""` suppresses it outright (W7H); `null` — the
-         * default — falls back to the ability's own id.
+         * Which calculation a row runs, if any.
+         *
+         * `infoId = ""` suppresses it outright (W7H); a NAMED id is always
+         * honoured — the seatless Duchess asks for one and wakes nobody. `null`
+         * — the default — falls back to the ability's own id, but only for a row
+         * that actually wakes its holder: a `WakeCount.NONE` row is the
+         * storyteller's own bookkeeping, so there is nobody to show anything to.
+         *
+         * The Grandmother's "your grandchild was killed" row is the case. It has
+         * no action and no infoId, so it inherited `grandmother` →
+         * `InfoCalc.revealCharacter` and grew a twelve-seat "WHO DID THEY
+         * CHOOSE?" picker she has no ability for; answering it replaced
+         * "ERIN DIES" on the button with "SHOW “SAILOR” TO ERIN" (playtest B2-3).
          */
+        private fun infoIdFor(abilityId: String, nightRule: NightRule?): String? = when {
+            nightRule?.infoId != null -> nightRule.infoId
+            nightRule?.wakeCounts == WakeCount.NONE -> null
+            else -> abilityId
+        }
+
+        /** A supported information step still gets its picker when no rule declares one. */
         private fun infoAction(abilityId: String, nightRule: NightRule?): NightAction? {
-            val infoId = nightRule?.infoId ?: abilityId
+            val infoId = infoIdFor(abilityId, nightRule) ?: return null
             if (!InfoCalc.supports(infoId)) return null
             val needed = InfoCalc.targetsNeeded(infoId)
             return ShowInfo(
@@ -1127,10 +1272,15 @@ data class NightPlan(
             role: ActingRole,
             nightRule: NightRule?,
         ): List<CardOffer> {
-            val infoId = nightRule?.infoId ?: role.abilityId
+            val infoId = infoIdFor(role.abilityId, nightRule) ?: return emptyList()
             if (!InfoCalc.supports(infoId) || InfoCalc.targetsNeeded(infoId) > 0) return emptyList()
             val result = InfoCalc.compute(ctx.state, ctx.lookup, infoId, role.playerId) ?: return emptyList()
-            return cardsFor(ctx.state, result)
+            // With the default `nameOf` the label printed the ENGINE ID, and the
+            // screen built the same offer again with real names — two chips a
+            // `distinctBy { label }` could not collapse, one of them putting
+            // "SHOW “SCARLETWOMAN — …”" on the primary the storyteller reads out
+            // loud (playtest B2-7).
+            return cardsFor(ctx.state, result) { id -> ctx.lookup(id)?.name ?: id }
         }
 
         /** Turns a typed answer into show-card offers; lies are labelled as lies. */
@@ -1147,8 +1297,18 @@ data class NightPlan(
             result: InfoResult,
             nameOf: (String) -> String = { it },
         ): List<CardOffer> = buildList {
+            // An answer computed FOR THE STORYTELLER is never a card. The
+            // Courtier's put every character in play in front of the Courtier
+            // and the Exorcist's told them who the Demon was (B2-2, D2-2, D2-3).
+            if (result.audience == InfoAudience.STORYTELLER) return@buildList
             cardFor(state, result.answer, result.cardPrefix)
                 ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer, nameOf)}", it, true)) }
+            // Equally true, and equally the storyteller's to choose: WHICH
+            // Townsfolk a Washerwoman is shown is a decision, not a lie (B2-15).
+            for (other in result.alsoTrue) {
+                val card = cardFor(state, other, result.cardPrefix) ?: continue
+                add(CardOffer("SHOW: ${labelFor(state, other, nameOf)}", card, true))
+            }
             for (alternative in result.alternatives) {
                 val card = cardFor(state, alternative, result.cardPrefix) ?: continue
                 add(CardOffer("LIE · SHOW ${labelFor(state, alternative, nameOf)}", card, false))
@@ -1564,6 +1724,15 @@ data class NightPlan(
             )
         }
 
+        /** Why an heir's row is a marker and not a kill (playtest B2-1). */
+        const val NEW_DEMON_TONIGHT: String =
+            "they became the Demon tonight — the new Demon does not act tonight"
+
+        /** What the storyteller does on that row instead. */
+        private const val NEW_DEMON_PROMPT: String =
+            "They are the Demon now. The Demon's attack tonight has already been spent, " +
+                "so they do not act tonight — show them their new token and carry on."
+
         /** Character changes that make a new Demon rather than a new character. */
         private val PROMOTIONS = setOf(
             ChangeReason.SCARLET_WOMAN,
@@ -1915,6 +2084,10 @@ data class NightPlan(
                                 sourceCharacterId = scope.sourceCharacterId,
                                 sourcePlayerId = if (silencedNow) null else scope.sourceId,
                                 ignoresProtection = !effect.respectProtection,
+                                // The funnel now scopes the veto itself (D63/D68);
+                                // saying so here keeps the preview and the
+                                // resolution literally the same call.
+                                deferred = effect.deferred,
                             ),
                         ).state
                     }
@@ -2225,7 +2398,25 @@ data class NightPlan(
             characterIds: List<String>,
             impaired: Boolean,
         ): GameState {
-            if (step.action == null && targets.isEmpty() && !input.none) return state
+            // Nothing was chosen and nothing could have been: a "start knowing",
+            // a count or a yes/no picks no seat, and an `Options` answer records
+            // itself in `shown`. Writing a CHOICE row for those put five lines
+            // of "Player 6 (Washerwoman) chooses nobody" in the night's log
+            // (playtest B2-9); "they chose nobody" on a row that COULD have
+            // chosen is a real answer and is still recorded.
+            // The INPUT, not the validated targets: a pick the constraints
+            // dropped is still an answer, and the empty CHOICE row is the proof
+            // that it was dropped.
+            val answered = input.playerIds.isNotEmpty() ||
+                input.characterIds.isNotEmpty() ||
+                input.assignments.isNotEmpty() ||
+                input.none ||
+                input.optionId.isNotEmpty() ||
+                input.yes != null ||
+                input.number != null ||
+                targets.isNotEmpty() ||
+                characterIds.isNotEmpty()
+            if (!answered) return state
             return ledger(
                 state,
                 LedgerKind.CHOICE,
@@ -2497,10 +2688,15 @@ object Gates {
             "a $noun"
         }
 
-    /** Undertaker: only when the day closed with an execution. */
+    /**
+     * Undertaker: only when the day closed with an execution.
+     *
+     * Reads `NightPlan.executedTodayId`, the same fact `InfoCalc.undertaker`
+     * reads, so the row can never be auto-skipped "nobody was executed today"
+     * over a card that names the seat that was (playtest B2-4).
+     */
     fun executedToday(): WakePredicate = WakePredicate { ctx ->
-        val record = ctx.executedToday
-        if (record != null && record.outcome == ExecutionOutcome.DIED) {
+        if (NightPlan.executedTodayId(ctx.state) != null) {
             StepGate.Fire
         } else {
             StepGate.Skip("nobody was executed today")

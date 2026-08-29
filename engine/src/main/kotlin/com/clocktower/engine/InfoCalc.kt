@@ -6,6 +6,26 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class InfoObligation { TRUTH, MAY_LIE, MUST_LIE }
 
+/**
+ * Who a computed answer is FOR.
+ *
+ * Most of `InfoCalc` computes what a character learns, and the night sheet turns
+ * it into a card to hold up. Some rows compute what the STORYTELLER needs in
+ * order to run the step and nothing else: the Courtier names a character and is
+ * told nothing, the Exorcist is told nothing either way, the Cult Leader's
+ * neighbours are the storyteller's own crib. Those answers may never become a
+ * show card — the Courtier's put the whole grimoire in front of the Courtier
+ * and the Exorcist's told them who the Demon was (playtest B2-2, D2-2, D2-3).
+ */
+@Serializable
+enum class InfoAudience {
+    /** The holder is shown this. It becomes a card. */
+    PLAYER,
+
+    /** For the storyteller's eyes only. Never a card, never a `SHOW … TO …` button. */
+    STORYTELLER,
+}
+
 /** The shape of one piece of information, so the UI never parses prose. */
 @Serializable
 sealed interface Answer {
@@ -44,6 +64,15 @@ data class InfoResult(
      * not render a "false info" heading at all.
      */
     val alternatives: List<Answer> = emptyList(),
+    /**
+     * Other answers that are equally TRUE — the storyteller's choice, not a lie.
+     *
+     * "1 of 2 players is a particular Townsfolk" is a choice of WHICH Townsfolk
+     * to reveal, and that choice is one of the storyteller's main levers. The
+     * card offered exactly one true chip and hid the rest of the decision behind
+     * "show a card…" (playtest B2-15).
+     */
+    val alsoTrue: List<Answer> = emptyList(),
     val obligation: InfoObligation = InfoObligation.TRUTH,
     /** Impairment, misregistration and Vortox are THREE obligations — keep them apart. */
     val caveats: List<String> = emptyList(),
@@ -55,6 +84,11 @@ data class InfoResult(
      * Undertaker's is "THIS CHARACTER DIED TODAY".
      */
     val cardPrefix: String = "",
+    /**
+     * Who this answer is for. [InfoAudience.STORYTELLER] answers are never
+     * offered as a card and never wear the `SHOW … TO …` primary (B2-2).
+     */
+    val audience: InfoAudience = InfoAudience.PLAYER,
 )
 
 /**
@@ -503,14 +537,17 @@ object InfoCalc {
 
     private fun undertaker(ctx: Ctx): InfoResult {
         val day = relevantDay(ctx.state)
-        val executed = ctx.state.deaths.lastOrNull {
-            it.cause == DeathCause.EXECUTION && it.day == day
-        } ?: return InfoResult(
-            Answer.Message("—"),
-            "No one was executed today — the Undertaker doesn't wake",
-        )
-        val player = ctx.state.player(executed.playerId)
-        val characterId = executed.characterIdAtDeath ?: player?.characterId
+        // ONE truth for the gate and the answer (playtest B2-4): the day's
+        // `ExecutionRecord` (canonical, lead D30) or a death the seat sheet
+        // recorded with cause EXECUTION.
+        val executedId = NightPlan.executedTodayId(ctx.state, day)
+            ?: return InfoResult(
+                Answer.Message("—"),
+                "No one was executed today — the Undertaker doesn't wake",
+            )
+        val executed = ctx.state.deaths.lastOrNull { it.playerId == executedId && it.day == day }
+        val player = ctx.state.player(executedId)
+        val characterId = executed?.characterIdAtDeath ?: player?.characterId
         val character = characterId?.let(ctx.lookup)
         return InfoResult(
             answer = Answer.Characters(listOfNotNull(characterId)),
@@ -640,13 +677,28 @@ object InfoCalc {
         return InfoResult(
             answer = Answer.Characters(listOfNotNull(target.characterId)),
             headline = "${ctx.name(target)} is the ${character?.name ?: "?"}",
+            // The card printed the generic stem "THIS CHARACTER" over the token
+            // and the ledger recorded it — the physical info token the
+            // Ravenkeeper, the Grandmother and the Harlot are shown reads
+            // "THIS PLAYER IS" (playtest B2-10, the residue of B-17).
+            cardPrefix = "THIS PLAYER IS",
             caveats = misregistrations(ctx, listOf(target)),
         )
     }
 
+    /**
+     * The Cult Leader's neighbours and their alignments — the storyteller's own
+     * crib for the three-way choice on the row. The Cult Leader is woken only
+     * when their alignment actually changed, and then sees a thumb, never a card
+     * pointing at their neighbours (B2-2's sweep).
+     */
     private fun cultLeader(ctx: Ctx): InfoResult {
         val holder = ctx.holder
-            ?: return InfoResult(Answer.Message("?"), "Select the Cult Leader's seat first")
+            ?: return InfoResult(
+                Answer.Message("?"),
+                "Select the Cult Leader's seat first",
+                audience = InfoAudience.STORYTELLER,
+            )
         val neighbours = aliveNeighbours(ctx, holder)
         return InfoResult(
             answer = Answer.Players(neighbours.map { it.id }),
@@ -654,6 +706,7 @@ object InfoCalc {
                 "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})"
             },
             detail = "The Cult Leader becomes the alignment of one of them (your choice).",
+            audience = InfoAudience.STORYTELLER,
         )
     }
 
@@ -736,9 +789,22 @@ object InfoCalc {
             // The two lies that keep the card's shape: same pair with a wrong
             // token, and the true token over a pair that does not contain them.
             alternatives = startKnowingLies(ctx, team, pair, trueHolder, characterId),
+            // Every OTHER real candidate, as a card of its own: which one to
+            // show is the storyteller's choice and it belongs on the card
+            // (playtest B2-15).
+            alsoTrue = inPlay.asSequence()
+                .filter { it.id != trueHolder.id }
+                .mapNotNull { other ->
+                    pointPair(ctx, other, holderId)?.let { Answer.Players(it, other.characterId) }
+                }
+                .take(MAX_TRUE_CHOICES)
+                .toList(),
             caveats = misregistrations(ctx, ctx.players),
         )
     }
+
+    /** How many other true "1 of 2" cards the storyteller is offered outright. */
+    private const val MAX_TRUE_CHOICES = 4
 
     /**
      * [trueHolder] plus one decoy, in seat order — never [excludeId], who is the
@@ -949,10 +1015,21 @@ object InfoCalc {
         )
     }
 
-    /** "Is the player you chose the Demon?" — the Exorcist's own confirmation. */
+    /**
+     * "Is the player you chose the Demon?" — the STORYTELLER's confirmation.
+     *
+     * The information flows to the Demon (who is woken and shown the Exorcist),
+     * never to the Exorcist: *"the Demon, if chosen, learns who you are, then
+     * doesn't act tonight"*. The app used to offer `SHOW “YES” TO <Exorcist>`
+     * directly under its own line saying they are not told (B2-2 / D2-3).
+     */
     private fun exorcist(ctx: Ctx, targets: List<Long>): InfoResult {
         val target = validTargets(ctx, targets, 1)?.single()
-            ?: return InfoResult(Answer.Message("?"), "Pick the player the Exorcist chose")
+            ?: return InfoResult(
+                Answer.Message("?"),
+                "Pick the player the Exorcist chose",
+                audience = InfoAudience.STORYTELLER,
+            )
         val isDemon = ctx.character(target)?.team == Team.DEMON
         return InfoResult(
             answer = Answer.YesNoAnswer(isDemon),
@@ -963,10 +1040,18 @@ object InfoCalc {
             },
             detail = "The Exorcist is not told either way; this is for you.",
             caveats = misregistrations(ctx, listOf(target)),
+            audience = InfoAudience.STORYTELLER,
         )
     }
 
-    /** "Is that character in play, and where?" — for the Courtier's pick. */
+    /**
+     * "Is that character in play, and where?" — for the Courtier's pick.
+     *
+     * The Courtier names a character and learns NOTHING. This is the
+     * storyteller's own crib sheet for finding the seat to make drunk, and it
+     * lists every character in play, Demon and Minion included — it was being
+     * offered as a card to hold up to the Courtier (B2-2 / D2-2).
+     */
     private fun courtier(ctx: Ctx): InfoResult {
         val holder = ctx.holder
         val inPlay = ctx.state.seats.filter { it.characterId != null }
@@ -979,6 +1064,7 @@ object InfoCalc {
                     add("${holder.name}'s ability is not working — nobody actually gets drunk.")
                 }
             },
+            audience = InfoAudience.STORYTELLER,
         )
     }
 
@@ -1000,10 +1086,19 @@ object InfoCalc {
         )
     }
 
-    /** "Is the Tea Lady's protection on?" — both neighbours good and sober. */
+    /**
+     * "Is the Tea Lady's protection on?" — both neighbours good and sober.
+     *
+     * The Tea Lady is never woken and never told; this is the storyteller's own
+     * check before a death is applied (B2-2's sweep).
+     */
     private fun teaLady(ctx: Ctx): InfoResult {
         val holder = ctx.holder
-            ?: return InfoResult(Answer.Message("?"), "Select the Tea Lady's seat first")
+            ?: return InfoResult(
+                Answer.Message("?"),
+                "Select the Tea Lady's seat first",
+                audience = InfoAudience.STORYTELLER,
+            )
         val neighbours = aliveNeighbours(ctx, holder)
         val bothGood = neighbours.isNotEmpty() && neighbours.none { ctx.isEvil(it) }
         val working = Status.hasAbility(ctx.state, ctx.lookup, holder.id)
@@ -1017,6 +1112,7 @@ object InfoCalc {
             },
             detail = neighbours.joinToString { "${ctx.name(it)} (${if (ctx.isEvil(it)) "evil" else "good"})" },
             caveats = misregistrations(ctx, neighbours),
+            audience = InfoAudience.STORYTELLER,
         )
     }
 

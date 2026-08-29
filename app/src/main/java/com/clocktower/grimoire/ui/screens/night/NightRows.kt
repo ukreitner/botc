@@ -12,6 +12,7 @@ import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
 import com.clocktower.engine.Prompt
+import com.clocktower.engine.Ref
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.StepGate
@@ -40,6 +41,13 @@ import com.clocktower.engine.YesNo
 
 /** The hard floor for text on the night screen, in sp (ux/night-screen §H). */
 const val NIGHT_MIN_SP: Float = 14f
+
+/**
+ * What a token placed by an ability that is not working actually does
+ * (playtest B2-5). The token is still placed — a Spy reading the grimoire must
+ * see an ordinary Monk — and it protects, poisons and drunks nobody.
+ */
+const val NO_EFFECT: String = "NO EFFECT (ABILITY NOT WORKING)"
 
 /** Clamps a requested text size to the night screen's floor. */
 fun nightSp(requested: Float): Float = if (requested < NIGHT_MIN_SP) NIGHT_MIN_SP else requested
@@ -135,10 +143,21 @@ fun needsGateAnswer(gate: StepGate, answered: Boolean): Boolean =
  */
 fun isSkipped(step: NightStep, forced: Boolean): Boolean = step.gate is StepGate.Skip && !forced
 
-/** The gutter mark for one row. */
+/**
+ * The gutter mark for one row.
+ *
+ * **A row that was RUN stays run.** Gates are evaluated against the state as it
+ * is now, so a Sailor whose holder is killed later the same night suddenly
+ * gated "dead — no ability" and the finished row re-drew itself as
+ * `⊘ skipped` — the recorded target vanished, `[Undo]` went with it, and the
+ * only control left was `[Run anyway]`, which would have placed a second Drunk
+ * (playtest D2-4). Nothing in the engine puts a token in `nightStepsDone`
+ * except a storyteller finishing or ticking the row, so the record wins over
+ * whatever the gate now says.
+ */
 fun rowMark(step: NightStep, done: Set<String>, current: Boolean, forced: Boolean): RowMark = when {
-    isSkipped(step, forced) -> RowMark.SKIPPED
     step.key.token in done -> RowMark.DONE
+    isSkipped(step, forced) -> RowMark.SKIPPED
     current -> RowMark.CURRENT
     else -> RowMark.PENDING
 }
@@ -332,8 +351,22 @@ fun openRowToken(key: String, cycle: Int): String? {
 fun primaryLabel(
     /** Seats the storyteller picked, in pick order. */
     picked: List<String> = emptyList(),
-    /** Reminder-token labels this action will place, from the registry. */
+    /**
+     * Character names the storyteller picked — the Courtier names a character
+     * and nobody is pointed at, so the button had nothing to state but
+     * "DONE — NEXT STEP" once its (storyteller-only) answer stopped being the
+     * label (B2-2).
+     */
+    pickedCharacters: List<String> = emptyList(),
+    /** Reminder-token labels this action will place on EVERY pick, from the registry. */
     places: List<String> = emptyList(),
+    /**
+     * Labels it places on the LAST pick only — the Innkeeper's `Drunk`, whose
+     * effect resolves against `scope.current` (§2.11). Joining them with
+     * [places] made "PLAYER 1, PLAYER 3 — SAFE + DRUNK", which reads as though
+     * both were safe AND drunk (playtest B2-14).
+     */
+    lastPickPlaces: List<String> = emptyList(),
     /** The kill funnel's own words when the action ends in a death attempt. */
     deathLine: String = "",
     /**
@@ -364,6 +397,16 @@ fun primaryLabel(
      * (playtest B P1 #9).
      */
     impairedHolder: String = "",
+    /**
+     * [NightStep.abilityImpaired] — this holder's ability does not work
+     * tonight, so the tokens it places are inert.
+     *
+     * A poisoned Monk's primary read `PLAYER 1 — SAFE`, flat and enabled,
+     * directly under the card's own IMPAIRED banner; two steps later the Imp
+     * correctly killed Player 1 (playtest B2-5). Every protection and
+     * standing-effect row states the REAL outcome now.
+     */
+    abilityImpaired: Boolean = false,
 ): String {
     val also = if (deferredLine.isBlank()) "" else " · ${deferredLine.uppercase()}"
     if (dawn) return "OPEN THE DAY →"
@@ -374,10 +417,24 @@ fun primaryLabel(
         val shown = "SHOW “${answer.uppercase()}”"
         return if (holder.isBlank()) shown else "$shown TO ${holder.uppercase()}"
     }
-    if (picked.isNotEmpty()) {
-        val names = picked.joinToString(", ") { it.uppercase() }
-        if (places.isNotEmpty()) {
-            return "$names — ${places.joinToString(" + ") { it.uppercase() }}$also"
+    val chosen = picked + pickedCharacters
+    if (chosen.isNotEmpty()) {
+        val names = chosen.joinToString(", ") { it.uppercase() }
+        fun tokens(labels: List<String>) = labels.joinToString(" + ") {
+            if (abilityImpaired) "“${it.uppercase()}”" else it.uppercase()
+        }
+        val phrases = buildList {
+            if (places.isNotEmpty()) add("$names — ${tokens(places)}")
+            // "PLAYER 1, PLAYER 3 — SAFE + DRUNK" read as though both were both;
+            // the SECOND pick is the drunk one and the card says so, so the
+            // button says so too (playtest B2-14).
+            if (lastPickPlaces.isNotEmpty()) {
+                add("${chosen.last().uppercase()} — ${tokens(lastPickPlaces)}")
+            }
+        }
+        if (phrases.isNotEmpty()) {
+            val body = phrases.joinToString(" · ")
+            return if (abilityImpaired) "$body — $NO_EFFECT$also" else "$body$also"
         }
         return "CONFIRM: $names$also"
     }
@@ -419,6 +476,23 @@ fun actionEffects(action: NightAction?): List<NightEffect> = when (action) {
 /** The token labels an action places — the outcome half of the button's label. */
 fun placedLabels(effects: List<NightEffect>): List<String> =
     effects.filterIsInstance<NightEffect.PlaceToken>().map { it.label }.distinct()
+
+/**
+ * The effects a multi-pick action applies to the LAST pick only.
+ *
+ * `perTarget` runs once per pick; `onResolve` runs once, with `Ref.Target`
+ * resolving to the pick that landed last (§2.11) — which is how the Innkeeper's
+ * "the SECOND one you tap is the drunk one" is expressed. Anything else stays
+ * with the whole answer.
+ */
+fun lastPickEffects(action: NightAction?): List<NightEffect> = when {
+    action !is ChoosePlayers || action.max <= 1 -> emptyList()
+    else -> action.onResolve.filter { it is NightEffect.PlaceToken && it.on == Ref.Target }
+}
+
+/** [actionEffects] minus the ones [lastPickEffects] has already claimed. */
+fun sharedEffects(action: NightAction?): List<NightEffect> =
+    actionEffects(action) - lastPickEffects(action).toSet()
 
 /**
  * True when the primary button must be **held** for
