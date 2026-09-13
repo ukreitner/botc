@@ -8,22 +8,27 @@ import com.clocktower.grimoire.ui.components.IconStore
 /**
  * Installs the asset-backed character icon loader. Icons live in
  * assets/icons/<id>.png|webp, fetched at build time by tools/fetch-icons.sh;
+ * original homebrew art is committed under assets/homebrew/salt-and-lantern.
  * absent files simply mean the token shows its glyph instead.
  *
  * This file is Android-only and excluded from the JVM typecheck build.
  */
 fun installIconLoader(context: Context) {
     val assets = context.assets
-    val available: Set<String> = try {
-        assets.list("icons")?.toSet() ?: emptySet()
-    } catch (e: Exception) {
-        emptySet()
+    val available = buildMap<String, String> {
+        for (directory in listOf("icons", "homebrew/salt-and-lantern")) {
+            val names = try { assets.list(directory).orEmpty() } catch (e: Exception) { emptyArray() }
+            for (name in names) {
+                if (name.endsWith(".png") || name.endsWith(".webp")) {
+                    put(name.substringBeforeLast('.'), "$directory/$name")
+                }
+            }
+        }
     }
     IconStore.load = loader@{ id ->
-        val name = available.firstOrNull { it == "$id.png" || it == "$id.webp" }
-            ?: return@loader null
+        val path = available[id] ?: return@loader null
         try {
-            assets.open("icons/$name").use { stream ->
+            assets.open(path).use { stream ->
                 BitmapFactory.decodeStream(stream)?.asImageBitmap()
             }
         } catch (e: Exception) {

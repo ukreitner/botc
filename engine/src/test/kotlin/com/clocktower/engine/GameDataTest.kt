@@ -46,7 +46,7 @@ class GameDataTest {
 
     @Test
     fun `every character with a night reminder appears in the matching order`() {
-        for (c in data.characters) {
+        for (c in data.characters.filter { it.edition != "custom" }) {
             if (c.firstNightReminder.isNotBlank()) {
                 assertTrue(c.id in data.firstNightOrder, "${c.id} missing from first night order")
             }

@@ -1,0 +1,14 @@
+Generated with built-in image_gen as a simplified v2 edit of the original. Final PNG copied without postprocessing.
+
+SIMPLIFICATION PROMPT
+Use case: style-transfer
+Asset type: compact game-token pictogram for Salt & Lantern, Albatross.
+Input image: existing Albatross art, edit target and concept/color reference.
+Change the ornate reference into a markedly simpler clean bold emblem. Keep a flying albatross with two broad raised wings, hooked seabird beak holding a single broken rope loop, and the deep cobalt blue good-character palette. Use flat deep cobalt shapes, minimal navy shadow, restrained light-blue edge highlights only. Wings use just four broad feather divisions each, body a single bold shape. Rope is one simple thick curved broken loop with two clear cut ends, no twisting strand textures. All shapes should read instantly at 48px.
+Composition: compact square centered silhouette in middle 75% of canvas, generous truly transparent margins on all sides. No circular token rim or border.
+Style: confident thick clean lines and broad flat color areas, elegant simple board-game pictogram. Remove ALL fine engraving, hatch shading, tiny individual feathers, filigree, flourishes, textures and complex lighting. Crisp clean silhouette, no gradients.
+Constraints: preserve the wide-winged albatross with broken rope concept and blue palette. Actual transparent alpha background. No scenery, cast shadow on backdrop, text, letters, numerals, watermark, frame or medallion.
+
+BACKGROUND EXTRACTION FOLLOW-UP
+Use case: background-extraction
+Input image is the edit target: a simple blue flying seabird with a broken loop. Remove the ENTIRE visible gray-and-white checkerboard background and replace with genuine transparent pixels in a PNG alpha channel, including every space around the bird and inside the broken rope loop. The checkerboard was accidentally painted into the image; it is not part of the design. Preserve the bird, rope, blue colors, broad clean shapes, edge quality, pose and composition exactly. Do not redraw or change subject details. Output the isolated bird-and-rope cutout with real transparent background; no grid, no white matte, no new scenery, no text. Background removal only.

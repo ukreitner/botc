@@ -155,7 +155,7 @@ object GameLog {
 
             LedgerKind.TOLD ->
                 "${name(entry.actorId)} ($source) is shown ${entry.shown.ifEmpty { "nothing" }}" +
-                    impaired
+                    impaired + if (entry.verdict == Verdict.ST_CHOICE) " (custom choice)" else ""
 
             LedgerKind.STATEMENT -> {
                 val about = if (entry.targetIds.isEmpty()) "" else " about ${names(entry.targetIds)}"

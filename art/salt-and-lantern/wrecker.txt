@@ -1,0 +1,14 @@
+Generated with built-in image_gen as a simplified v2 edit of the original. Final PNG copied without postprocessing.
+
+SIMPLIFICATION PROMPT
+Use case: style-transfer
+Asset type: compact game-token pictogram for Salt & Lantern, Wrecker.
+Input image: existing Wrecker art, edit target and concept/color reference.
+Change the ornate reference into a markedly simpler clean bold emblem. Keep a crooked tilted old lantern and the deep crimson red evil-character palette. REDUCE the rocks to exactly three simple angular rocks beneath the lantern. REMOVE THE SHIP ENTIRELY. Lantern is a simple hanging iron lamp with one broad loop handle, two straight cage bars and a small flat flame shape. Use flat deep crimson shapes, minimal burgundy shadow, and restrained scarlet edge highlights only. Subject should read immediately at 48px.
+Composition: compact square centered lantern-over-three-rocks silhouette in middle 75% of canvas, generous fully transparent margins on all sides. No circular token rim or border.
+Style: confident thick clean lines and broad flat color areas, elegant simple board-game pictogram. Remove ALL fine engraving, hatch shading, filigree, flourishes, grain, barnacles, textures and complex lighting. Crisp clean silhouette, no gradients.
+Constraints: retain sinister crooked-lantern concept and crimson palette. GENUINE TRANSPARENT ALPHA CHANNEL; empty background pixels must have alpha=0. NO painted checkerboard, NO white or colored background, NO grid. No scenery, cast shadow on backdrop, text, letters, numerals, watermark, frame or medallion.
+
+BACKGROUND EXTRACTION FOLLOW-UP
+Use case: background-extraction
+Input image is the edit target: a simple crimson red tilted lantern above three angular rocks. Remove the ENTIRE visible gray-and-white checkerboard background and replace with genuine transparent pixels in a PNG alpha channel, including every space outside the subject and the spaces inside the top loop handle and between the lantern cage bars. The checkerboard was accidentally painted into the image; it is not part of the design. Preserve the lantern, flame, three rocks, red colors, broad clean shapes, edge quality, tilt and composition exactly. Do not redraw or change subject details. Output the isolated red lantern-and-rocks cutout with real transparent background; no grid, no white matte, no new scenery, no text. Background removal only.

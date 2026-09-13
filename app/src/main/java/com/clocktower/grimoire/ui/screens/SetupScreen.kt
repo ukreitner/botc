@@ -804,6 +804,13 @@ private fun ScriptPicker(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (script.manualNightInstructions.isNotEmpty()) {
+                        Text(
+                            "Includes manual abilities · see the script Guide",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AgedGold,
+                        )
+                    }
                     if (unknown.isNotEmpty()) {
                         Text(
                             "Unknown ids skipped: ${unknown.joinToString()}",

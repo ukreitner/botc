@@ -20,6 +20,8 @@ night sheets and vote counting for any script.
 **Any script**
 - All three base editions bundled: Trouble Brewing, Bad Moon Rising,
   Sects & Violets
+- Salt & Lantern v1.1 bundled: 25 characters including 12 illustrated
+  homebrews, its written night order, jinxes and Storyteller guide
 - 171 official characters embedded — the full experimental/Carousel roster,
   travellers, and fabled — with abilities, reminders and night prompts
 - Import any custom script as JSON from the official script tool
@@ -41,6 +43,9 @@ night sheets and vote counting for any script.
 - Full-screen cards to show players silently across the table: YOU ARE /
   THIS PLAYER IS / THIS CHARACTER SELECTED YOU with character tokens,
   number and good/evil signals, the three bluffs, and free editable text
+- Every player-facing night suggestion offers a visible **Custom choice**:
+  enter text or a number, choose players or characters, or show alignment.
+  The exact custom message is retained in the information log.
 
 **Running the game**
 - Three-stage setup: script → seats → bag, with the official player-count
@@ -72,7 +77,16 @@ bash tools/fetch-icons.sh
 Requires JDK 17+. The Android SDK (compileSdk 35) is fetched/managed by
 Android Studio as usual. Minimum supported device: Android 8.0 (API 26).
 If the icon-fetch step is skipped, the app still builds but uses emoji
-fallbacks. On Windows, run the script with Git Bash.
+fallbacks for official characters. Salt & Lantern's original homebrew art is
+committed and works without the fetch step. On Windows, run the script with Git Bash.
+
+Salt & Lantern's homebrew effects and the official abilities they affect are
+resolved manually using the included night instructions and seat controls.
+Marking a manual night row done records its completion, not its effects.
+See the script's **Guide** and **Jinxes** tabs and [the supplied Storyteller
+document](docs/salt-and-lantern.md) for its rulings.
+The illustrated [player reference PDF](docs/salt-and-lantern-player-reference.pdf)
+contains all 25 characters and the public rulings, ready to share with players.
 
 The GitHub Actions workflow also assembles a debug APK on every push —
 grab it from the workflow run's artifacts if you don't have Android

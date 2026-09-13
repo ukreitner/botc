@@ -452,7 +452,7 @@ private fun SeatActions(
             if (showAbout && character != null) {
                 Text(character.ability, style = MaterialTheme.typography.bodyMedium)
                 val inPlay = state.seats.mapNotNull { it.characterId } + state.fabledIds
-                for (j in viewModel.gameData.activeJinxes(inPlay).filter { it.id1 == character.id || it.id2 == character.id }) {
+                for (j in viewModel.gameData.activeJinxes(inPlay, state.script).filter { it.id1 == character.id || it.id2 == character.id }) {
                     val partner = if (j.id1 == character.id) j.id2 else j.id1
                     Text(
                         "Jinx with ${viewModel.gameData.character(partner)?.name}: ${j.reason}",

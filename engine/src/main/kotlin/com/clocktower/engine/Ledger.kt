@@ -195,6 +195,31 @@ object Ledger {
         ),
     )
 
+    /** An actual show-card delivery. Null truth means an unjudged custom choice. */
+    fun shown(
+        state: GameState,
+        playerId: Long?,
+        sourceId: String,
+        shown: String,
+        truthful: Boolean? = true,
+    ): GameState {
+        if (playerId == null) {
+            return note(state, "Shown${if (truthful == null) " (custom choice)" else ""}: $shown")
+        }
+        return record(
+            state,
+            LedgerEntry(
+                kind = LedgerKind.TOLD,
+                sourceId = sourceId,
+                actorId = playerId,
+                shown = shown,
+                impaired = truthful == false,
+                byStoryteller = truthful == null,
+                verdict = if (truthful == null) Verdict.ST_CHOICE else Verdict.UNJUDGED,
+            ),
+        )
+    }
+
     /**
      * Something said in public. This is the one the user asked for by name:
      * it works with **nothing** in play — `sourceId` may be [Sources.CLAIM]

@@ -1,0 +1,16 @@
+Generated with built-in image_gen. Final asset is a fresh redraw without input references after edit-mode candidates failed alpha verification.
+
+Final prompt:
+Create an original simple blue nautical game-token pictogram of an open scallop shell holding one large pearl. Isolated on genuinely transparent alpha background. Square canvas, centered compact emblem, 75 percent canvas occupancy with generous margins. Flat deep cobalt blue filled shell silhouette with pale blue pearl and restrained light blue highlight. Only five thick simple shell grooves, simple scalloped shell edge, one small highlight on pearl. Mature storybook game-symbol mood. Clean bold shapes and very few confident lines, easily readable at 48 pixels. No diver helmet. No engraving or hatch marks. No texture. No ornaments. No intricate shading. No circular token border. No text, watermark, or background. Deliver a transparent PNG cutout.
+
+Earlier simplification prompt:
+Use case: style-transfer
+Asset type: square game character token pictogram, PEARL DIVER, simplified v2.
+Input image: edit target; preserve the nautical blue subject concept but radically simplify the illustration.
+Primary request: reduce the reference to just one clean open shell holding one large round pearl. Remove the diver helmet entirely. Draw a bold compact game-token pictogram readable at 48 pixels. Broad simple shell silhouette, only three or four confident thick shell lines, one smooth circular pearl with at most one simple light-blue highlight. Flat deep cobalt blue solid shapes with restrained lighter blue edges or highlights. Maintain the mature nautical fantasy mood through the silhouette.
+Composition: square transparent canvas, centered artwork filling about 70–75 percent of canvas, generous equal transparent margins, all edges entirely within canvas.
+Background: genuinely transparent alpha.
+Constraints: radically simplify; no fine engraving, no crosshatching, no ornamental flourishes, no tiny textures, no complex shading, no gradient, no metallic rendering, no shell encrustations. No helmet, no circular token border, no frame, no text or lettering, no watermark, no backdrop. Clean flat shapes and a few thick lines only.
+
+Unsuccessful alpha repair prompt:
+Remove the entire gray and white checkerboard background from this image. Preserve only the blue shell and pale blue pearl exactly as shown, with all the same clean flat shapes and bold outlines. Return an isolated PNG cutout with a genuinely transparent alpha background. Do not draw or leave any checkerboard squares. Do not add any backdrop or new objects. Preserve the square framing and margins.

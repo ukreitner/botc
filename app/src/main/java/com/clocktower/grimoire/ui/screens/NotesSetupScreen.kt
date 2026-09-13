@@ -108,7 +108,7 @@ fun NotesSetupScreen(
                             color = if (chosen == script.id) AgedGold else MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
-                            "${script.characterIds.size + script.customCharacters.size} characters" +
+                            "${script.characterIds.size} characters" +
                                 (script.author.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

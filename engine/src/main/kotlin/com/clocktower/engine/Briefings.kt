@@ -117,9 +117,22 @@ object Briefings {
             BriefingSlot.EXECUTION -> execution(state, lookup)
             BriefingSlot.DUSK -> dusk(state, lookup)
         }
-        // Keys are the ticked-off identity, so they must be unique within one
-        // briefing even when two rules describe the same fact.
-        return Briefing(slot = slot, cycle = state.cycle, items = items.distinctBy { it.key })
+        val scriptReminder = when (slot) {
+            BriefingSlot.DAWN -> state.script.dawnReminder
+            BriefingSlot.DUSK, BriefingSlot.TONIGHT -> state.script.duskReminder
+            BriefingSlot.DAY_START, BriefingSlot.EXECUTION -> state.script.dayReminder
+            else -> ""
+        }
+        val scriptItems = if (scriptReminder.isBlank()) emptyList() else listOf(
+            BriefingItem(
+                key = "script-${state.script.id}-${slot.name}",
+                kind = BriefingKind.PRIVATE,
+                severity = BriefingSeverity.ACTION,
+                text = scriptReminder,
+            ),
+        )
+        // Keys are the ticked-off identity, so they must be unique within one briefing.
+        return Briefing(slot = slot, cycle = state.cycle, items = (items + scriptItems).distinctBy { it.key })
     }
 
     /**

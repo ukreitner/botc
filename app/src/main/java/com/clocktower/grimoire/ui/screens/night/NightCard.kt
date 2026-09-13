@@ -15,14 +15,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +52,8 @@ import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.StepGate
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.CharacterToken
+import com.clocktower.grimoire.ui.components.CustomCardEditor
+import com.clocktower.grimoire.ui.components.describe
 import com.clocktower.grimoire.ui.components.TokenCopies
 import com.clocktower.grimoire.ui.components.labelCopies
 import com.clocktower.grimoire.ui.components.ShowCard
@@ -85,7 +83,7 @@ fun NightCard(
     step: NightStep,
     forced: Boolean,
     onRunAnyway: () -> Unit,
-    onShow: (ShowCard, Long?, Boolean) -> Unit,
+    onShow: (ShowCard, Long?, Boolean?) -> Unit,
     onOpenShowTool: () -> Unit,
     onKillSheet: (Long, Long?) -> Unit,
     onDawn: () -> Unit,
@@ -116,7 +114,8 @@ fun NightCard(
     }
     var gateAnswer by rememberSaveable(state.cycle, key.token) { mutableStateOf<Boolean?>(null) }
     var drawerOpen by rememberSaveable(state.cycle, key.token) { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<ShowCard?>(null) }
+    var editing by remember(state.cycle, key.token) { mutableStateOf<ShowCard?>(null) }
+    var customOpen by rememberSaveable(state.cycle, key.token) { mutableStateOf(false) }
 
     val skipped = isSkipped(step, forced)
     val gate = step.gate
@@ -161,8 +160,8 @@ fun NightCard(
     // `shown:` row, so the Chef got nothing and the sheet said the step was
     // done (playtest B P1 #6).
     val truthCard = remember(answerCards) { answerCards.firstOrNull { it.truthful }?.card?.asCard() }
-    val truthful = remember(offers) { offers.filter { it.truthful } }
-    val lies = remember(offers) { offers.filterNot { it.truthful } }
+    val truthful = remember(offers) { offers.filter { it.truthful == true } }
+    val lies = remember(offers) { offers.filter { it.truthful == false } }
     // An answer the engine computed FOR THE STORYTELLER is not shown to anybody:
     // no card, and no `SHOW … TO …` on the one gold button (B2-2, D2-2, D2-3).
     // It stays on the card as the headline and the detail, which is what the
@@ -241,13 +240,13 @@ fun NightCard(
     // not the computed truth, is then what the primary promises: for a poisoned
     // holder the card itself says "give false info", and the one gold button
     // must not be the true answer (playtest B P1 #9).
-    var chosen by remember(state.cycle, key.token, info) { mutableStateOf<UiOffer?>(null) }
+    var chosen by remember(state.cycle, key.token, pick.playerIds, pick.characterIds) { mutableStateOf<UiOffer?>(null) }
     // Nothing is shown, so nothing can be shown falsely: an impaired Courtier
     // must not be held on "PICK WHAT TO SHOW" with no card to pick.
     val owesFalseInfo = info != null && !forStorytellerOnly &&
         mustNotShowTruth(info.obligation, info.abilityMalfunctions)
     val shownAnswer = when {
-        chosen != null -> offerAnswerText(chosen!!.label)
+        chosen != null -> chosen!!.answerText
         owesFalseInfo -> ""
         else -> answer
     }
@@ -445,13 +444,28 @@ fun NightCard(
             if (truthful.isNotEmpty() || liesOnCard.isNotEmpty()) {
                 CardOffers(
                     offers = truthful + liesOnCard,
-                    recipientId = step.holderId,
                     chosen = chosen,
                     onShow = { offer ->
                         chosen = offer
                         onShow(offer.card, step.holderId, offer.truthful)
                     },
-                    onEdit = { editing = it },
+                    onEdit = { editing = it; customOpen = true },
+                )
+            }
+
+            if (offers.isNotEmpty() ||
+                (!skipped && !awaitingGate && !forStorytellerOnly && step.wakes.isNotEmpty())) {
+                chosen?.takeIf { it.truthful == null }?.let { custom ->
+                    Text("Custom choice: ${custom.answerText}", color = AgedGold, fontSize = NIGHT_MIN_SP.sp)
+                }
+                NightChip(
+                    label = "Custom choice…",
+                    tone = Tone.NORMAL,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        editing = chosen?.card ?: truthCard ?: offers.firstOrNull()?.card
+                        customOpen = true
+                    },
                 )
             }
 
@@ -494,7 +508,7 @@ fun NightCard(
                                 // written, then the step is ticked (§B.7).
                                 val card = chosen?.card ?: truthCard.takeIf { !owesFalseInfo }
                                 if (shownAnswer.isNotBlank() && card != null) {
-                                    onShow(card, step.holderId, chosen?.truthful ?: true)
+                                    onShow(card, step.holderId, if (chosen != null) chosen!!.truthful else true)
                                 }
                                 viewModel.resolveNightStep(
                                     key,
@@ -557,6 +571,7 @@ fun NightCard(
                         chosen = offer
                         onShow(offer.card, step.holderId, offer.truthful)
                     },
+                    onEdit = { editing = it; customOpen = true },
                     onOpenShowTool = onOpenShowTool,
                     onKillSheet = onKillSheet,
                     onShowGrimoire = onShowGrimoire,
@@ -565,13 +580,17 @@ fun NightCard(
         }
     }
 
-    editing?.let { card ->
-        CardEditor(
-            card = card,
-            onDismiss = { editing = null },
-            onShow = {
-                editing = null
-                onShow(it, step.holderId, true)
+    if (customOpen) {
+        CustomCardEditor(
+            state = state,
+            characters = viewModel.gameData.resolve(state.script),
+            initial = editing,
+            onDismiss = { customOpen = false },
+            onShow = { card ->
+                customOpen = false
+                val offer = customOffer(card) { id -> viewModel.characterById(id)?.name ?: id }
+                chosen = offer
+                onShow(card, step.holderId, offer.truthful)
             },
         )
     }
@@ -595,10 +614,12 @@ private fun NightPromptAsk(
     prompt: Prompt,
     onAnswer: (Long) -> Unit,
     onDone: () -> Unit,
-    onShow: (ShowCard, Long?, Boolean) -> Unit,
+    onShow: (ShowCard, Long?, Boolean?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var picked by remember(prompt.id) { mutableStateOf<Long?>(null) }
+    var customOpen by rememberSaveable(prompt.id) { mutableStateOf(false) }
+    var editing by remember(prompt.id) { mutableStateOf<ShowCard?>(null) }
     val becomes = viewModel.characterById(prompt.becomesCharacterId)
     // Only a question that asks for a SEAT gets a picker. An obligation that
     // just has to be discharged — "show Ben his new character" — is a card and
@@ -651,10 +672,25 @@ private fun NightPromptAsk(
                         truthful = true,
                     ),
                 ),
-                recipientId = prompt.subjectPlayerId,
                 chosen = null,
                 onShow = { offer -> onShow(offer.card, prompt.subjectPlayerId, true) },
-                onEdit = {},
+                onEdit = { editing = it; customOpen = true },
+            )
+        }
+        NightChip(
+            label = "Custom choice…",
+            onClick = { editing = card; customOpen = true },
+        )
+        if (customOpen) {
+            CustomCardEditor(
+                state = state,
+                characters = viewModel.gameData.resolve(state.script),
+                initial = editing,
+                onDismiss = { customOpen = false },
+                onShow = { custom ->
+                    customOpen = false
+                    onShow(custom, prompt.subjectPlayerId, null)
+                },
             )
         }
         PrimaryButton(label = promptDoneLabel(card != null), onConfirm = onDone)
@@ -700,9 +736,16 @@ private fun NightPromptAsk(
 data class UiOffer(
     val label: String,
     val card: ShowCard,
-    val truthful: Boolean,
+    /** Null means a custom choice whose truth the engine has not judged. */
+    val truthful: Boolean?,
     val editable: Boolean = true,
+    val answerText: String = offerAnswerText(label),
 )
+
+fun customOffer(card: ShowCard, nameOf: (String) -> String): UiOffer {
+    val answer = card.describe(nameOf)
+    return UiOffer("CUSTOM · SHOW: ${answer.take(70)}", card, truthful = null, answerText = answer)
+}
 
 /**
  * The line above the names on a [ShowCard.PointCard].
@@ -735,7 +778,6 @@ fun outcomeDetail(outcome: KillOutcome): String = when (outcome) {
 @Composable
 private fun CardOffers(
     offers: List<UiOffer>,
-    recipientId: Long?,
     chosen: UiOffer?,
     onShow: (UiOffer) -> Unit,
     onEdit: (ShowCard) -> Unit,
@@ -745,7 +787,7 @@ private fun CardOffers(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         for (offer in offers) {
-            val tone = if (offer.truthful) Tone.ACTIVE else Tone.ALERT
+            val tone = if (offer.truthful == false) Tone.ALERT else Tone.ACTIVE
             val card = offer.card
             val picked = chosen?.label == offer.label
             Box(
@@ -783,6 +825,7 @@ private fun SecondaryDrawer(
     hasAttack: Boolean,
     otherCards: List<UiOffer>,
     onShow: (UiOffer) -> Unit,
+    onEdit: (ShowCard) -> Unit,
     onOpenShowTool: () -> Unit,
     onKillSheet: (Long, Long?) -> Unit,
     /**
@@ -804,10 +847,9 @@ private fun SecondaryDrawer(
             )
             CardOffers(
                 offers = otherCards,
-                recipientId = step.holderId,
                 chosen = null,
                 onShow = onShow,
-                onEdit = {},
+                onEdit = onEdit,
             )
         }
         NightChip(
@@ -935,45 +977,3 @@ const val SHEET_ON_HOLD: String =
 /** Said out loud on a row whose computed answer is the storyteller's own (B2-2). */
 private const val STORYTELLER_ONLY_NOTE =
     "FOR YOU ONLY — this is not shown to anybody, and there is no card to hold up."
-
-/** Long-press on an offer: the free-text editor, no longer the default path. */
-@Composable
-private fun CardEditor(card: ShowCard, onDismiss: () -> Unit, onShow: (ShowCard) -> Unit) {
-    val initial = when (card) {
-        is ShowCard.Message -> card.title
-        is ShowCard.CharacterCard -> card.prefix
-        is ShowCard.PointCard -> card.prefix
-        is ShowCard.MultiTokenCard -> card.prefix
-        is ShowCard.AlignmentCard -> card.text
-        else -> ""
-    }
-    var text by rememberSaveable(initial) { mutableStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit this card") },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text("Text shown full-screen") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
-        confirmButton = {
-            FilledTonalButton(
-                onClick = {
-                    onShow(
-                        when (card) {
-                            is ShowCard.CharacterCard -> card.copy(prefix = text)
-                            is ShowCard.PointCard -> card.copy(prefix = text)
-                            is ShowCard.MultiTokenCard -> card.copy(prefix = text)
-                            is ShowCard.AlignmentCard -> card.copy(text = text)
-                            else -> ShowCard.Message(text)
-                        },
-                    )
-                },
-            ) { Text("Show it") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}

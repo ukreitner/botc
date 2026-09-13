@@ -1,0 +1,13 @@
+Generated with built-in image_gen. Final asset is a fresh redraw without input references after an edit-mode candidate failed alpha verification.
+
+Final prompt:
+Create an original simple blue nautical game-token pictogram of a sextant beneath exactly two navigation stars, one large four-point star and one smaller four-point star. Isolated on genuinely transparent alpha background. Square canvas, centered compact emblem, 75 percent canvas occupancy with generous margins. Flat deep cobalt blue filled shapes with restrained pale blue edge highlights. Sextant formed from one bold curved arc and two broad straight bars, with one plain short sight tube. Very simple silhouette, clean flat shape construction, only a few thick confident lines, legible at 48 pixels. Mature nautical game-symbol mood. No engraved tick marks, no hatching, no miniature knobs, no ornamental flourishes, no small rings, no texture, no complex shading. No circular token border. No text or watermark. No backdrop. Deliver a transparent PNG cutout.
+
+Earlier simplification prompt:
+Use case: style-transfer
+Asset type: square game character token pictogram, NAVIGATOR, simplified v2.
+Input image: edit target; retain the nautical sextant and two stars concept but redraw as a very simple bold pictogram.
+Primary request: a compact simplified sextant beneath exactly two four-point navigation stars, one large and one small. Sextant formed with one thick curved arc and only two broad structural bars plus one simple short sight tube. Remove all decorative engraving, tick marks, miniature controls, ornamental shapes, small rings and internal textures. Clean flat deep cobalt blue shapes and a few restrained lighter blue edges or highlights. Broad uncomplicated silhouette legible at 48 pixels. Mature nautical game aesthetic.
+Composition: square; centered composition filling 70–75 percent of canvas, generous transparent margins, entire artwork visible.
+Background: actual transparent alpha channel, not an illustrated background. Output isolated transparent PNG. Do not draw a checkerboard or transparency grid.
+Constraints: no fine linework, no crosshatching, no textures, no complex shading, no ornamental flourishes, no gradient, no frame, no circular token border, no text, no lettering, no watermark, no backdrop. Exactly two stars. Simple solid flat shapes, a few thick confident lines only.

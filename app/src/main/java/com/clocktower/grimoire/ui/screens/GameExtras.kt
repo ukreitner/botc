@@ -318,7 +318,7 @@ fun ActiveJinxesDialog(
     onDismiss: () -> Unit,
 ) {
     val inPlay = state.players.mapNotNull { it.characterId } + state.fabledIds
-    val jinxes = remember(inPlay) { viewModel.gameData.activeJinxes(inPlay) }
+    val jinxes = remember(inPlay, state.script) { viewModel.gameData.activeJinxes(inPlay, state.script) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Jinxes in play (${jinxes.size})") },

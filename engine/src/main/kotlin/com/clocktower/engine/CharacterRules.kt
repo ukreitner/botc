@@ -7,6 +7,7 @@ import com.clocktower.engine.rules.EXP_OUTSIDER_RULES
 import com.clocktower.engine.rules.EXP_TOWNSFOLK_RULES
 import com.clocktower.engine.rules.FABLED_RULES
 import com.clocktower.engine.rules.SV_RULES
+import com.clocktower.engine.rules.SALT_AND_LANTERN_RULES
 import com.clocktower.engine.rules.TB_RULES
 import com.clocktower.engine.rules.TRAVELLER_RULES
 
@@ -281,7 +282,7 @@ object CharacterRules {
         (
             TB_RULES + BMR_RULES + SV_RULES +
                 EXP_TOWNSFOLK_RULES + EXP_OUTSIDER_RULES + EXP_MINION_RULES + EXP_DEMON_RULES +
-                TRAVELLER_RULES + FABLED_RULES
+                TRAVELLER_RULES + FABLED_RULES + SALT_AND_LANTERN_RULES
             ).associateBy { Character.normalizeId(it.id) }
     }
 

@@ -293,7 +293,7 @@ private const val WINDOW = 3
 private data class ShownCard(
     val card: ShowCard,
     val recipientId: Long?,
-    val truthful: Boolean,
+    val truthful: Boolean?,
     val sourceId: String,
 )
 

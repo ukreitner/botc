@@ -1,5 +1,6 @@
 package com.clocktower.engine
 
+import com.clocktower.engine.rules.SaltAndLantern
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -9,6 +10,7 @@ class GameData(
     val jinxes: List<Jinx>,
     val firstNightOrder: List<String>,
     val otherNightOrder: List<String>,
+    private val bundledScripts: List<Script> = emptyList(),
 ) {
     private val byId: Map<String, Character> = characters.associateBy { it.id }
 
@@ -20,17 +22,21 @@ class GameData(
         characters.filter { it.edition == edition }
 
     /** Jinxes where both characters appear in [ids]. */
-    fun activeJinxes(ids: Collection<String>): List<Jinx> {
+    fun activeJinxes(ids: Collection<String>, script: Script? = null): List<Jinx> {
         val set = ids.map { Character.normalizeId(it) }.toSet()
-        return jinxes.filter { it.id1 in set && it.id2 in set }
+        return (jinxes + script?.jinxes.orEmpty()).distinct().filter { it.id1 in set && it.id2 in set }
     }
 
-    /** The three bundled editions as ready-to-play scripts. */
+    /** Bundled official editions and authored homebrew scripts. */
     fun builtInScripts(): List<Script> = listOf(
         builtIn("tb", "Trouble Brewing"),
         builtIn("bmr", "Bad Moon Rising"),
         builtIn("sv", "Sects & Violets"),
-    )
+    ) + bundledScripts
+
+    fun nightOrder(script: Script, first: Boolean): List<String> =
+        (if (first) script.firstNightOrder else script.otherNightOrder)
+            .ifEmpty { if (first) firstNightOrder else otherNightOrder }
 
     private fun builtIn(edition: String, name: String): Script = Script(
         id = edition,
@@ -73,10 +79,12 @@ class GameData(
         /** Loads the dataset bundled on the classpath. */
         fun loadDefault(): GameData {
             val characters = json.decodeFromString<List<Character>>(BotcResources.read("/botc/data/characters.json"))
+            val salt = SaltAndLantern.load()
             val extras = json.decodeFromString<NightAndJinxes>(BotcResources.read("/botc/data/night_and_jinxes.json"))
             return GameData(
-                characters = characters,
+                characters = characters + salt.customCharacters,
                 jinxes = extras.jinxes,
+                bundledScripts = listOf(salt),
                 firstNightOrder = extras.firstNight.map {
                     if (it in NightMarkers.all) it else Character.normalizeId(it)
                 },

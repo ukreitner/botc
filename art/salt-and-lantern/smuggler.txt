@@ -1,0 +1,11 @@
+Generation mode: built-in image_gen edit
+Reference: outputs/salt-and-lantern-art/smuggler.png
+
+Use case: style-transfer
+Asset type: simplified game character token pictogram.
+Edit target: supplied original ornate crimson nautical character artwork.
+Primary request: keep the recognizable concept but strongly simplify the entire artwork into a clean bold compact pictogram clearly readable at 48px. Remove ALL fine engraving, hatching, tiny textures, ornamental flourishes, small ornament, complex shading, gradient rendering, and photorealistic detail. Use smooth flat shapes and only a few confident thick interior lines. Flat deep crimson body with restrained lighter red edge or highlight shapes. No black fine line shading. Think a strong simple silhouette designed for a small game token, not a detailed illustration.
+Composition: centered within a square canvas, subject occupying 72 percent of the canvas, generous transparent margin on every side. Strong compact connected silhouette. Preserve nautical gothic mood while making the image much simpler.
+Backdrop: genuinely transparent background with alpha, absolutely no background shape or checkerboard.
+Constraints: no circular token border, no coin, no ring, no decorative border, no text, no letters, no watermark. Preserve subject identity and crimson palette; do not add new props.
+Subject: a hooded smuggler bust holding a simple small contraband chest and a plain rolled note. Hood face is a single dark empty shape, cloak has just 2 or 3 broad folds. Chest has a plain lid line and simple clasp, no wood grain, studs, engraving, shell decoration, ropes, embroidery, or belt ornament. Make the hood, chest, and note immediately identifiable.

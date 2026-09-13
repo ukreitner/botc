@@ -1,0 +1,238 @@
+[
+  {
+    "id": "_meta",
+    "name": "Salt & Lantern",
+    "author": "Claude"
+  },
+  "chef",
+  "investigator",
+  "empath",
+  "fortuneteller",
+  "slayer",
+  "virgin",
+  "ravenkeeper",
+  {
+    "id": "cartographer",
+    "name": "Cartographer",
+    "team": "townsfolk",
+    "ability": "You start knowing how many seats away the nearest evil player is.",
+    "flavor": "Every coast is the same coast. Only the rocks move.",
+    "firstNight": 37.5,
+    "firstNightReminder": "Show the Cartographer a number of fingers: the number of seats from them to the nearest evil player (a neighbour is 1; take the shorter direction). Skip the Stowaway's seat.",
+    "otherNight": 0,
+    "otherNightReminder": "",
+    "reminders": [],
+    "setup": false
+  },
+  {
+    "id": "lighthousekeeper",
+    "name": "Lighthouse Keeper",
+    "team": "townsfolk",
+    "ability": "Each night*, choose a player (not yourself): they are safe from the Demon tonight. The next day, all players learn who you chose.",
+    "flavor": "Some nights the light is a warning. Some nights it is a promise. The sea has never learned the difference.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 13,
+    "otherNightReminder": "The Lighthouse Keeper points to a player. Apply any Wrecker redirect. Mark that player SAFE. At dawn, publicly announce who the light fell on.",
+    "reminders": [
+      "Safe"
+    ],
+    "setup": false,
+    "jinxes": [
+      {
+        "id": "pukka",
+        "reason": "If the Lighthouse Keeper protects the Pukka's previously poisoned player, that player does not die and becomes healthy."
+      },
+      {
+        "id": "siren",
+        "reason": "A player made safe by the Lighthouse Keeper cannot be converted by the Siren; the Siren's first conversion is not used up."
+      },
+      {
+        "id": "wrecker",
+        "reason": "The dawn announcement names the player the light actually fell on, after any Wrecker redirect."
+      }
+    ]
+  },
+  {
+    "id": "harbourmaster",
+    "name": "Harbourmaster",
+    "team": "townsfolk",
+    "ability": "Once per game, during the day, publicly close the harbour: nobody dies tonight.",
+    "flavor": "Chain across the mouth of the bay. Nothing in, nothing out, nothing lost.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 0,
+    "otherNightReminder": "",
+    "reminders": [
+      "Closed"
+    ],
+    "setup": false,
+    "jinxes": [
+      {
+        "id": "siren",
+        "reason": "If the harbour is closed, the Siren's ability does nothing tonight: nobody dies and nobody is converted. The Siren's first conversion remains available."
+      },
+      {
+        "id": "pukka",
+        "reason": "If the harbour is closed, the Pukka's previously poisoned player does not die and becomes healthy. The Pukka still poisons a new player."
+      }
+    ]
+  },
+  {
+    "id": "pearldiver",
+    "name": "Pearl Diver",
+    "team": "townsfolk",
+    "ability": "Each night*, choose a player who died at night: you learn their character.",
+    "flavor": "The sea keeps what it takes. She goes down and takes it back.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 55,
+    "otherNightReminder": "The Pearl Diver points to a player who died at night (never an executed player). Apply any Wrecker redirect only if the other marked player also died at night. Show that player's character token.",
+    "reminders": [],
+    "setup": false,
+    "jinxes": [
+      {
+        "id": "wrecker",
+        "reason": "The Wrecker only redirects the Pearl Diver's choice if the other marked player is also a player who died at night."
+      }
+    ]
+  },
+  {
+    "id": "navigator",
+    "name": "Navigator",
+    "team": "townsfolk",
+    "ability": "Once per game, at night*, choose 2 players: you learn how many alive evil players sit between them, clockwise from the 1st.",
+    "flavor": "Two stars, and the stretch of dark between them.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 57,
+    "otherNightReminder": "If the Navigator has not used their ability, they may point to 2 players. Apply any Wrecker redirect. Walk clockwise from the 1st to the 2nd, count alive evil players strictly between them, skipping the Stowaway's seat. Show that number. Mark NO ABILITY.",
+    "reminders": [
+      "No ability"
+    ],
+    "setup": false
+  },
+  {
+    "id": "ferryman",
+    "name": "Ferryman",
+    "team": "townsfolk",
+    "ability": "If you die, choose a dead player: if they are good, they are resurrected tonight.",
+    "flavor": "One coin, one crossing. No refunds. Exchanges considered.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 50,
+    "otherNightReminder": "If the Ferryman died tonight or was executed today and has not yet chosen, wake them: they point to a dead player. If that player is good (and the Ferryman was not drunk or poisoned when they died), that player becomes alive. Mark CROSSING.",
+    "reminders": [
+      "Crossing"
+    ],
+    "setup": false,
+    "jinxes": [
+      {
+        "id": "siren",
+        "reason": "An Outsider converted by the Siren is evil and cannot be resurrected by the Ferryman."
+      }
+    ]
+  },
+  "drunk",
+  "recluse",
+  {
+    "id": "stowaway",
+    "name": "Stowaway",
+    "team": "outsider",
+    "ability": "Abilities that count or measure seats treat your seat as empty.",
+    "flavor": "There is no such person on the manifest.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 0,
+    "otherNightReminder": "",
+    "reminders": [],
+    "setup": false
+  },
+  {
+    "id": "albatross",
+    "name": "Albatross",
+    "team": "outsider",
+    "ability": "If you are executed, the player who nominated you dies tonight.",
+    "flavor": "It followed the ship for nine days. On the tenth, someone got clever.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 0,
+    "otherNightReminder": "",
+    "reminders": [
+      "Cursed"
+    ],
+    "setup": false
+  },
+  "poisoner",
+  "devilsadvocate",
+  {
+    "id": "wrecker",
+    "name": "Wrecker",
+    "team": "minion",
+    "ability": "Each night, choose 2 players: tonight, if a good player's ability would choose either of them, it chooses the other instead.",
+    "flavor": "A lantern on the wrong headland has drowned more sailors than any storm.",
+    "firstNight": 18,
+    "firstNightReminder": "The Wrecker points to 2 players. Mark both WRECKED. For the rest of the night, if a good player's ability chooses a WRECKED player, resolve it on the other WRECKED player instead (only if that is a legal target). Never tell the good player.",
+    "otherNight": 8,
+    "otherNightReminder": "The Wrecker points to 2 players. Mark both WRECKED. For the rest of the night, if a good player's ability chooses a WRECKED player, resolve it on the other WRECKED player instead (only if that is a legal target). Never tell the good player.",
+    "reminders": [
+      "Wrecked",
+      "Wrecked"
+    ],
+    "setup": false
+  },
+  {
+    "id": "smuggler",
+    "name": "Smuggler",
+    "team": "minion",
+    "ability": "Each night, choose a player: you learn what they learned tonight.",
+    "flavor": "Everything that comes into this port comes through me first.",
+    "firstNight": 49,
+    "firstNightReminder": "The Smuggler points to a player. Show the Smuggler exactly what that player was shown tonight (fingers, character tokens, a nod or a shake), or shake your head if they learned nothing.",
+    "otherNight": 69,
+    "otherNightReminder": "The Smuggler points to a player. Show the Smuggler exactly what that player was shown tonight (fingers, character tokens, a nod or a shake), or shake your head if they learned nothing.",
+    "reminders": [],
+    "setup": false
+  },
+  "imp",
+  "pukka",
+  {
+    "id": "siren",
+    "name": "Siren",
+    "team": "demon",
+    "ability": "Each night*, choose a player: they die. The 1st time you choose an Outsider, they do not die: they become evil instead, and learn who you are.",
+    "flavor": "You will not remember drowning. You will only remember that she asked.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 24.3,
+    "otherNightReminder": "The Siren points to a player. If that player is an Outsider and SUNG is not yet out (and they are not SAFE and the harbour is not closed): mark SUNG, the Outsider becomes evil, wake them, point at the Siren, show their true character token, thumbs-down; then show the Siren a thumbs-up. Otherwise, that player dies.",
+    "reminders": [
+      "Dead",
+      "Sung"
+    ],
+    "setup": false,
+    "jinxes": [
+      {
+        "id": "drunk",
+        "reason": "A Drunk converted by the Siren is told they were the Drunk. They remain the Drunk, now evil."
+      }
+    ]
+  },
+  {
+    "id": "kraken",
+    "name": "Kraken",
+    "team": "demon",
+    "ability": "Each night*, choose a player: they die. If a Minion died today, you may choose a 2nd player: they die too.",
+    "flavor": "Cut off one arm and eight more come looking for whoever held the knife.",
+    "firstNight": 0,
+    "firstNightReminder": "",
+    "otherNight": 24.6,
+    "otherNightReminder": "The Kraken points to a player: they die. If THRASH is out (a Minion died during the day), the Kraken may point to a 2nd player: they die too. Check SAFE for each separately. Remove THRASH.",
+    "reminders": [
+      "Dead",
+      "Dead",
+      "Thrash"
+    ],
+    "setup": false
+  }
+]

@@ -1,0 +1,9 @@
+Generated with built-in image_gen using original ferryman.png as edit target.
+
+Use case: style-transfer
+Asset type: square game character token pictogram, FERRYMAN, simplified v2.
+Input image: edit target; preserve the nautical blue concept but redraw as a drastically simplified bold pictogram.
+Primary request: mysterious hooded figure in a simple small boat holding a single plain pole. Remove the coin and outstretched hand. The hood has a solid dark face opening and only one simple light-blue inner edge; robe is a single broad shape without folds or drapery details. Boat is one compact crescent-shaped hull with one thick rim line; pole is one thick straight stroke. All parts make one bold readable silhouette. Flat deep cobalt blue with restrained light-blue edge highlights. Mature nautical game mood, readable at 48 pixels.
+Composition: square, centered compact artwork occupying 70–75 percent of canvas, generous equal transparent margins, entire boat and pole inside canvas.
+Background: genuinely transparent background with alpha; isolated cutout only, no river or horizon.
+Constraints: no fine engraving, no crosshatching, no tiny textures, no drapery details, no ropes, no coin, no ornamental flourishes, no gradients, no complex shading, no tiny lines. No circular token border, no frame, no text or lettering, no watermark, no backdrop, no shadow outside artwork. Clean simple solid shapes and a few confident thick lines only.

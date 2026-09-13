@@ -472,3 +472,49 @@ Channels move from 287 to **297**, show cards from 136 to **137**.
 no-op or a `nightOrder` insertion has been overtaken by the official sheet, so
 `--fetch` will tell you when TPI adds one of these itself. When it does, delete
 the overlay entry and the matching row from `DataParityTest.appReminders`.
+
+## Salt & Lantern homebrew bundle
+
+`engine/src/main/resources/botc/data/salt-and-lantern.json` is the supplied v1.1
+script-tool file, retained verbatim and independent of the official-data
+regenerator. `docs/salt-and-lantern.md` is the supplied Storyteller edition.
+`SaltAndLantern.kt` adds the selectable built-in script, the written night order,
+three Devil's Advocate rulings present only in the Markdown, and in-app guidance.
+Do not merge its twelve characters into the generated official `characters.json`.
+
+`ScriptParser` preserves homebrew jinxes, flavour text, reminder multiplicity and
+fractional night positions. Saves carry the built-in script's explicit night
+orders and manual instructions, so a restored game retains the same rules.
+
+Homebrew resolution is manual. The night planner also disables automatic
+information/actions for Chef, Empath, Fortune Teller, Ravenkeeper, Imp and Pukka
+on this script: their official calculations or death effects do not account for
+Stowaway, Wrecker, Lighthouse Keeper and Harbourmaster interactions. Completing a
+manual row records its wake and completion; the Storyteller records consequences
+using seat controls and the information log. Poisoner and Devil's Advocate keep
+their official automation. Dusk, dawn and day briefings surface manual duties.
+The script reference has a Guide tab with setup bags and handling details.
+
+The written sheet governs relative timing because the JSON's numerical positions
+use a different scale from the app's global sheet and disagree at several points.
+In particular: Pukka precedes starting information; Ferryman precedes Ravenkeeper;
+Pearl Diver precedes Empath; Smuggler acts last. Original JSON positions and
+reminder wording remain available in the character reference. The original
+Ferryman reminder suggests collecting the choice at the night step after a day
+execution; the written v1.1 rules clarify a day choice at death and a night choice
+at the Ferryman step, with resurrection after the Demon. The app guide follows
+that clarification.
+
+The homebrew Ferryman uses internal id `saltlanternferryman` because the official
+roster already contains a Fabled with id `ferryman`. Its display name and text are
+unchanged; script references, jinxes, night order and packaged art use the distinct
+id. The unmodified source JSON retains its original external id.
+
+Salt & Lantern sets `Script.resurrectionRestoresAbilities` to false: the seat
+resurrection control preserves spent effects and reminders, as required by the
+Ferryman's written rule. Official scripts retain the default restoration rule.
+Navigator's No ability and Harbourmaster's Closed are permanent spend markers.
+A Harbourmaster closure protects only the following night, recorded separately
+in notes; retaining Closed does not extend protection into later nights.
+Resurrected starting-information characters use the script's own first-night
+order when positioning their repeat step, keeping Cartographer before Smuggler.

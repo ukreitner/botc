@@ -1,0 +1,10 @@
+Generated with built-in image_gen as a simplified v2 edit of the original. Final PNG copied without postprocessing.
+
+SIMPLIFICATION PROMPT
+Use case: style-transfer
+Asset type: compact game-token pictogram for Salt & Lantern, Stowaway.
+Input image: existing Stowaway art, edit target and concept/color reference.
+Change the ornate reference into a markedly simpler clean bold emblem. Keep a hooded person hiding behind one simple ship cargo crate and keep the deep cobalt blue good-character palette. Use flat deep cobalt shapes, minimal navy shadow, and a restrained light-blue edge highlight only. The hood and crate should read immediately at 48px. Hide the face in one solid dark hood opening; show cloak as one bold curved silhouette with at most two fold lines. Crate has only basic square perspective, thick edges and two plank divisions; no rope, woodgrain, rivets, buckles, garment texture, tiny fingers, or ornament.
+Composition: compact square centered silhouette in middle 75% of canvas, generous truly transparent margins on all sides. No circular token rim or border.
+Style: confident thick clean lines and broad flat color areas, elegant simple board-game pictogram. Remove ALL fine engraving, hatch shading, filigree, flourishes, textures and complex lighting. Crisp clean silhouette, no gradients.
+Constraints: preserve the hooded stowaway plus crate concept and blue palette. Actual transparent alpha background. No scenery, cast shadow on backdrop, text, letters, numerals, watermark, frame or medallion.

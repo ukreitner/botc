@@ -30,6 +30,7 @@ import kotlin.test.assertTrue
 class DataParityTest {
 
     private val data = GameData.loadDefault()
+    private val officialCharacters = data.characters.filter { it.edition != "custom" }
 
     /** Official team strings to the app's [Team]; only the spelling differs. */
     private fun officialTeam(raw: String): Team = when (raw) {
@@ -77,12 +78,12 @@ class DataParityTest {
         val officialIds = official.map { it.id }
         assertEquals(officialIds.size, officialIds.toSet().size, "duplicate id in roles.json")
 
-        val bundledIds = data.characters.map { it.id }.toSet()
+        val bundledIds = officialCharacters.map { it.id }.toSet()
         val missing = officialIds.filterNot { it in bundledIds }
         val extra = bundledIds.filterNot { id -> official.any { it.id == id } }
         assertTrue(missing.isEmpty(), "characters.json is missing official ids: $missing")
         assertTrue(extra.isEmpty(), "characters.json invents ids the official data has no: $extra")
-        assertEquals(181, data.characters.size)
+        assertEquals(181, officialCharacters.size)
 
         // Official ids are already in the app's normalised form; if upstream
         // ever ships a snake_case id the generator must normalise it, and the
@@ -110,12 +111,12 @@ class DataParityTest {
         // pin that says the flip has happened (lead D31/D56).
         val officialLoric = official.filter { it.team == Team.LORIC }.map { it.id }.sorted()
         assertEquals(11, officialLoric.size, "official Loric count")
-        val bundledLoric = data.characters.filter { it.team == Team.LORIC }.map { it.id }.sorted()
+        val bundledLoric = officialCharacters.filter { it.team == Team.LORIC }.map { it.id }.sorted()
         assertEquals(officialLoric, bundledLoric, "Loric characters are not filed under Team.LORIC")
         assertTrue(
-            data.characters.none { it.team == Team.UNKNOWN },
+            officialCharacters.none { it.team == Team.UNKNOWN },
             "a bundled team failed to deserialise: " +
-                data.characters.filter { it.team == Team.UNKNOWN }.map { it.id },
+                officialCharacters.filter { it.team == Team.UNKNOWN }.map { it.id },
         )
     }
 
@@ -216,7 +217,7 @@ class DataParityTest {
         // Lead D5: comparisons are case-insensitive, so two labels that differ
         // only by case are indistinguishable to the engine and must not exist.
         val byLowercase = mutableMapOf<String, MutableSet<String>>()
-        for (character in data.characters) {
+        for (character in officialCharacters) {
             for (label in character.allReminders) {
                 byLowercase.getOrPut(label.lowercase()) { mutableSetOf() } += label
             }
@@ -226,7 +227,7 @@ class DataParityTest {
 
         // Lead D49: `spentLabel` drives Gates.notSpent, so it has to name a
         // token the character actually owns.
-        for (character in data.characters) {
+        for (character in officialCharacters) {
             if (character.spentLabel.isBlank()) continue
             assertTrue(
                 character.allReminders.any { it.equals(character.spentLabel, ignoreCase = true) },
@@ -238,7 +239,7 @@ class DataParityTest {
     @Test
     fun `team totals match the official roster`() {
         val expected = official.groupingBy { it.team }.eachCount()
-        val actual = data.characters.groupingBy { it.team }.eachCount()
+        val actual = officialCharacters.groupingBy { it.team }.eachCount()
         assertEquals(expected, actual, "team totals drifted from roles.json")
         // The counts data-accuracy §2 pins, spelled out so a regression names itself.
         assertEquals(69, actual[Team.TOWNSFOLK])

@@ -106,6 +106,7 @@ private fun jsStandalone(): Boolean =
 fun main() {
     appScope.launch {
         BotcResources.preloaded["/botc/data/characters.json"] = fetchText("data/characters.json")
+        BotcResources.preloaded["/botc/data/salt-and-lantern.json"] = fetchText("data/salt-and-lantern.json")
         BotcResources.preloaded["/botc/data/night_and_jinxes.json"] = fetchText("data/night_and_jinxes.json")
         try {
             BotcResources.preloaded["/botc/data/night_guide.json"] = fetchText("data/night_guide.json")
@@ -153,10 +154,13 @@ private suspend fun fetchBitmap(url: String): androidx.compose.ui.graphics.Image
 
 /** Fetches every character's art in the background; tokens fill in live. */
 private fun startIconPrefetch() {
+    val saltCharacters = WebApp.gameData.builtInScripts()
+        .find { it.id == "salt-and-lantern" }?.customCharacters.orEmpty().map { it.id }.toSet()
     for (character in WebApp.gameData.characters) {
         appScope.launch {
+            val directory = if (character.id in saltCharacters) "homebrew/salt-and-lantern" else "icons"
             for (ext in listOf("png", "webp")) {
-                val bitmap = fetchBitmap("icons/${character.id}.$ext")
+                val bitmap = fetchBitmap("$directory/${character.id}.$ext")
                 if (bitmap != null) {
                     IconStore.ready[character.id] = bitmap
                     return@launch

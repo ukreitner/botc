@@ -1,0 +1,15 @@
+Generation mode: built-in image_gen edit
+Reference: outputs/salt-and-lantern-art/kraken.png
+
+Use case: style-transfer
+Asset type: simplified game character token pictogram.
+Edit target: supplied original ornate crimson nautical character artwork.
+Primary request: keep the recognizable concept but strongly simplify the entire artwork into a clean bold compact pictogram clearly readable at 48px. Remove ALL fine engraving, hatching, tiny textures, ornamental flourishes, small ornament, complex shading, gradient rendering, and photorealistic detail. Use smooth flat shapes and only a few confident thick interior lines. Flat deep crimson body with restrained lighter red edge or highlight shapes. No black fine line shading. Think a strong simple silhouette designed for a small game token, not a detailed illustration.
+Composition: centered within a square canvas, subject occupying 72 percent of the canvas, generous transparent margin on every side. Strong compact connected silhouette. Preserve nautical gothic mood while making the image much simpler.
+Backdrop: genuinely transparent background with alpha, absolutely no background shape or checkerboard.
+Constraints: no circular token border, no coin, no ring, no decorative border, no text, no letters, no watermark. Preserve subject identity and crimson palette; do not add new props.
+Subject: compact kraken with one simple bulbous head and 4 bold curling tentacles wrapped around a simple broken mast. No dense suckers, no skin wrinkles, no wood grain, no decorative ropes. Give it two small simple eye shapes and a few broad tentacle separation lines. The mast should be a plain straight spar with one simple broken tip. Strong compact monster silhouette.
+
+
+Background-removal follow-up (built-in image_gen edit):
+Use case: background-extraction. Remove the entire gray-and-white checkerboard background from this kraken artwork and make it genuinely transparent with an alpha channel. The checkerboard is presently baked into the source image and must be deleted completely. Keep only the red kraken and mast, including all fine edges and all holes around the tentacles and mast. Preserve the kraken foreground shape, colors and simple flat style exactly. Transparent PNG cutout. No replacement background, no simulated transparency, no white background, no shadow.

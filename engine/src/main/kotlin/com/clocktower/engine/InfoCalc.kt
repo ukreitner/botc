@@ -157,7 +157,7 @@ object InfoCalc {
         targets: List<Long> = emptyList(),
     ): InfoResult? {
         val id = Character.normalizeId(characterId)
-        if (!supports(id)) return null
+        if (!supports(id) || id in state.script.manualNightInstructions) return null
         val ctx = Ctx(state, lookup, holderId?.let { state.player(it) })
         val result = when (id) {
             "chef" -> chef(ctx)

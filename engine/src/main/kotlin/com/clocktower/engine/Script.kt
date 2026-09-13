@@ -24,6 +24,19 @@ data class Script(
     /** Custom characters defined inline in the imported JSON. */
     val customCharacters: List<Character> = emptyList(),
     val isBuiltIn: Boolean = false,
+    /** Script-local jinxes supplied by its author. */
+    val jinxes: List<Jinx> = emptyList(),
+    /** Explicit script orders override the global sheet; empty keeps the default. */
+    val firstNightOrder: List<String> = emptyList(),
+    val otherNightOrder: List<String> = emptyList(),
+    /** These abilities need storyteller resolution before their night row is ticked. */
+    val manualNightInstructions: Map<String, String> = emptyMap(),
+    val storytellerNotes: String = "",
+    val duskReminder: String = "",
+    val dawnReminder: String = "",
+    val dayReminder: String = "",
+    /** Default Clocktower resurrection refreshes spent abilities; some homebrew rules do not. */
+    val resurrectionRestoresAbilities: Boolean = true,
 )
 
 /**
@@ -49,6 +62,7 @@ object ScriptParser {
         var author = ""
         val ids = mutableListOf<String>()
         val custom = mutableListOf<Character>()
+        val jinxes = mutableListOf<Jinx>()
 
         for (entry in entries) {
             when (entry) {
@@ -65,6 +79,12 @@ object ScriptParser {
                     // A full inline character definition has at least a team + ability/name.
                     if (entry.containsKey("team")) {
                         parseCustomCharacter(id, entry)?.let { custom += it }
+                        (entry["jinxes"] as? JsonArray)?.forEach { raw ->
+                            val jinx = raw as? JsonObject ?: return@forEach
+                            val other = (jinx["id"] as? JsonPrimitive)?.content ?: return@forEach
+                            val reason = (jinx["reason"] as? JsonPrimitive)?.content ?: return@forEach
+                            jinxes += Jinx(id, Character.normalizeId(other), reason)
+                        }
                     }
                 }
                 else -> Unit
@@ -81,6 +101,7 @@ object ScriptParser {
             author = author,
             characterIds = characterIds,
             customCharacters = customCharacters,
+            jinxes = jinxes.distinct(),
         )
     }
 
@@ -135,8 +156,8 @@ object ScriptParser {
         fun strList(key: String): List<String> =
             (obj[key] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
 
-        fun int(key: String): Int =
-            (obj[key] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: 0
+        fun position(key: String): Double =
+            (obj[key] as? JsonPrimitive)?.content?.toDoubleOrNull()?.takeIf { it.isFinite() } ?: 0.0
 
         return Character(
             id = id,
@@ -150,8 +171,9 @@ object ScriptParser {
             otherNightReminder = str("otherNightReminder"),
             reminders = strList("reminders"),
             remindersGlobal = strList("remindersGlobal"),
-            firstNight = int("firstNight"),
-            otherNight = int("otherNight"),
+            firstNight = position("firstNight"),
+            otherNight = position("otherNight"),
+            flavor = str("flavor"),
             // The script tool allows "image" as a single URL or a list
             // (good/evil/traveller variants) — take the first.
             image = when (val img = obj["image"]) {

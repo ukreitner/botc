@@ -70,6 +70,7 @@ jobs:
           cp -r web/build/dist/wasmJs/productionExecutable/* site/
           cp engine/src/main/resources/botc/data/*.json site/data/
           cp app/src/main/assets/icons/* site/icons/
+          cp -r app/src/main/assets/homebrew site/homebrew
           sed -i "s/__BUILD__/${GITHUB_SHA}/" site/sw.js
           sed -i "s/__BUILD__/${GITHUB_SHA:0:7}/" site/index.html
           # App icon: night-sky square with a gold crescent moon, written

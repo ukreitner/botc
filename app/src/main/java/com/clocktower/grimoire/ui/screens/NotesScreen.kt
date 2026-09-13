@@ -545,11 +545,7 @@ private fun ScriptRefSheet(
                 // this script, with the special info steps players care
                 // about; homebrew slots in by its declared numbers.
                 val isFirst = mode == "first"
-                val order = if (isFirst) {
-                    viewModel.gameData.firstNightOrder
-                } else {
-                    viewModel.gameData.otherNightOrder
-                }
+                val order = viewModel.gameData.nightOrder(state.script, isFirst)
                 val byId = characters.associateBy { it.id }
                 val rows = mutableListOf<Triple<Character?, String, String>>()
                 for (id in order) {

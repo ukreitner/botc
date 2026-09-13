@@ -144,7 +144,15 @@ fun ShowCard.describe(nameOf: (String) -> String): String = when (this) {
     is ShowCard.Message -> listOf(title, subtitle).filter { it.isNotBlank() }.joinToString(" — ")
     is ShowCard.CharacterCard -> "$prefix ${nameOf(characterId)}"
     is ShowCard.NumberCard -> number.toString()
-    is ShowCard.AlignmentCard -> text.ifBlank { alignmentWord(evil) }
+    is ShowCard.AlignmentCard -> {
+        val alignment = alignmentWord(evil)
+        when {
+            text.isBlank() -> alignment
+            text.trim().equals(alignment, ignoreCase = true) ||
+                text.trim().equals("YOU ARE $alignment", ignoreCase = true) -> text
+            else -> "$alignment — $text"
+        }
+    }
     is ShowCard.BluffsCard -> "not in play: " + characterIds.joinToString { nameOf(it) }
     is ShowCard.SheetCard -> "the character sheet"
     // The character is half the meaning: "ONE OF THESE PLAYERS IS THE Chef —
@@ -569,6 +577,7 @@ fun ShowToolSheet(
     onDismiss: () -> Unit,
 ) {
     var customText by rememberSaveable { mutableStateOf("") }
+    var customOpen by rememberSaveable { mutableStateOf(false) }
     var characterPrefix by rememberSaveable { mutableStateOf("THIS PLAYER IS") }
     var characterSearch by rememberSaveable { mutableStateOf("") }
     var showSuggested by rememberSaveable { mutableStateOf(false) }
@@ -616,6 +625,22 @@ fun ShowToolSheet(
                     },
                     label = { Text("Character sheet — player points silently") },
                 )
+            }
+            item {
+                Text("Custom choice", style = MaterialTheme.typography.titleSmall)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = customText,
+                        onValueChange = { customText = it },
+                        placeholder = { Text("Anything you need to say silently…") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilledTonalButton(
+                        enabled = customText.isNotBlank(),
+                        onClick = { onShow(ShowCard.Message(customText)) },
+                    ) { Text("Show") }
+                }
+                AssistChip(onClick = { customOpen = true }, label = { Text("Choose numbers, players or characters…") })
             }
             item {
                 Text("Character tokens", style = MaterialTheme.typography.titleSmall)
@@ -739,23 +764,18 @@ fun ShowToolSheet(
                     }
                 }
             }
-            item {
-                Text("Custom text", style = MaterialTheme.typography.titleSmall)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = customText,
-                        onValueChange = { customText = it },
-                        placeholder = { Text("Anything you need to say silently…") },
-                        modifier = Modifier.weight(1f),
-                    )
-                    FilledTonalButton(
-                        enabled = customText.isNotBlank(),
-                        onClick = { onShow(ShowCard.Message(customText)) },
-                    ) { Text("Show") }
-                }
-            }
+
         }
     }
+    if (customOpen) {
+        CustomCardEditor(
+            state = state,
+            characters = scriptCharacters,
+            onDismiss = { customOpen = false },
+            onShow = { customOpen = false; onShow(it) },
+        )
+    }
+
 }
 
 @Composable

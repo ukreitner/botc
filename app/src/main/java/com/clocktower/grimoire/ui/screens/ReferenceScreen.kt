@@ -85,7 +85,7 @@ fun ReferenceScreen(
     }
     val jinxes = remember(characters, inPlayOnly, seatsById) {
         val ids = if (inPlayOnly && state != null) seatsById.keys else characters.map { it.id }.toSet()
-        viewModel.gameData.activeJinxes(ids + state?.fabledIds.orEmpty())
+        viewModel.gameData.activeJinxes(ids + state?.fabledIds.orEmpty(), script)
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -93,6 +93,9 @@ fun ReferenceScreen(
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Characters") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Night order") })
             Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Jinxes (${jinxes.size})") })
+            if (script.storytellerNotes.isNotBlank()) {
+                Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Guide") })
+            }
         }
         when (tab) {
             0 -> Column(Modifier.weight(1f)) {
@@ -126,7 +129,10 @@ fun ReferenceScreen(
                 }
                 CharacterSheet(filtered, seatsById, { openId = it }, Modifier.weight(1f))
             }
-            1 -> NightOrderSheet(viewModel, characters, seatsById) { openId = it }
+            1 -> NightOrderSheet(viewModel, script, characters, seatsById) { openId = it }
+            3 -> LazyColumn(contentPadding = PaddingValues(16.dp)) {
+                item { Text(script.storytellerNotes, style = MaterialTheme.typography.bodyMedium) }
+            }
             else -> JinxSheet(viewModel, jinxes, state != null, inPlayOnly) { inPlayOnly = it }
         }
     }
@@ -137,7 +143,7 @@ fun ReferenceScreen(
                 viewModel = viewModel,
                 character = character,
                 seats = seatsById[Character.normalizeId(character.id)].orEmpty(),
-                jinxes = viewModel.gameData.activeJinxes(characters.map { it.id })
+                jinxes = viewModel.gameData.activeJinxes(characters.map { it.id }, script)
                     .filter { it.id1 == character.id || it.id2 == character.id },
                 onDismiss = { openId = null },
             )
@@ -215,14 +221,15 @@ private fun CharacterSheet(
 @Composable
 private fun NightOrderSheet(
     viewModel: GameViewModel,
+    script: Script,
     characters: List<Character>,
     seatsById: Map<String, List<String>>,
     onOpen: (String) -> Unit,
 ) {
     val ids = characters.map { it.id }.toSet()
     val data = viewModel.gameData
-    val first = data.firstNightOrder.filter { it in ids || it in NightMarkers.all }
-    val other = data.otherNightOrder.filter { it in ids || it in NightMarkers.all }
+    val first = data.nightOrder(script, true).filter { it in ids || it in NightMarkers.all }
+    val other = data.nightOrder(script, false).filter { it in ids || it in NightMarkers.all }
 
     LazyColumn(
         contentPadding = PaddingValues(16.dp),

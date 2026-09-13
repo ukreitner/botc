@@ -713,20 +713,22 @@ object Deaths {
                 },
             )
 
-        // The ability comes back, spent once-per-game included — but the Virgin's
-        // first nomination already happened and stays spent.
-        next = next.copy(
-            effects = next.effects.filterNot {
-                it.targetId == playerId && it.kind == EffectKind.SPENT &&
-                    Character.normalizeId(it.sourceCharacterId) != "virgin"
-            },
-        )
+        // A script can preserve expenditure across resurrection. Otherwise the
+        // official rule refreshes spent abilities, except the Virgin's history.
+        if (state.script.resurrectionRestoresAbilities) {
+            next = next.copy(
+                effects = next.effects.filterNot {
+                    it.targetId == playerId && it.kind == EffectKind.SPENT &&
+                        Character.normalizeId(it.sourceCharacterId) != "virgin"
+                },
+            )
+        }
         next = next.updatePlayer(playerId) { p ->
             p.copy(
                 reminders = p.reminders.filterNot { r ->
                     val rule = Tokens.rule(r)
-                    (rule?.effect == EffectKind.SPENT || rule?.label.equals("Dead", true)) &&
-                        Character.normalizeId(r.sourceId) != "virgin"
+                    ((state.script.resurrectionRestoresAbilities && rule?.effect == EffectKind.SPENT) ||
+                        rule?.label.equals("Dead", true)) && Character.normalizeId(r.sourceId) != "virgin"
                 },
             )
         }

@@ -306,9 +306,16 @@ data class NightPlan(
             for ((index, slot) in order.withIndex()) {
                 val at = index * BASE_SPACING
                 if (NightInfo.owns(slot)) {
+                    val reminder = when (slot) {
+                        NightMarkers.DUSK -> state.script.duskReminder
+                        NightMarkers.DAWN -> state.script.dawnReminder
+                        else -> ""
+                    }
                     steps += NightInfo.steps(
                         MarkerContext(state, lookup, slot, at, ctx.style, ctx.isFirstNight, ctx.bluffs),
-                    )
+                    ).map { step ->
+                        if (reminder.isBlank()) step else step.copy(detail = withEvidence(step.detail, reminder))
+                    }
                     continue
                 }
                 val slotRoles = bySlot[slot].orEmpty()
@@ -411,7 +418,8 @@ data class NightPlan(
             val ctx = PlanContext(state, lookup)
             val nightCtx = ctx.nightContext(step)
             val rule = CharacterRules.of(step.abilityId, lookup(step.abilityId))
-            val nightRule = rule.nightRule(step.style == WakeStyle.FIRST_NIGHT)
+            val nightRule = if (step.abilityId in state.script.manualNightInstructions) null
+                else rule.nightRule(step.style == WakeStyle.FIRST_NIGHT)
             val action = step.action
             val holderId = step.holderId
             // "Malfunctioning" is about the ABILITY, not about being dead: a
@@ -561,6 +569,7 @@ data class NightPlan(
             holderId: Long? = null,
         ): Boolean {
             val id = Character.normalizeId(characterId)
+            if (id in state.script.manualNightInstructions) return false
             val step = build(state, lookup).steps.firstOrNull {
                 it.abilityId == id && (holderId == null || it.holderId == holderId)
             } ?: return true
@@ -677,7 +686,11 @@ data class NightPlan(
             val isFirstNight: Boolean = state.cycle <= 1
             val style: WakeStyle =
                 if (isFirstNight) WakeStyle.FIRST_NIGHT else WakeStyle.OTHER_NIGHT
-            val order: List<String> = if (isFirstNight) firstNightOrder else otherNightOrder
+            fun orderFor(first: Boolean): List<String> =
+                (if (first) state.script.firstNightOrder else state.script.otherNightOrder)
+                    .ifEmpty { if (first) firstNightOrder else otherNightOrder }
+
+            val order: List<String> = orderFor(isFirstNight)
 
             /** During a night, "today" is the day that has just ended. */
             private val today: Int = if (state.phase == Phase.DAY) state.cycle else state.cycle - 1
@@ -982,7 +995,18 @@ data class NightPlan(
                 } else {
                     namedDeaths(nightRule?.pending?.invoke(nightCtx).orEmpty())
                 },
-            )
+            ).let { step ->
+                val manual = ctx.state.script.manualNightInstructions[role.abilityId]
+                if (manual == null) step else step.copy(
+                    action = null,
+                    infoId = "",
+                    cards = emptyList(),
+                    deferredDeaths = emptyList(),
+                    banner = withEvidence(bannerFor(ctx, role, holder, gate), "Resolve manually"),
+                    prompt = manual + " Use seat controls and the information log to record the result before marking this step done.",
+                    badges = step.badges + "manual resolution",
+                )
+            }
         }
 
         /**
@@ -1820,9 +1844,9 @@ data class NightPlan(
             }
             if (StepKey(role.abilityId, role.playerId, variant).token in taken) return null
             val acts = if (firstNightRules) {
-                character.firstNightReminder.isNotBlank() || role.slotId in firstNightOrder
+                character.firstNightReminder.isNotBlank() || role.slotId in ctx.orderFor(true)
             } else {
-                character.otherNightReminder.isNotBlank() || role.slotId in otherNightOrder
+                character.otherNightReminder.isNotBlank() || role.slotId in ctx.orderFor(false)
             }
             if (!acts) return null
             return roleStep(
@@ -1857,7 +1881,7 @@ data class NightPlan(
         private fun positionOf(ctx: PlanContext, slot: String, firstNight: Boolean): Double {
             val tonight = ctx.order.indexOf(slot)
             if (tonight >= 0) return tonight * BASE_SPACING + 1
-            val source = if (firstNight) firstNightOrder else otherNightOrder
+            val source = ctx.orderFor(firstNight)
             val index = source.indexOf(slot)
             if (index < 0 || source.isEmpty()) return ctx.order.size * BASE_SPACING - 1
             val fraction = index.toDouble() / source.size
