@@ -3,7 +3,7 @@
 
 *Ravenswood Bluff has a harbour now, and a harbour needs a light. On calm nights the lantern keeps ships off the rocks. On other nights, somebody moves the lantern.*
 
-v1.2 — Storyteller's edition (v1.2: Ferryman must directly choose another dead player; a new Wrecker jinx allows the choice to redirect back to the Ferryman. This is the only character change from v1.1. In v1.1, Devil's Advocate replaced the Press-Gang and the 9- and 15-player bags were adjusted). Contents: the pitch, the character sheet, rulings & jinxes, night order, three bags with full reasoning, how to run each homebrew, playbooks for both teams, and design notes (including what I cut and why). A `salt-and-lantern.json` sits alongside this file for the script tool / town-square apps.
+v1.3 — Storyteller's edition (v1.3: Wrecker cannot choose a player with a Demon character, even if dead; other living and dead players remain legal. This is the only change from v1.2. In v1.2, Ferryman was restricted to directly choosing another dead player, with a Wrecker jinx allowing a redirect back to the Ferryman; those rules remain unchanged. In v1.1, Devil's Advocate replaced the Press-Gang and the 9- and 15-player bags were adjusted). Contents: the pitch, the character sheet, rulings & jinxes, night order, three bags with full reasoning, how to run each homebrew, playbooks for both teams, and design notes (including what I cut and why). A `salt-and-lantern.json` sits alongside this file for the script tool / town-square apps.
 
 ---
 
@@ -76,7 +76,7 @@ No character on this script changes the Outsider count. Setup is exactly the bas
 | Character | Ability | Storyteller notes |
 |---|---|---|
 | **Poisoner** | Each night, choose a player: they are poisoned tonight and tomorrow day. | Held out of the beginner bag on purpose — see the misinformation ladder. |
-| ★ **Wrecker** | Each night, choose 2 players: tonight, if a good player's ability would choose either of them, it chooses the other instead. | Silent swap. Only applies when the substitute is a legal target for that ability. Evil abilities are never redirected. |
+| ★ **Wrecker** | Each night, choose 2 players (not the Demon): tonight, if a good player's ability would choose either of them, it chooses the other instead. | Neither chosen player may have an actual Demon character, even if dead. Other living/dead players remain legal. Silent swap; substitute must be legal for the good ability, except for the Ferryman jinx. Evil abilities are never redirected. |
 | ★ **Smuggler** | Each night, choose a player: you learn what they learned tonight. | Wake last. Show exactly what the target was shown (fingers, tokens, yes/no) or shake your head. Does not reveal the character directly. |
 | **Devil's Advocate** | Each night, choose a living player (different to last night): if executed tomorrow, they don't die. | The script's only execution protection. An executed-but-alive Albatross still curses its nominator; an executed-but-alive Ferryman makes no crossing. |
 
@@ -110,6 +110,8 @@ Formal jinxes (also embedded in the JSON):
 
 General rulings:
 
+- **Wrecker targets (v1.3).** Neither choice may be a player with an actual Demon character, even if dead. Other living or dead players remain legal. Use actual character at the time of choice, not alignment or possible registration: the Recluse is eligible. Recheck current characters on each Wrecker choice, including after an Imp starpass. This adds no living-only restriction or target rotation rule; the Ferryman / Wrecker jinx is unchanged.
+
 - **Ferryman targets (v1.2).** The Ferryman must directly choose another dead player, good or evil. If nobody else is dead, there is no crossing. The Ferryman / Wrecker jinx is the only way this ability can bring the Ferryman themself back. This ability has no once-per-game limit.
 
 - **Dusk deaths.** The Albatross's cursed nominator dies at the start of the night, before the Poisoner acts. The Ravenkeeper and Ferryman trigger normally from it.
@@ -125,7 +127,7 @@ General rulings:
 1. Minion info (7+ players)
 2. Demon info & 3 bluffs (7+ players)
 3. **Poisoner** — choose a player
-4. **Wrecker** — choose 2 players; mark both WRECKED
+4. **Wrecker** — choose 2 players without a Demon character (even dead Demons are excluded); mark both WRECKED
 5. **Devil's Advocate** — choose a living player; mark SURVIVES EXECUTION
 6. **Pukka** — choose a player (poisoned)
 7. **Investigator** — show Minion token + 2 players
@@ -138,7 +140,7 @@ General rulings:
 ### Other nights
 1. Dusk deaths — Albatross's cursed nominator dies (unless the harbour is closed)
 2. **Poisoner**
-3. **Wrecker** — choose 2; mark WRECKED
+3. **Wrecker** — choose 2 players without a Demon character (even dead Demons are excluded); mark WRECKED
 4. **Devil's Advocate** — choose a living player (not last night's); mark SURVIVES EXECUTION
 5. **Lighthouse Keeper** — choose a player (apply Wrecker); mark SAFE
 6. **Demon** — Imp / Pukka / Siren / Kraken acts. Siren: if an Outsider converts, wake them, point at the Siren, show their true character, thumbs-down; show the Siren a thumbs-up. Kraken: if THRASH is out, offer a 2nd choice.
@@ -170,7 +172,7 @@ Day: Slayer, Virgin, Harbourmaster, Albatross (on execution), Devil's Advocate (
 **Why these tokens**
 
 1. **The positional triangle plus the Stowaway.** Chef, Empath and Cartographer are three true readings that only agree once the table realises one seat doesn't count. It teaches "displaced, not false" on night one, and it hands evil a real bluff: any evil player can claim Stowaway to explain why an Empath number "doesn't fit". Without the Stowaway the triangle is a calculation; with it, it's a puzzle.
-2. **Fortune Teller.** The only nightly Demon-detector in the bag, so it's the Wrecker's favourite victim and the Keeper's favourite ward. The FT can't see when their pair has been swapped, which is exactly why the Empath is there to cross-check.
+2. **Fortune Teller.** The only nightly Demon-detector in the bag, and a valuable Keeper ward. Under v1.3, Wrecker cannot choose a current Demon for their marked pair. Swaps between non-Demons can still displace a red-herring or Recluse result; the FT is not told when a choice was swapped.
 3. **Lighthouse Keeper and Harbourmaster, no Monk.** Together they give a 12-player table roughly four days — long enough to solve the triangle, short enough that the Siren's clock still bites. Both are public: the Keeper's dawn light is the town's daily shared datum (and the only way to catch a Wrecker red-handed), and the closure is one guaranteed breathing day that also lie-detects a fake Harbourmaster. The Keeper *is* the Monk here, just louder.
 4. **Pearl Diver.** In a bag with the Siren, bodies are evidence. The Diver confirms the dead's claims, unmasks the dead Drunk, and — crucially — has nothing to read on a conversion night. A quiet night with no lantern save and no closure is either a Keeper hit or a Siren song, and the Diver is how the town tells the difference over time.
 5. **Drunk as Investigator.** The one purely false reading. A night-one "1 of 2 is the Wrecker" is something you can aim: at the real Wrecker plus an innocent (kind), at two innocents (cruel), or as "1 of 2 is a Smuggler" pointing at a Townsfolk and the Siren herself (chaos). It gives evil something to push on day one, which a silent minion pair otherwise lacks.
@@ -239,7 +241,7 @@ A big table can absorb the whole misinformation ladder at once: the Poisoner fal
 
 **Albatross.** When they are executed, mark CURSED on the nominator. That player dies at the start of the night. Don't announce a cause at dawn — it's just a death. If the Demon nominated, the Demon dies at night and the game ends in good's favour. If the Albatross was protected by the Devil's Advocate, they survive the execution and the nominator is still cursed: the trigger is the execution, not the death.
 
-**Wrecker.** Wake after the Poisoner every night. Two WRECKED tokens. For the rest of the night, whenever a *good* player points at a WRECKED player, resolve the ability on the other WRECKED player, silently — Fortune Teller (each pick), Keeper, Ravenkeeper, Diver, Navigator, Ferryman. If the substitute isn't a legal target, the choice stands, except for the explicit Ferryman jinx: a good Ferryman's legal night choice of the other Wrecked dead player redirects back to the Wrecked dead Ferryman. Never redirect evil abilities. Never tell the good player. The only trace it leaves is the dawn announcement naming a player the Keeper didn't send the light to.
+**Wrecker.** Wake after the Poisoner every night. Choose two players without an actual Demon character; dead Demon characters are also excluded, while other living or dead players are legal. Check their actual character at that choice, not their alignment or possible registration. Recheck current identities after an Imp starpass. Two WRECKED tokens. For the rest of the night, whenever a *good* player points at a WRECKED player, resolve the ability on the other WRECKED player, silently — Fortune Teller (each pick), Keeper, Ravenkeeper, Diver, Navigator, Ferryman. If the substitute isn't a legal target, the choice stands, except for the explicit Ferryman jinx: a good Ferryman's legal night choice of the other Wrecked dead player redirects back to the Wrecked dead Ferryman. Never redirect evil abilities. Never tell the good player. The only trace it leaves is the dawn announcement naming a player the Keeper didn't send the light to.
 
 *Example.* Wrecker marks Anna and Ben. The Keeper protects Anna → Ben is SAFE. The Fortune Teller picks Anna and Cal → you resolve Ben and Cal. The Siren kills Anna. Dawn: "Anna died. Last night the lantern fell on Ben." The Keeper knows something moved the light; whether they say so out loud is the day's first decision.
 
@@ -263,7 +265,7 @@ A big table can absorb the whole misinformation ladder at once: the Poisoner fal
 - No body, no light, no closure: someone was sung to. Ask who among the Outsiders looks a little too calm.
 
 **Evil**
-- Wrecker: mark the Fortune Teller's likeliest picks, or the player you're about to kill (so the Keeper's light slides off them).
+- Wrecker: choose non-Demons to disrupt good target choices, such as the player you're about to kill (so the Keeper's light slides off them). Fortune Teller disruption now depends on a red-herring or Recluse result; you cannot mark the actual Demon.
 - Smuggler: night one is Cartographer or Empath, never the Chef — Chef numbers are easy to fake, distances aren't.
 - Siren: convert an Outsider *before* the town has finished trusting them, not after. A converted Stowaway is an evil player the seat maths will never find.
 - Kraken: a Minion who "comes clean" on day three and eats an execution buys two bodies that night. Use once, use late.

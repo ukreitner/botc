@@ -173,12 +173,12 @@
     "id": "wrecker",
     "name": "Wrecker",
     "team": "minion",
-    "ability": "Each night, choose 2 players: tonight, if a good player's ability would choose either of them, it chooses the other instead.",
+    "ability": "Each night, choose 2 players (not the Demon): tonight, if a good player's ability would choose either of them, it chooses the other instead.",
     "flavor": "A lantern on the wrong headland has drowned more sailors than any storm.",
     "firstNight": 18,
-    "firstNightReminder": "The Wrecker points to 2 players. Mark both WRECKED. For the rest of the night, if a good player's ability chooses a WRECKED player, resolve it on the other WRECKED player instead (only if that is a legal target). Never tell the good player.",
+    "firstNightReminder": "The Wrecker points to 2 players who do not have a Demon character. Check actual character at the time of choice, not alignment or possible registration: dead Demon characters are also excluded; other living or dead players are legal. Mark both WRECKED. For the rest of the night, if a good player's ability chooses a WRECKED player, resolve it on the other WRECKED player instead (only if that is a legal target). Never tell the good player.",
     "otherNight": 8,
-    "otherNightReminder": "The Wrecker points to 2 players. Mark both WRECKED. For the rest of the night, if a good player's ability chooses a WRECKED player, resolve it on the other WRECKED player instead (only if that is a legal target). Never tell the good player.",
+    "otherNightReminder": "The Wrecker points to 2 players who do not have a Demon character. Check actual character at the time of choice, not alignment or possible registration: dead Demon characters are also excluded; other living or dead players are legal. Mark both WRECKED. For the rest of the night, if a good player's ability chooses a WRECKED player, resolve it on the other WRECKED player instead (only if that is a legal target). Never tell the good player.",
     "reminders": [
       "Wrecked",
       "Wrecked"

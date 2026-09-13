@@ -76,6 +76,27 @@ class SaltAndLanternTest {
     }
 
     @Test
+    fun `Wrecker guidance excludes actual living and dead Demons without excluding other dead players`() {
+        val character = lookup("wrecker")!!
+        assertEquals("Each night, choose 2 players (not the Demon): tonight, if a good player's ability would choose either of them, it chooses the other instead.", character.ability)
+        for (night in 1..2) {
+            var state = game("wrecker", "imp", "siren", "recluse", SaltAndLantern.FERRYMAN_ID, "poisoner", night = night)
+            state = state.copy(players = state.players.map { if (it.id in setOf(2L, 4L, 5L)) it.copy(alive = false) else it })
+            val row = NightPlan.build(state, lookup).steps.first { it.abilityId == "wrecker" }
+            assertNull(row.action, "manual Wrecker must not offer an unrestricted target picker")
+            assertTrue(row.cards.isEmpty())
+            assertTrue("actual Demon character" in row.prompt)
+            assertTrue("Dead Demon characters are also excluded" in row.prompt)
+            assertTrue("other living or dead players are legal" in row.prompt)
+            assertTrue("not alignment or possible registration" in row.prompt)
+            assertTrue("Ferryman exception" in row.prompt)
+            assertTrue("dead Demon characters are also excluded" in row.detail)
+        }
+        assertTrue("even dead" in script.duskReminder)
+        assertTrue("v1.3" in script.storytellerNotes)
+    }
+
+    @Test
     fun `Stowaway and Wrecker cannot get unadjusted official information suggestions`() {
         val state = game("chef", "empath", "fortuneteller", "stowaway", "wrecker", "siren")
         for ((holder, id) in listOf("chef", "empath", "fortuneteller").withIndex()) {
@@ -127,7 +148,7 @@ class SaltAndLanternTest {
         assertTrue("not drunk or poisoned when they died" in jinx.reason)
         assertTrue("redirects a good Ferryman's night choice to the Ferryman themself" in jinx.reason)
 
-        var state = game(SaltAndLantern.FERRYMAN_ID, "wrecker", "chef", "siren", "empath", night = 2)
+        var state = game(SaltAndLantern.FERRYMAN_ID, "wrecker", "chef", "poisoner", "imp", night = 2)
         state = state.copy(players = state.players.map { if (it.id == 0L) it.copy(alive = false) else it })
         state = Effects.addReminder(state, 0L, PlacedReminder("wrecker", "Wrecked"))
         state = Effects.addReminder(state, 3L, PlacedReminder("wrecker", "Wrecked"))
@@ -138,7 +159,7 @@ class SaltAndLanternTest {
         val attemptedSelfChoice = NightPlan.resolve(state, lookup, noTarget.key, NightInput(playerIds = listOf(0L)))
         assertEquals(state.players, attemptedSelfChoice.players, "a direct self-choice must not resurrect the Ferryman")
 
-        // A dead EVIL player is a legal original choice; goodness is checked after redirection.
+        // A dead EVIL non-Demon is a legal original choice; goodness is checked after redirection.
         state = state.copy(players = state.players.map { if (it.id == 3L) it.copy(alive = false) else it })
         assertTrue(state.player(3L)!!.isEvil(lookup))
         val withTarget = NightPlan.build(state, lookup).steps.first { it.abilityId == SaltAndLantern.FERRYMAN_ID }

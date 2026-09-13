@@ -476,7 +476,8 @@ the overlay entry and the matching row from `DataParityTest.appReminders`.
 ## Salt & Lantern homebrew bundle
 
 `engine/src/main/resources/botc/data/salt-and-lantern.json` is the supplied script
-with the user-requested v1.2 Ferryman target correction, independent of the
+with the user-requested v1.2 Ferryman correction and v1.3 Wrecker restriction,
+independent of the
 official-data regenerator. `docs/salt-and-lantern.md` is the matching revised
 Storyteller edition. The original Downloads documents are untouched.
 `SaltAndLantern.kt` adds the selectable built-in script, the written night order,
@@ -501,7 +502,8 @@ use a different scale from the app's global sheet and disagree at several points
 In particular: Pukka precedes starting information; Ferryman precedes Ravenkeeper;
 Pearl Diver precedes Empath; Smuggler acts last. Original JSON positions and
 reminder wording remain available in the character reference, with the v1.2
-Ferryman direct-self-choice restriction and Wrecker exception added. The original
+Ferryman direct-self-choice restriction and Wrecker exception, and the v1.3 Wrecker
+Demon-target exclusion added. The original
 Ferryman reminder suggests collecting the choice at the night step after a day
 execution; the written v1.1 rules clarify a day choice at death and a night choice
 at the Ferryman step, with resurrection after the Demon. The app guide follows
@@ -536,4 +538,19 @@ selector or self-target suggestion and skips when no other dead player exists.
 Character text, night reminders, in-app guidance and the Storyteller document
 all carry this restriction and exception. The old unkillable-voter discussion was
 replaced with analysis of returning another player and the limited Wrecker interaction.
-All other v1.1 character rules remain unchanged.
+v1.2 changed no other characters; the v1.3 Wrecker change follows below.
+
+### v1.3 Wrecker target restriction
+
+The Wrecker ability now reads: “Each night, choose 2 players (not the Demon):
+tonight, if a good player's ability would choose either of them, it chooses the
+other instead.” The exclusion uses actual character at the time of choice, not
+alignment or possible registration. Dead Demon characters are excluded; other
+living or dead players remain legal. A Recluse is eligible. Recheck each player's
+current character for choices made after an Imp starpass. No living-only
+restriction or target rotation rule was added.
+
+Both night reminders, the manual Wrecker row, dusk guidance, the public rulings
+and the written night sheet carry the restriction. Wrecker remains manually
+resolved. The v1.2 Ferryman direct-other-dead choice and self-return jinx are
+unchanged: the original Wrecked dead target may still be an evil non-Demon.

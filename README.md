@@ -20,7 +20,7 @@ night sheets and vote counting for any script.
 **Any script**
 - All three base editions bundled: Trouble Brewing, Bad Moon Rising,
   Sects & Violets
-- Salt & Lantern v1.2 bundled: 25 characters including 12 illustrated
+- Salt & Lantern v1.3 bundled: 25 characters including 12 illustrated
   homebrews, its written night order, jinxes and Storyteller guide
 - 171 official characters embedded — the full experimental/Carousel roster,
   travellers, and fabled — with abilities, reminders and night prompts

@@ -72,7 +72,7 @@ jobs:
           cp app/src/main/assets/icons/* site/icons/
           cp -r app/src/main/assets/homebrew site/homebrew
           sed -i "s/__BUILD__/${GITHUB_SHA}/" site/sw.js
-          sed -i "s/__BUILD__/${GITHUB_SHA:0:7}/" site/index.html
+          sed -i "s/__BUILD_SHA__/${GITHUB_SHA:0:7}/g" site/index.html
           # App icon: night-sky square with a gold crescent moon, written
           # as a raw PNG (runners have no ImageMagick).
           python3 - <<'PYEOF'

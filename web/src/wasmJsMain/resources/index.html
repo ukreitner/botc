@@ -40,12 +40,12 @@
 </style>
 </head>
 <body>
-<div id="boot">Opening the grimoire…<small>first load fetches the whole app; later loads are instant</small><small>build __BUILD__</small></div>
+<div id="boot">Opening the grimoire…<small>first load fetches the whole app; later loads are instant</small><small>build __BUILD_SHA__</small></div>
 <div id="compose"></div>
 <script>
   // The build this shell was deployed from; the app footer reads it so
   // "did my fix ship?" is answerable at the table (setup-and-home #40).
-  window.__BUILD__ = '__BUILD__';
+  window.__BUILD__ = '__BUILD_SHA__';
 
   // ---- service worker + update prompt (setup-and-home #40, #44) ----------
   // The worker no longer calls skipWaiting() on its own; a new version waits
