@@ -3,7 +3,7 @@
 
 *Ravenswood Bluff has a harbour now, and a harbour needs a light. On calm nights the lantern keeps ships off the rocks. On other nights, somebody moves the lantern.*
 
-v1.1 — Storyteller's edition (v1.1: Devil's Advocate replaces the Press-Gang; the 9- and 15-player bags adjusted). Contents: the pitch, the character sheet, rulings & jinxes, night order, three bags with full reasoning, how to run each homebrew, playbooks for both teams, and design notes (including what I cut and why). A `salt-and-lantern.json` sits alongside this file for the script tool / town-square apps.
+v1.2 — Storyteller's edition (v1.2: Ferryman must directly choose another dead player; a new Wrecker jinx allows the choice to redirect back to the Ferryman. This is the only character change from v1.1. In v1.1, Devil's Advocate replaced the Press-Gang and the 9- and 15-player bags were adjusted). Contents: the pitch, the character sheet, rulings & jinxes, night order, three bags with full reasoning, how to run each homebrew, playbooks for both teams, and design notes (including what I cut and why). A `salt-and-lantern.json` sits alongside this file for the script tool / town-square apps.
 
 ---
 
@@ -60,7 +60,7 @@ No character on this script changes the Outsider count. Setup is exactly the bas
 | ★ **Harbourmaster** | Once per game, during the day, publicly close the harbour: nobody dies tonight. | Blocks every night death from any source, and the Siren's conversion. If drunk/poisoned when declaring, the closure silently fails and the ability is spent. |
 | ★ **Pearl Diver** | Each night\*, choose a player who died at night: you learn their character. | Night deaths only, never executions. A self-killed Imp reads as "Imp". The dead Drunk reads as "Drunk". |
 | ★ **Navigator** | Once per game, at night\*, choose 2 players: you learn how many alive evil players sit between them, clockwise from the 1st. | Exclusive of the two chosen. Skip the Stowaway's seat. Wake them each night\* until used; they may decline. |
-| ★ **Ferryman** | If you die, choose a dead player: if they are good, they are resurrected tonight. | Choice made at the moment of death. If the Ferryman is drunk/poisoned when they die, nothing happens. A converted (evil) Outsider cannot be brought back. |
+| ★ **Ferryman** | If you die, choose another dead player: if they are good, they are resurrected tonight. | Choose someone other than the Ferryman; if nobody else is dead, there is no crossing. Choice made at the moment of death. If the Ferryman is drunk/poisoned when they die, nothing happens. A converted (evil) Outsider cannot be brought back. |
 
 ### Outsiders
 
@@ -103,11 +103,14 @@ Formal jinxes (also embedded in the JSON):
 - **Lighthouse Keeper / Wrecker** — The dawn announcement names the player the light actually fell on.
 - **Siren / Drunk** — A converted Drunk is told they were the Drunk. They remain the Drunk (no ability), now evil.
 - **Ferryman / Siren** — A converted Outsider is evil and cannot be resurrected by the Ferryman.
+- **Ferryman / Wrecker (v1.2)** — If the Wrecker's ability is working and both the dead Ferryman and the chosen other dead player are Wrecked, the Wrecker redirects a good Ferryman's night choice to the Ferryman themself. The original choice can be good or evil, but must be another dead player. This never permits a direct self-choice or a choice when nobody else is dead, and day choices are not redirected. The Ferryman is resurrected only if good and not drunk or poisoned when they died.
 - **Devil's Advocate / Albatross** — The Albatross triggers on being executed, not on dying. An Albatross protected by the Devil's Advocate who is executed survives, and their nominator still dies tonight.
 - **Devil's Advocate / Ferryman** — A Ferryman who is executed but survives has not died; no crossing.
 - **Devil's Advocate / Kraken** — A Minion who is executed but survives has not died; no thrash.
 
 General rulings:
+
+- **Ferryman targets (v1.2).** The Ferryman must directly choose another dead player, good or evil. If nobody else is dead, there is no crossing. The Ferryman / Wrecker jinx is the only way this ability can bring the Ferryman themself back. This ability has no once-per-game limit.
 
 - **Dusk deaths.** The Albatross's cursed nominator dies at the start of the night, before the Poisoner acts. The Ravenkeeper and Ferryman trigger normally from it.
 - **"Safe from the Demon"** means the Demon's ability does nothing to that player tonight: no Imp/Kraken kill, no Pukka death (they become healthy), no Siren conversion.
@@ -139,7 +142,7 @@ General rulings:
 4. **Devil's Advocate** — choose a living player (not last night's); mark SURVIVES EXECUTION
 5. **Lighthouse Keeper** — choose a player (apply Wrecker); mark SAFE
 6. **Demon** — Imp / Pukka / Siren / Kraken acts. Siren: if an Outsider converts, wake them, point at the Siren, show their true character, thumbs-down; show the Siren a thumbs-up. Kraken: if THRASH is out, offer a 2nd choice.
-7. **Ferryman** — if they died tonight (or were executed today): choose a dead player; resurrect if good
+7. **Ferryman** — if they died tonight (or were executed today): directly choose another dead player; apply Wrecker, including the self-return jinx, then resurrect the final target if good. If nobody else is dead, no crossing
 8. **Ravenkeeper** — if they died tonight: choose a player (apply Wrecker); show character
 9. **Pearl Diver** — choose a night-dead player (apply Wrecker); show character
 10. **Empath**
@@ -147,7 +150,7 @@ General rulings:
 12. **Navigator** — if unused: may choose 2 (apply Wrecker); show a number
 13. **Smuggler** — choose a player; show what they learned tonight
 
-Day: Slayer, Virgin, Harbourmaster, Albatross (on execution), Devil's Advocate (on execution), Ferryman (choice on day death).
+Day: Slayer, Virgin, Harbourmaster, Albatross (on execution), Devil's Advocate (on execution), Ferryman (choose another dead player on day death; never themself, and no crossing if nobody else is dead).
 
 ---
 
@@ -230,13 +233,13 @@ A big table can absorb the whole misinformation ladder at once: the Poisoner fal
 
 **Navigator.** Once per game; wake them each night\* until they use it. From the first chosen player, walk clockwise to the second, count alive evil players strictly between, skipping the Stowaway's seat. If the Wrecker has swapped the two endpoints, the walk goes the other way round the table — that's a legitimate displacement, and a fun one.
 
-**Ferryman.** The choice is made when they die. By day: ask them quietly, or let them declare it; either is fine. By night: wake them at the Ferryman step and let them point. Resurrect at that step (after the Demon has acted, so the returning player can't be killed tonight). Used once-per-game abilities stay used; nightly abilities resume. Announce the return at dawn like any other state change. Poisoned or drunk at the moment of death: nothing, and no explanation.
+**Ferryman.** Directly choose another dead player, good or evil; never directly choose the Ferryman themself. If nobody else is dead, there is no crossing. Apply ordinary legal Wrecker swaps between other dead players. Exception: if the Wrecker's ability is working and both the chosen player and the dead Ferryman are Wrecked, a good Ferryman's night choice redirects to the Ferryman, allowing self-resurrection if they were not drunk or poisoned when they died. Day choices are never redirected. The ability is not once per game. The choice is made when they die. By day: ask them quietly, or let them declare it; either is fine. By night: wake them at the Ferryman step and let them point. Resurrect at that step (after the Demon has acted, so the returning player can't be killed tonight). Used once-per-game abilities stay used; nightly abilities resume. Announce the return at dawn like any other state change. Poisoned or drunk at the moment of death: nothing, and no explanation.
 
 **Stowaway.** Keep the "Stowaway-removed" seating list in the grimoire. Affects Chef, Empath, Cartographer, Navigator — nothing else. The Stowaway can still be chosen by the Navigator as an endpoint; measure from their physical seat. Dying changes nothing (dead players are already skipped by the Empath; the other three only measure on night one or by choice). Tell the Stowaway plainly that they should probably claim early and that the Siren, if in play, would like that very much.
 
 **Albatross.** When they are executed, mark CURSED on the nominator. That player dies at the start of the night. Don't announce a cause at dawn — it's just a death. If the Demon nominated, the Demon dies at night and the game ends in good's favour. If the Albatross was protected by the Devil's Advocate, they survive the execution and the nominator is still cursed: the trigger is the execution, not the death.
 
-**Wrecker.** Wake after the Poisoner every night. Two WRECKED tokens. For the rest of the night, whenever a *good* player points at a WRECKED player, resolve the ability on the other WRECKED player, silently — Fortune Teller (each pick), Keeper, Ravenkeeper, Diver, Navigator, Ferryman. If the substitute isn't a legal target, the choice stands. Never redirect evil abilities. Never tell the good player. The only trace it leaves is the dawn announcement naming a player the Keeper didn't send the light to.
+**Wrecker.** Wake after the Poisoner every night. Two WRECKED tokens. For the rest of the night, whenever a *good* player points at a WRECKED player, resolve the ability on the other WRECKED player, silently — Fortune Teller (each pick), Keeper, Ravenkeeper, Diver, Navigator, Ferryman. If the substitute isn't a legal target, the choice stands, except for the explicit Ferryman jinx: a good Ferryman's legal night choice of the other Wrecked dead player redirects back to the Wrecked dead Ferryman. Never redirect evil abilities. Never tell the good player. The only trace it leaves is the dawn announcement naming a player the Keeper didn't send the light to.
 
 *Example.* Wrecker marks Anna and Ben. The Keeper protects Anna → Ben is SAFE. The Fortune Teller picks Anna and Cal → you resolve Ben and Cal. The Siren kills Anna. Dawn: "Anna died. Last night the lantern fell on Ben." The Keeper knows something moved the light; whether they say so out loud is the day's first decision.
 
@@ -265,7 +268,7 @@ A big table can absorb the whole misinformation ladder at once: the Poisoner fal
 - Siren: convert an Outsider *before* the town has finished trusting them, not after. A converted Stowaway is an evil player the seat maths will never find.
 - Kraken: a Minion who "comes clean" on day three and eats an execution buys two bodies that night. Use once, use late.
 - Devil's Advocate: protect the claimed Albatross on the day the town has talked itself into executing them, and the Ferryman on the day they announce who they'd bring back.
-- Bluff Stowaway to erase an Empath, Albatross to survive a day, Navigator to stall forever, Ferryman to be the player nobody bothers to kill.
+- Bluff Stowaway to erase an Empath, Albatross to survive a day, Navigator to stall forever, Ferryman to make evil weigh which other dead good player could return.
 - Pukka: night one, the loudest starting-info role you can guess. A poisoned Cartographer who confidently announces "2" on day one is worth three Poisoner nights.
 
 ---
@@ -291,7 +294,7 @@ A big table can absorb the whole misinformation ladder at once: the Poisoner fal
 **Balance risks I'm watching**
 - The Siren's ceiling. She is the strongest Demon here. The beginner bag compensates by carrying no poison. If your group finds she's winning too often, give her a bag with the Poisoner and no Smuggler, so evil's information and evil's numbers don't both peak.
 - A Cartographer "3". It confirms four good players and halves the Demon's hiding room on night one. The Drunk and the Stowaway exist partly to keep the table from treating any single number as gospel.
-- The Ferryman as an unkillable voter. Evil rationally never kills them, which makes a living Ferryman a reliable good vote in the endgame. The Pukka and the Poisoner have the answer; on bags without them, expect the Ferryman to see the final day.
+- The Ferryman trades their own life for another dead good player. With no other dead player available, killing the Ferryman produces no crossing; with several dead players, evil must weigh which good ability or vote might return. The Pukka and the Poisoner can suppress the crossing. The Ferryman cannot directly choose themself; the Wrecker jinx can instead turn a legal night choice of another dead player into an accidental self-resurrection.
 - Keeper + Harbourmaster stalls at four alive. If your table plays for the stall every game, move the Harbourmaster out of bags that already have the Keeper.
 - Stowaway adjudication load. Keep the second seating list in the grimoire and it's fine; try to do it in your head and it isn't.
 

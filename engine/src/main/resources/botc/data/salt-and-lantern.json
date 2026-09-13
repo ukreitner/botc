@@ -116,12 +116,12 @@
     "id": "ferryman",
     "name": "Ferryman",
     "team": "townsfolk",
-    "ability": "If you die, choose a dead player: if they are good, they are resurrected tonight.",
+    "ability": "If you die, choose another dead player: if they are good, they are resurrected tonight.",
     "flavor": "One coin, one crossing. No refunds. Exchanges considered.",
     "firstNight": 0,
     "firstNightReminder": "",
     "otherNight": 50,
-    "otherNightReminder": "If the Ferryman died tonight or was executed today and has not yet chosen, wake them: they point to a dead player. If that player is good (and the Ferryman was not drunk or poisoned when they died), that player becomes alive. Mark CROSSING.",
+    "otherNightReminder": "If the Ferryman died tonight or was executed today and has not yet chosen, wake them: they point to another dead player, never themself. If nobody else is dead, there is no crossing. Apply ordinary legal Wrecker swaps to a good Ferryman's night choice. Exception: if both the chosen other dead player and the dead Ferryman are Wrecked, redirect a good Ferryman's night choice to the Ferryman themself; the original choice can be good or evil. Never redirect a day choice. After any redirect, if the final target is good (and the Ferryman was not drunk or poisoned when they died), that player becomes alive. Mark CROSSING.",
     "reminders": [
       "Crossing"
     ],
@@ -130,6 +130,10 @@
       {
         "id": "siren",
         "reason": "An Outsider converted by the Siren is evil and cannot be resurrected by the Ferryman."
+      },
+      {
+        "id": "wrecker",
+        "reason": "If the Wrecker's ability is working and both the dead Ferryman and the chosen other dead player are Wrecked, the Wrecker redirects a good Ferryman's night choice to the Ferryman themself. The original choice can be good or evil, but must be another dead player. This never permits a direct self-choice or a choice when nobody else is dead, and day choices are not redirected. The Ferryman is resurrected only if good and not drunk or poisoned when they died."
       }
     ]
   },

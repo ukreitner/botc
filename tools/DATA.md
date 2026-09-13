@@ -475,9 +475,10 @@ the overlay entry and the matching row from `DataParityTest.appReminders`.
 
 ## Salt & Lantern homebrew bundle
 
-`engine/src/main/resources/botc/data/salt-and-lantern.json` is the supplied v1.1
-script-tool file, retained verbatim and independent of the official-data
-regenerator. `docs/salt-and-lantern.md` is the supplied Storyteller edition.
+`engine/src/main/resources/botc/data/salt-and-lantern.json` is the supplied script
+with the user-requested v1.2 Ferryman target correction, independent of the
+official-data regenerator. `docs/salt-and-lantern.md` is the matching revised
+Storyteller edition. The original Downloads documents are untouched.
 `SaltAndLantern.kt` adds the selectable built-in script, the written night order,
 three Devil's Advocate rulings present only in the Markdown, and in-app guidance.
 Do not merge its twelve characters into the generated official `characters.json`.
@@ -499,16 +500,17 @@ The written sheet governs relative timing because the JSON's numerical positions
 use a different scale from the app's global sheet and disagree at several points.
 In particular: Pukka precedes starting information; Ferryman precedes Ravenkeeper;
 Pearl Diver precedes Empath; Smuggler acts last. Original JSON positions and
-reminder wording remain available in the character reference. The original
+reminder wording remain available in the character reference, with the v1.2
+Ferryman direct-self-choice restriction and Wrecker exception added. The original
 Ferryman reminder suggests collecting the choice at the night step after a day
 execution; the written v1.1 rules clarify a day choice at death and a night choice
 at the Ferryman step, with resurrection after the Demon. The app guide follows
 that clarification.
 
 The homebrew Ferryman uses internal id `saltlanternferryman` because the official
-roster already contains a Fabled with id `ferryman`. Its display name and text are
-unchanged; script references, jinxes, night order and packaged art use the distinct
-id. The unmodified source JSON retains its original external id.
+roster already contains a Fabled with id `ferryman`. Its display name is unchanged;
+script references, jinxes, night order and packaged art use the distinct id. The
+bundled script-tool JSON retains its original external id.
 
 Salt & Lantern sets `Script.resurrectionRestoresAbilities` to false: the seat
 resurrection control preserves spent effects and reminders, as required by the
@@ -518,3 +520,20 @@ A Harbourmaster closure protects only the following night, recorded separately
 in notes; retaining Closed does not extend protection into later nights.
 Resurrected starting-information characters use the script's own first-night
 order when positioning their repeat step, keeping Cartographer before Smuggler.
+
+### v1.2 Ferryman target correction
+
+The ability is now: “If you die, choose another dead player: if they are good,
+they are resurrected tonight.” The Ferryman cannot directly choose themself.
+A new Ferryman / Wrecker jinx
+redirects a good Ferryman's legal night choice back to the dead Ferryman when both
+the Ferryman and the chosen other dead player are Wrecked. The original choice
+can be good or evil. Alignment and healthy-at-death checks still govern the
+resurrection; day choices are never redirected. If nobody else is dead, there
+is no crossing, even through Wrecker. No once-per-game restriction was added.
+The manual night row offers no target
+selector or self-target suggestion and skips when no other dead player exists.
+Character text, night reminders, in-app guidance and the Storyteller document
+all carry this restriction and exception. The old unkillable-voter discussion was
+replaced with analysis of returning another player and the limited Wrecker interaction.
+All other v1.1 character rules remain unchanged.

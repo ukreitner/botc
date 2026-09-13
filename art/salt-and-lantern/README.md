@@ -13,6 +13,8 @@ They remain separate from the downloaded official icon cache, so fetching
 or restoring official art cannot replace them.
 
 The final generated PNGs are preserved without resizing or re-encoding.
+The Albatross uses a hanging seabird and sailor's rope, giving it a distinct
+vertical silhouette beside the official flying Ravenkeeper.
 
 The homebrew Ferryman's asset is named `saltlanternferryman.png` so it cannot
 replace the official Fabled Ferryman. Its prompt is `ferryman.txt`.

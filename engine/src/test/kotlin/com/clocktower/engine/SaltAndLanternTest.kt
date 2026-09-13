@@ -21,7 +21,7 @@ class SaltAndLanternTest {
     }
 
     @Test
-    fun `bundled selectable script preserves the whole supplied roster and original text`() {
+    fun `bundled selectable script preserves the revised roster and homebrew data`() {
         val source = ScriptParser.parse(BotcResources.read("/botc/data/salt-and-lantern.json"))
         assertEquals("Salt & Lantern", script.name)
         assertEquals("Claude", script.author)
@@ -45,8 +45,8 @@ class SaltAndLanternTest {
         assertEquals(listOf("Dead", "Dead", "Thrash"), lookup("kraken")!!.reminders)
         assertEquals(Team.FABLED, lookup("ferryman")!!.team)
         assertEquals(Team.TOWNSFOLK, lookup(SaltAndLantern.FERRYMAN_ID)!!.team)
-        assertEquals(8, source.jinxes.size)
-        assertEquals(11, data.activeJinxes(script.characterIds, script).count {
+        assertEquals(9, source.jinxes.size)
+        assertEquals(12, data.activeJinxes(script.characterIds, script).count {
             it in script.jinxes
         })
     }
@@ -107,13 +107,46 @@ class SaltAndLanternTest {
     @Test
     fun `Ferryman remains available after death and Navigator stops after its spend marker`() {
         var state = game(SaltAndLantern.FERRYMAN_ID, "navigator", "siren", "wrecker", "chef", night = 2)
-        state = state.copy(players = state.players.map { if (it.id == 0L) it.copy(alive = false) else it })
+        state = state.copy(players = state.players.map { if (it.id in setOf(0L, 4L)) it.copy(alive = false) else it })
         val ferryman = NightPlan.build(state, lookup).steps.first { it.abilityId == SaltAndLantern.FERRYMAN_ID }
         assertTrue(ferryman.gate is StepGate.Conditional)
         assertTrue(ferryman.required)
         state = Effects.addReminder(state, 1L, PlacedReminder("navigator", "No ability"))
         val navigator = NightPlan.build(state, lookup).steps.first { it.abilityId == "navigator" }
         assertTrue(navigator.gate is StepGate.Skip)
+    }
+
+    @Test
+    fun `Ferryman has no direct self choice but preserves the Wrecker exception for another dead evil target`() {
+        val character = lookup(SaltAndLantern.FERRYMAN_ID)!!
+        assertEquals("If you die, choose another dead player: if they are good, they are resurrected tonight.", character.ability)
+        assertFalse(character.ability.contains("Once per game", ignoreCase = true))
+        val jinx = script.jinxes.single { it.id1 == SaltAndLantern.FERRYMAN_ID && it.id2 == "wrecker" }
+        assertTrue("good or evil" in jinx.reason)
+        assertTrue("day choices are not redirected" in jinx.reason)
+        assertTrue("not drunk or poisoned when they died" in jinx.reason)
+        assertTrue("redirects a good Ferryman's night choice to the Ferryman themself" in jinx.reason)
+
+        var state = game(SaltAndLantern.FERRYMAN_ID, "wrecker", "chef", "siren", "empath", night = 2)
+        state = state.copy(players = state.players.map { if (it.id == 0L) it.copy(alive = false) else it })
+        state = Effects.addReminder(state, 0L, PlacedReminder("wrecker", "Wrecked"))
+        state = Effects.addReminder(state, 3L, PlacedReminder("wrecker", "Wrecked"))
+        val noTarget = NightPlan.build(state, lookup).steps.first { it.abilityId == SaltAndLantern.FERRYMAN_ID }
+        assertTrue(noTarget.gate is StepGate.Skip, "Wrecker cannot create a choice when nobody else is dead")
+        assertNull(noTarget.action)
+        assertTrue(noTarget.cards.isEmpty())
+        val attemptedSelfChoice = NightPlan.resolve(state, lookup, noTarget.key, NightInput(playerIds = listOf(0L)))
+        assertEquals(state.players, attemptedSelfChoice.players, "a direct self-choice must not resurrect the Ferryman")
+
+        // A dead EVIL player is a legal original choice; goodness is checked after redirection.
+        state = state.copy(players = state.players.map { if (it.id == 3L) it.copy(alive = false) else it })
+        assertTrue(state.player(3L)!!.isEvil(lookup))
+        val withTarget = NightPlan.build(state, lookup).steps.first { it.abilityId == SaltAndLantern.FERRYMAN_ID }
+        assertTrue(withTarget.gate is StepGate.Conditional)
+        assertNull(withTarget.action, "this exception remains a manual resolution, not an automatic target suggestion")
+        assertTrue("Never directly choose the Ferryman themself" in withTarget.prompt)
+        assertTrue("the Wrecker redirects a good Ferryman's night choice to the Ferryman themself" in withTarget.prompt)
+        assertTrue("Never redirect a day choice" in withTarget.prompt)
     }
 
     @Test
