@@ -74,6 +74,8 @@ data class DeathEvent(
     val teamAtDeath: Team? = null,
     val evilAtDeath: Boolean = false,
     val abilityImpairedAtDeath: Boolean? = null,
+    /** Legal candidates for an ability that chooses another dead player at death. */
+    val otherDeadIdsAtDeath: List<Long>? = null,
     /** Restored by `revive`. */
     val ghostVoteUsedBeforeDeath: Boolean = false,
     /** Zombuul's first death: stored dead, but the game is not over (lead D6). */
@@ -552,6 +554,7 @@ object Deaths {
             teamAtDeath = player.team(lookup),
             evilAtDeath = player.isEvil(lookup),
             abilityImpairedAtDeath = Status.isImpaired(state, lookup, targetId),
+            otherDeadIdsAtDeath = state.seats.filter { !it.alive && it.id != targetId }.map { it.id },
             ghostVoteUsedBeforeDeath = player.ghostVoteUsed,
             registeredOnly = registeredOnly,
         )

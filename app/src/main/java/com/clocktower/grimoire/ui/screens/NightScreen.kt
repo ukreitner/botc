@@ -1,5 +1,7 @@
 package com.clocktower.grimoire.ui.screens
 
+import com.clocktower.grimoire.ui.components.asSpec
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -107,9 +110,23 @@ fun NightScreen(
     var listOpen by rememberSaveable { mutableStateOf(false) }
     var forced by remember(state.cycle) { mutableStateOf(emptySet<String>()) }
     var shown by remember { mutableStateOf<ShownCard?>(null) }
+    var remainingCards by remember { mutableStateOf(emptyList<ShownCard>()) }
+    var showSerial by remember { mutableStateOf(0) }
     var kill by remember { mutableStateOf<KillRequest?>(null) }
     var pendingDawn by remember(state.cycle) { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    fun present(card: ShownCard) {
+        showSerial += 1
+        shown = card
+        viewModel.recordShown(
+            playerId = card.recipientId,
+            sourceId = card.sourceId,
+            shown = card.card.describe { id -> viewModel.characterById(id)?.name ?: id },
+            truthful = card.truthful,
+            card = card.card.asSpec(),
+        )
+    }
 
     // A question the engine raised and is still owed (an Imp that killed itself
     // owes a star pass) holds ITS row open until it is answered — ticking the
@@ -190,13 +207,13 @@ fun NightScreen(
                         forced = step.key.token in forced,
                         onRunAnyway = { forced = forced + step.key.token },
                         onShow = { card, who, truthful ->
-                            shown = ShownCard(card, who, truthful, step.abilityId)
-                            viewModel.recordShown(
-                                playerId = who,
-                                sourceId = step.abilityId,
-                                shown = card.describe { id -> viewModel.characterById(id)?.name ?: id },
-                                truthful = truthful,
-                            )
+                            remainingCards = emptyList()
+                            present(ShownCard(card, who, truthful, step.abilityId))
+                        },
+                        onShowCards = { cards, who, truthful ->
+                            val queue = cards.map { ShownCard(it, who, truthful, step.abilityId) }
+                            remainingCards = queue.drop(1)
+                            queue.firstOrNull()?.let(::present)
                         },
                         onOpenShowTool = onOpenShowTool,
                         onKillSheet = { targetId, killerId ->
@@ -250,12 +267,18 @@ fun NightScreen(
     }
 
     shown?.let { card ->
-        FullScreenShow(
-            card = card.card,
-            viewModel = viewModel,
-            coverCaption = if (plan.isFirstNight) "First night" else "Night ${state.cycle}",
-            onDismiss = { shown = null },
-        )
+        key(showSerial) {
+            FullScreenShow(
+                card = card.card,
+                viewModel = viewModel,
+                coverCaption = if (plan.isFirstNight) "First night" else "Night ${state.cycle}",
+                onDismiss = {
+                    val next = remainingCards.firstOrNull()
+                    remainingCards = remainingCards.drop(1)
+                    if (next == null) shown = null else present(next)
+                },
+            )
+        }
     }
 
     // The ONE kill sheet (lead D24): the night screen no longer owns a kill

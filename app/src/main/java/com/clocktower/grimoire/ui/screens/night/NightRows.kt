@@ -505,7 +505,9 @@ fun isDestructive(effects: List<NightEffect>): Boolean = effects.any {
         it is NightEffect.Resurrect ||
         it is NightEffect.BecomeCharacter ||
         it is NightEffect.SwapCharacters ||
-        it is NightEffect.MarkSpent
+        it is NightEffect.MarkSpent ||
+        it is NightEffect.SetAlignment ||
+        it is NightEffect.RevealTrueCharacter
 }
 
 /** How long a destructive primary must be held before it fires, in ms. */
@@ -597,6 +599,8 @@ data class SeatOption(
     val chosenBefore: Boolean,
     /** A physical neighbour of the acting seat. */
     val neighbour: Boolean,
+    val diedAtNight: Boolean = false,
+    val deadWhenSourceDied: Boolean = false,
 )
 
 /**
@@ -610,6 +614,8 @@ fun blockedBecause(option: SeatOption, constraints: List<TargetConstraint>): Str
         val reason = when (constraint) {
             TargetConstraint.ALIVE -> if (option.alive) null else "dead"
             TargetConstraint.DEAD -> if (!option.alive) null else "still alive"
+            TargetConstraint.DIED_AT_NIGHT -> if (option.diedAtNight) null else "never died at night"
+            TargetConstraint.DEAD_WHEN_SOURCE_DIED -> if (option.deadWhenSourceDied) null else "not dead when they chose"
             TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED -> null
             TargetConstraint.NOT_SELF -> if (option.self) "themselves" else null
             TargetConstraint.NOT_TRAVELLER -> if (option.traveller) "a Traveller" else null

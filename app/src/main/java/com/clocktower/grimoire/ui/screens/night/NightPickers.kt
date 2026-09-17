@@ -67,6 +67,7 @@ fun seatOptions(
     step: NightStep,
 ): List<SeatOption> {
     val holderId = step.holderId
+    val deadAtChoice = state.deaths.lastOrNull { it.playerId == holderId && !it.registeredOnly }?.otherDeadIdsAtDeath
     val lastNight = Memory.forbiddenTargets(state, step.abilityId, holderId)
     val everChosen = Memory.everChosen(state, step.abilityId, holderId)
     val neighbours = holderId?.let { state.seatNeighbours(it).map { p -> p.id }.toSet() }.orEmpty()
@@ -83,6 +84,8 @@ fun seatOptions(
             chosenLastNight = player.id in lastNight,
             chosenBefore = player.id in everChosen,
             neighbour = player.id in neighbours,
+            diedAtNight = state.deaths.any { it.playerId == player.id && it.atNight && !it.registeredOnly },
+            deadWhenSourceDied = deadAtChoice?.contains(player.id) ?: !player.alive,
         )
     }
 }

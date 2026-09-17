@@ -48,6 +48,7 @@ import com.clocktower.engine.NightStep
 import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
+import com.clocktower.engine.Ref
 import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.StepGate
 import com.clocktower.grimoire.ui.GameViewModel
@@ -84,6 +85,7 @@ fun NightCard(
     forced: Boolean,
     onRunAnyway: () -> Unit,
     onShow: (ShowCard, Long?, Boolean?) -> Unit,
+    onShowCards: (List<ShowCard>, Long?, Boolean?) -> Unit,
     onOpenShowTool: () -> Unit,
     onKillSheet: (Long, Long?) -> Unit,
     onDawn: () -> Unit,
@@ -176,13 +178,15 @@ fun NightCard(
     }.orEmpty()
 
     // ---- what the action will do, previewed through the ONE kill funnel ----
-    val effects = actionEffects(step.action)
+    val choicePreview = NightPlan.previewChoice(state, viewModel::characterById, step,
+        NightInput(playerIds = pick.playerIds, characterIds = pick.characterIds, none = pick.none, yes = pick.yes))
+    val effects = actionEffects(step.action) + choicePreview.effects
     val attack = effects.filterIsInstance<NightEffect.Attack>().firstOrNull()
     val outcomes: List<Pair<Long, KillOutcome>> = remember(state, key.token, pick.playerIds, attack) {
         if (attack == null || skipped) {
             emptyList()
         } else {
-            pick.playerIds.map { id ->
+            choicePreview.targetIds.map { id ->
                 id to Deaths.killOutcome(
                     state,
                     viewModel::characterById,
@@ -252,12 +256,25 @@ fun NightCard(
     }
 
     val isDawn = step.slotId == NightMarkers.DAWN
+    val replay = info?.exactCards.orEmpty().takeIf {
+        !owesFalseInfo && (chosen == null || chosen?.truthful == true)
+    }.orEmpty()
+    val resolvedNames = choicePreview.targetIds.mapNotNull { state.player(it)?.name }
+    val transitionLine = choicePreview.effects.mapNotNull { effect ->
+        when (effect) {
+            is NightEffect.SetAlignment -> "${resolvedNames.joinToString()} becomes ${if (effect.evil) "evil" else "good"}"
+            is NightEffect.Resurrect -> "${resolvedNames.joinToString()} is alive again"
+            else -> null
+        }
+    }.joinToString(" · ")
     val label = primaryLabel(
-        picked = pick.playerIds.mapNotNull { state.player(it)?.name },
+        picked = resolvedNames,
         pickedCharacters = pick.characterIds.map { viewModel.characterById(it)?.name ?: it },
-        places = placedLabels(sharedEffects(step.action)),
+        places = placedLabels(sharedEffects(step.action) + choicePreview.effects.filterNot {
+            it is NightEffect.PlaceToken && it.on == Ref.Source
+        }),
         lastPickPlaces = placedLabels(lastPickEffects(step.action)),
-        deathLine = deathLine,
+        deathLine = deathLine.ifBlank { transitionLine },
         deferredLine = deferredLine,
         answer = shownAnswer,
         holder = holderName,
@@ -355,6 +372,7 @@ fun NightCard(
                     onAnswer = { seatId -> viewModel.answerPromptWithPlayer(owed.id, seatId) },
                     onDone = { viewModel.resolvePrompt(owed.id) },
                     onShow = onShow,
+                    onShowCards = onShowCards,
                     onDismiss = { viewModel.dismissPrompt(owed.id) },
                 )
                 return@Column
@@ -486,7 +504,11 @@ fun NightCard(
                 PrimaryButton(label = "RUN IT ANYWAY", onConfirm = onRunAnyway)
             } else if (!awaitingGate) {
                 PrimaryButton(
-                    label = if (needsKillSheet) "RESOLVE THE DEATH…" else label,
+                    label = when {
+                        needsKillSheet -> "RESOLVE THE DEATH…"
+                        replay.size > 1 -> "REPLAY ${replay.size} CARDS TO ${holderName.uppercase()}"
+                        else -> label
+                    },
                     enabled = primaryEnabled(action, pick) && !(owesFalseInfo && chosen == null),
                     // A standing death is as destructive as a chosen one.
                     holdMillis = if (
@@ -507,7 +529,9 @@ fun NightCard(
                                 // the card goes up and the `shown:` row is
                                 // written, then the step is ticked (§B.7).
                                 val card = chosen?.card ?: truthCard.takeIf { !owesFalseInfo }
-                                if (shownAnswer.isNotBlank() && card != null) {
+                                if (replay.isNotEmpty()) {
+                                    onShowCards(replay.map { it.asCard() }, step.holderId, true)
+                                } else if (shownAnswer.isNotBlank() && card != null) {
                                     onShow(card, step.holderId, if (chosen != null) chosen!!.truthful else true)
                                 }
                                 viewModel.resolveNightStep(
@@ -615,6 +639,7 @@ private fun NightPromptAsk(
     onAnswer: (Long) -> Unit,
     onDone: () -> Unit,
     onShow: (ShowCard, Long?, Boolean?) -> Unit,
+    onShowCards: (List<ShowCard>, Long?, Boolean?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var picked by remember(prompt.id) { mutableStateOf<Long?>(null) }
@@ -662,6 +687,14 @@ private fun NightPromptAsk(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     if (choices.isEmpty()) {
+        if (prompt.cards.isNotEmpty()) {
+            CardOffers(
+                offers = prompt.cards.mapIndexed { index, offered -> UiOffer("SHOW ${index + 1}", offered.asCard(), true) },
+                chosen = null,
+                onShow = { offer -> onShow(offer.card, prompt.subjectPlayerId, true) },
+                onEdit = { editing = it; customOpen = true },
+            )
+        }
         if (card != null) {
             CardOffers(
                 offers = listOf(
@@ -693,7 +726,14 @@ private fun NightPromptAsk(
                 },
             )
         }
-        PrimaryButton(label = promptDoneLabel(card != null), onConfirm = onDone)
+        PrimaryButton(
+            label = if (prompt.cards.isNotEmpty()) "SHOW ${prompt.cards.size} ${if (prompt.cards.size == 1) "CARD" else "CARDS"} TO ${prompt.subjectPlayerId?.let(state::player)?.name.orEmpty().uppercase()}"
+                else promptDoneLabel(card != null),
+            onConfirm = {
+                if (prompt.cards.isNotEmpty()) onShowCards(prompt.cards.map { it.asCard() }, prompt.subjectPlayerId, true)
+                onDone()
+            },
+        )
         return
     }
     FlowRow(

@@ -1,5 +1,7 @@
 package com.clocktower.engine
 
+import com.clocktower.engine.rules.SaltAndLanternAutomation
+
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -262,6 +264,9 @@ data class NightInput(
     val overrideConstraints: Boolean = false,
 )
 
+/** Pure preview of the same target resolution and effects used by the confirm button. */
+data class NightChoicePreview(val targetIds: List<Long>, val effects: List<NightEffect>)
+
 /**
  * Tonight's sheet: a pure function of state (I6). Never cached — rebuild after
  * every mutation.
@@ -410,6 +415,9 @@ data class NightPlan(
             key: StepKey,
             input: NightInput,
         ): GameState {
+            // This script has single-submit rows. Other scripts include multi-stage rows
+            // (for example, a babysitter choice followed by a kill on the same key).
+            if (SaltAndLanternAutomation.active(state.script) && key.token in state.nightStepsDone) return state
             // No such row tonight: the plan has moved on (a prompt row that was
             // discharged, an insertion that has been consumed). Resolving is
             // still "this step is finished", never "un-finish it" — the primary
@@ -418,7 +426,7 @@ data class NightPlan(
             val ctx = PlanContext(state, lookup)
             val nightCtx = ctx.nightContext(step)
             val rule = CharacterRules.of(step.abilityId, lookup(step.abilityId))
-            val nightRule = if (step.abilityId in state.script.manualNightInstructions) null
+            val nightRule = if (SaltAndLanternAutomation.manualInstruction(state.script, step.abilityId) != null) null
                 else rule.nightRule(step.style == WakeStyle.FIRST_NIGHT)
             val action = step.action
             val holderId = step.holderId
@@ -473,6 +481,8 @@ data class NightPlan(
                 // Nobody was chosen BY AN ABILITY here: a Goon a Lunatic pointed
                 // at was not chosen at all, so the reactive half stays asleep.
                 if (!illusion) next = fireOnChosen(next, state, lookup, step, targets)
+                val effects = nightRule?.resolveEffects?.invoke(nightCtx, input, targets).orEmpty()
+                next = applyEffects(next, lookup, if (illusion) effects.filterIsInstance<NightEffect.MarkSpent>() else effects, scope)
             }
             if (illusion && ownMark != null) {
                 // The illusion is still drawn in the grimoire — and it is the
@@ -482,6 +492,11 @@ data class NightPlan(
             next = applyEffects(next, lookup, pending, scope)
 
             next = recordChoice(next, step, targets, input, chosenCharacters, impaired)
+            if (targets != input.playerIds && input.playerIds.isNotEmpty() && targets.isNotEmpty()) {
+                next = Ledger.record(next, LedgerEntry(kind = LedgerKind.RULING, sourceId = step.abilityId,
+                    actorId = holderId, targetIds = input.playerIds, targetIdsB = targets,
+                    text = "Submitted targets ${input.playerIds.joinToString()} resolved to ${targets.joinToString()}."))
+            }
             next = recordWakes(next, step, targets)
             next = recordInformed(next, lookup, step)
             if (impaired && step.wakeCounts == WakeCount.ACT && step.required) {
@@ -495,6 +510,15 @@ data class NightPlan(
                 next = Identity.markRevealed(next, holderId)
             }
             return Effects.reconcile(next, lookup)
+        }
+
+        fun previewChoice(state: GameState, lookup: (String) -> Character?, step: NightStep, input: NightInput): NightChoicePreview {
+            val ctx = PlanContext(state, lookup).nightContext(step)
+            val targets = resolvedTargets(state, lookup, step, step.action, input)
+            val rule = CharacterRules.of(step.abilityId, lookup(step.abilityId)).nightRule(step.style == WakeStyle.FIRST_NIGHT)
+            val effects = if (SaltAndLanternAutomation.manualInstruction(state.script, step.abilityId) != null)
+                emptyList() else rule?.resolveEffects?.invoke(ctx, input, targets).orEmpty()
+            return NightChoicePreview(targets, if (ctx.role?.alwaysFalse == true) effects.filterIsInstance<NightEffect.MarkSpent>() else effects)
         }
 
         /**
@@ -569,7 +593,7 @@ data class NightPlan(
             holderId: Long? = null,
         ): Boolean {
             val id = Character.normalizeId(characterId)
-            if (id in state.script.manualNightInstructions) return false
+            if (SaltAndLanternAutomation.manualInstruction(state.script, id) != null) return false
             val step = build(state, lookup).steps.firstOrNull {
                 it.abilityId == id && (holderId == null || it.holderId == holderId)
             } ?: return true
@@ -996,7 +1020,7 @@ data class NightPlan(
                     namedDeaths(nightRule?.pending?.invoke(nightCtx).orEmpty())
                 },
             ).let { step ->
-                val manual = ctx.state.script.manualNightInstructions[role.abilityId]
+                val manual = SaltAndLanternAutomation.manualInstruction(ctx.state.script, role.abilityId)
                 if (manual == null) step else step.copy(
                     action = null,
                     infoId = "",
@@ -1345,6 +1369,10 @@ data class NightPlan(
             // Courtier's put every character in play in front of the Courtier
             // and the Exorcist's told them who the Demon was (B2-2, D2-2, D2-3).
             if (result.audience == InfoAudience.STORYTELLER) return@buildList
+            if (result.exactCards.isNotEmpty()) {
+                result.exactCards.forEachIndexed { index, card -> add(CardOffer("REPLAY ${index + 1}", card, true)) }
+                return@buildList
+            }
             cardFor(state, result.answer, result.cardPrefix)
                 ?.let { add(CardOffer("SHOW: ${labelFor(state, result.answer, nameOf)}", it, true)) }
             // Equally true, and equally the storyteller's to choose: WHICH
@@ -1948,7 +1976,7 @@ data class NightPlan(
                 is ShowInfo -> if (action.targetsNeeded > 0) action.targetsNeeded else picked.size
                 else -> picked.size
             }
-            return picked
+            val validated = picked
                 .distinct()
                 .filter { state.player(it) != null }
                 // An explicit storyteller override keeps every pick the UI let
@@ -1956,6 +1984,9 @@ data class NightPlan(
                 // warning and the storyteller confirmed anyway.
                 .filter { input.overrideConstraints || allowed(state, lookup, step, constraints, it) }
                 .take(max.coerceAtLeast(0))
+            return SaltAndLanternAutomation.redirectTargets(state, lookup, step.abilityId, step.holderId, validated) {
+                allowed(state, lookup, step, constraints, it)
+            }
         }
 
         /** The branch the storyteller tapped, or null for an unrecognised id. */
@@ -1976,6 +2007,9 @@ data class NightPlan(
                 when (constraint) {
                     TargetConstraint.ALIVE -> target.alive || state.isTrulyAlive(targetId)
                     TargetConstraint.DEAD -> !target.alive
+                    TargetConstraint.DIED_AT_NIGHT -> state.deaths.any { it.playerId == targetId && it.atNight && !it.registeredOnly }
+                    TargetConstraint.DEAD_WHEN_SOURCE_DIED -> state.deaths.lastOrNull { it.playerId == holderId && !it.registeredOnly }
+                        ?.otherDeadIdsAtDeath?.contains(targetId) ?: !target.alive
                     TargetConstraint.ANY_LIVING_STATE, TargetConstraint.SELF_ALLOWED -> true
                     TargetConstraint.NOT_SELF -> targetId != holderId
                     TargetConstraint.NOT_TRAVELLER -> !target.isTraveller
@@ -2302,6 +2336,7 @@ data class NightPlan(
                             subjectPlayerId = on ?: scope.sourceId,
                             title = effect.title,
                             stepSlotId = effect.stepSlotId,
+                            cards = effect.cards,
                         ),
                     )
                 }
@@ -2364,6 +2399,11 @@ data class NightPlan(
                         )
                     }
                 }
+
+                is NightEffect.RevealTrueCharacter ->
+                    for (target in seats(next, lookup, effect.on, scope)) {
+                        next = Seats.setShownCharacter(next, target, next.player(target)?.characterId)
+                    }
 
                 is NightEffect.GrantAbility -> {
                     val abilityId = effect.abilityId.ifEmpty { scope.character() }

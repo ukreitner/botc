@@ -160,6 +160,8 @@ data class NightRule(
      * victim dies" (lead D4) falls out of the ordering.
      */
     val pending: (NightContext) -> List<NightEffect> = { emptyList() },
+    /** Effects depending on the submitted, legally redirected choices. */
+    val resolveEffects: (NightContext, NightInput, List<Long>) -> List<NightEffect> = { _, _, _ -> emptyList() },
     /** Imperative, storyteller voice, at most two lines. */
     val prompt: String = "",
     /**
@@ -243,6 +245,10 @@ data class DayAbility(
      */
     val counterKey: String = "",
     val available: (state: GameState, lookup: (String) -> Character?, holder: Player) -> Boolean,
+    /** Optional immediate action, rendered by the shared day tools. Null targets means no picker. */
+    val targets: ((GameState, (String) -> Character?, Player) -> List<Long>)? = null,
+    val confirmation: String = "",
+    val resolve: ((GameState, (String) -> Character?, Player, Long?) -> GameState)? = null,
 )
 
 /**

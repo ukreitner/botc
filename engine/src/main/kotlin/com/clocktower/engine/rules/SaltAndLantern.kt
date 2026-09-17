@@ -40,9 +40,6 @@ object SaltAndLantern {
                 "imp", "pukka", "siren", "kraken", FERRYMAN_ID, "ravenkeeper", "pearldiver",
                 "empath", "fortuneteller", "navigator", "smuggler", NightMarkers.DAWN,
             ),
-            manualNightInstructions = source.customCharacters.associate { character ->
-                bundledId(character.id) to manualInstructions.getValue(character.id)
-            } + manualInstructions.filterKeys { it in setOf("chef", "empath", "fortuneteller", "ravenkeeper", "imp", "pukka") },
             storytellerNotes = notes,
             duskReminder = dusk,
             dawnReminder = dawn,
@@ -50,30 +47,9 @@ object SaltAndLantern {
         )
     }
 
-    private val manualInstructions = mapOf(
-        "chef" to "Count evil neighbours on a seating ring with the Stowaway's seat removed, even if the Stowaway is dead. Consider Recluse registration and impairment. Show and record your chosen number.",
-        "empath" to "Find the two alive neighbours after removing the Stowaway's seat; count their evil alignments, including Siren conversions. Consider Recluse registration and impairment. Show and record your chosen number.",
-        "cartographer" to "On their first night, count the shortest seat distance to an evil player after removing the Stowaway's seat (a neighbour is 1). Consider Recluse registration and impairment. Show and record the number.",
-        "fortuneteller" to "Collect two choices. If the chooser is good, apply any healthy Wrecker swap to each legal target, silently. Resolve the Demon reading on those targets, with red herring, Recluse and impairment. Show and record the answer; keep the original and resolved choices in your notes.",
-        "ravenkeeper" to "Only if they died tonight: collect a choice, apply any legal Wrecker redirect if the chooser is good, then show the resolved target's character (subject to registration and impairment). Record what was shown.",
-        "lighthousekeeper" to "Collect a player other than the Keeper; dead players are legal. Apply any legal Wrecker redirect if the Keeper is good. Mark the actual recipient Safe; if the Keeper is impaired there is no protection. Manually prevent the Demon's effect on that player, including Siren conversion and Pukka death; the Pukka victim becomes healthy. At dawn announce where the light actually fell.",
-        "harbourmaster" to "During the day, record the public closure and the specific following night it affects; mark Closed permanently to show the ability is spent. Closed is a used-ability marker, not protection for later nights. It is spent even if the Harbourmaster is impaired; in that case the closure fails. A successful closure prevents every death and Siren conversion that night, but not new Pukka poisoning or a Ferryman resurrection.",
-        "pearldiver" to "Choose a player who died at night, any night; never an executed player. If none exist, shake your head. A Wrecker swap is legal only if the substitute also died at night. Show the true character, subject to Recluse registration and impairment: a dead Drunk is Drunk, a starpassed Imp is Imp. Record what was shown.",
-        "navigator" to "Wake on nights after the first until No ability is marked; they may decline. If used, record the two ordered endpoints, apply legal Wrecker redirects for a good chooser, then count alive evil players strictly between them clockwise, skipping the Stowaway's seat. A Stowaway endpoint is measured from its physical seat. Consider Recluse registration and impairment; show the number and mark No ability.",
-        "ferryman" to "Only after a death tonight or during the preceding day, with an unresolved crossing: obtain the choice of another dead player made at death. Never directly choose the Ferryman themself. If nobody else is dead, there is no crossing. The chosen other dead player can be good or evil. Apply ordinary legal Wrecker swaps to a good Ferryman's night choice when the substitute is another dead player. Exception: if the Wrecker's ability is working and both that player and the dead Ferryman are Wrecked, the Wrecker redirects a good Ferryman's night choice to the Ferryman themself. Never redirect a day choice. Self-resurrection through this exception still requires the Ferryman to be good and not drunk or poisoned when they died. After any redirect, if the final target is dead and good, and the Ferryman was healthy when they died, resurrect that player now and mark Crossing. A Siren-converted Outsider is evil. Surviving execution does not trigger this. Previously spent abilities stay spent. The Ferryman's ability has no once-per-game limit.",
-        "stowaway" to "Remove this seat for Chef, Empath, Cartographer and Navigator calculations, even after death. Keep the physical seat for all player choices, voting, majority and kills. A Navigator may choose it as an endpoint.",
-        "albatross" to "After execution, even if the Albatross survives, mark Cursed on the nominator if the ability worked. At the start of tonight kill the nominator unless the harbour was successfully closed. Keeper protection does not stop this. Resolve Ferryman and Ravenkeeper triggers from that death.",
-        "wrecker" to "Clear the previous pair, choose two players who do not have an actual Demon character, and mark both Wrecked. Dead Demon characters are also excluded; other living or dead players are legal. Use actual character at the time of choice, not alignment or possible registration, so a Recluse remains eligible. Recheck current identities on each choice, including after an Imp starpass. If the Wrecker is healthy, silently swap a good chooser's nightly target from either mark to the other only when the replacement is legal. Never redirect evil abilities or day choices. Ferryman exception: a legal night choice of another dead player redirects to the dead Ferryman themself if both are Wrecked; normal good-alignment and healthy-at-death checks govern the final target. Record both marks and each resolved target.",
-        "smuggler" to "Wake last. Choose a player and replay exactly what they were shown tonight, including false information, from the information log. Show fingers, tokens or yes/no as appropriate; shake your head if they learned nothing. Do not reveal their character or reminder tokens. If impaired, choose any information. Record what you show.",
-        "imp" to "Collect the choice and resolve the kill manually after checking harbour closure, Keeper protection and impairment. Record a Demon death on the seat. If the Imp kills itself by its own ability, choose a Minion to become the Imp and record the character change; the new Imp does not attack again tonight.",
-        "pukka" to "Collect tonight's choice and manually poison the new target. Then resolve the PREVIOUS poisoned target's death, checking harbour closure, Keeper protection and impairment; remove the old poison even if the death is prevented. On the first night there is no previous victim. Maintain the poisoned effect on the correct seat for information calculations.",
-        "siren" to "Collect a choice. An impaired Siren has no effect. Closed harbour or Keeper protection blocks both killing and conversion and does not spend Sung. Otherwise, the first eligible Outsider chosen becomes evil instead of dying: keep their character, mark Sung, wake them, point at the Siren, show their true token and evil alignment; show the Siren a thumbs-up. A converted Drunk learns they are Drunk. Otherwise record a Demon kill.",
-        "kraken" to "Collect one target; if a Minion actually died during the preceding day, optionally collect a second distinct target. Daytime execution without death and night Minion deaths do not qualify. Resolve each kill manually, checking Keeper protection, harbour closure and impairment separately. Remove Thrash afterward.",
-    )
-
-    private const val dusk = "Salt & Lantern: confirm whether the harbour was successfully closed for this specific night. The permanent Closed mark records prior use; it does not close the harbour on later nights. Resolve the Albatross's cursed nominator death now, before the Poisoner; closure stops it, Keeper protection does not. Record Ferryman and Ravenkeeper triggers. The Ferryman must directly choose another dead player, good or evil; if nobody else is dead, there is no crossing. If both are Wrecked, a good Ferryman's night choice redirects back to the dead Ferryman, with normal alignment and healthy-at-death checks. Mark Thrash only for a Minion who actually died during the day. Clear the previous night's Wrecked and Safe marks before new choices. Wrecker cannot choose any player with an actual Demon character, even dead; other living or dead players are legal."
-    private const val dawn = "Salt & Lantern: announce deaths and Ferryman returns without revealing their cause. If the Lighthouse Keeper acted, announce ‘Last night, the lantern fell on [player]’ using the actual target after redirection. An impaired Keeper's announcement is your choice. Finish and record any Siren conversion privately before opening the day."
-    private const val day = "Salt & Lantern: collect a Ferryman's direct choice of another dead player, good or evil, when they die; if nobody else is dead, there is no crossing. Never redirect a day choice. Only a good Ferryman's legal night choice can redirect through Wrecker back to the dead Ferryman; normal alignment and healthy-at-death checks apply. Record a Harbourmaster's public closure, whether it worked at declaration, and the following night it affects; retain Closed as the permanent used mark. After an Albatross execution, record its nominator as Cursed even if execution protection kept the Albatross alive. Mark Kraken Thrash only after a Minion actually dies. These homebrew consequences need manual recording."
+    private const val dusk = "Salt & Lantern: harbour closure applies only to this night. The cursed nominator's Albatross death resolves automatically before the Poisoner. Check any Ferryman crossing caused by that death. Wrecked and Safe marks last one night. Wrecker cannot choose an actual Demon character, even dead; other living or dead players are legal."
+    private const val dawn = "Salt & Lantern: announce deaths and Ferryman returns without revealing their cause. Read the lantern fell announcement for the actual recipient. Complete private Siren conversion cards before opening the day."
+    private const val day = "Salt & Lantern: use Day abilities to record the Harbourmaster's public closure and a Ferryman's choice at death. An Albatross execution marks its nominator Cursed, even if execution protection prevents death. A daytime Minion death enables Kraken's second target."
     private val notes = """
         Salt & Lantern · v1.3 · 13 Townsfolk / 4 Outsiders / 4 Minions / 4 Demons · 12 homebrews
 
@@ -81,9 +57,9 @@ object SaltAndLantern {
 
         The v1.2 Ferryman targeting rule is unchanged: directly choose another dead player, good or evil. If nobody else is dead, there is no crossing. The new Wrecker jinx, when the Wrecker's ability is working, redirects a good Ferryman's legal night choice back to the dead Ferryman when both are Wrecked, allowing self-resurrection with normal alignment and healthy-at-death checks. Day choices are never redirected. There is no once-per-game restriction.
 
-        Run the homebrews with these rulings. Night rows marked ‘Resolve manually’ supply instructions; use seat controls for reminders, deaths, resurrection, poisoning and alignment changes, and the custom player card for information. Completing a manual row records the wake and completion only. It does not apply its ability. Official abilities whose answers or kills depend on these homebrews are also manual; Poisoner and Devil's Advocate retain their normal controls.
+        Night rows compute information and apply choices, redirects, protection, poisoning, deaths, resurrection and alignment changes when resolved. Use the usual player pickers, show cards and completion controls. Custom information remains available; the exact cards shown are saved for the Smuggler. Day abilities record public harbour closure and Ferryman choices.
 
-        Setup uses the base distribution: nobody changes the Outsider count. Keep a second seating ring with the Stowaway removed. Review the Jinxes tab before play. Record every piece of information shown so the Smuggler can repeat it exactly. All information depends on impairment and applicable registration rulings.
+        Setup uses the base distribution: nobody changes the Outsider count. The engine omits the Stowaway from the four positional calculations while their ability works, including after death. Review the Jinxes tab before play. Record every piece of information shown so the Smuggler can repeat it exactly. All information depends on impairment and applicable registration rulings.
 
         First game, 12 players: Chef, Empath, Cartographer, Fortune Teller, Lighthouse Keeper, Pearl Diver, Harbourmaster; Drunk shown Investigator, Stowaway; Wrecker, Smuggler; Siren. Demon bluffs: Slayer, Ravenkeeper, Navigator. The author suggests swapping Siren for Imp for a table new to the script.
 
@@ -101,35 +77,5 @@ object SaltAndLantern {
     """.trimIndent()
 }
 
-/** Minimal wake gates for the supplied homebrews; their actions are intentionally manual. */
-internal val SALT_AND_LANTERN_RULES: List<CharacterRule> = listOf(
-    CharacterRule("cartographer", firstNight = NightRule(infoId = "")),
-    CharacterRule("lighthousekeeper", otherNight = NightRule(infoId = "")),
-    CharacterRule("harbourmaster", tokens = listOf(
-        TokenRule("harbourmaster", "Closed", effect = EffectKind.SPENT, until = Until.FOREVER),
-    )),
-    CharacterRule("pearldiver", otherNight = NightRule(infoId = "")),
-    CharacterRule("navigator",
-        otherNight = NightRule(gate = Gates.all(Gates.aliveHolder, Gates.notSpent()), infoId = ""),
-        tokens = listOf(TokenRule("navigator", "No ability", effect = EffectKind.SPENT, until = Until.FOREVER)),
-    ),
-    CharacterRule(SaltAndLantern.FERRYMAN_ID, actsWhileDead = true, otherNight = NightRule(
-        gate = WakePredicate { ctx ->
-            if (ctx.state.seats.none { it.id != ctx.holder?.id && !it.alive }) {
-                StepGate.Skip("Nobody else is dead — no crossing; even Wrecker needs a legal original choice")
-            } else {
-                StepGate.Conditional(
-                    "Did the Ferryman die tonight or during the preceding day, and is their crossing still unresolved?",
-                    "Yes — choose another dead player", "No — skip",
-                )
-            }
-        },
-        infoId = "",
-    )),
-    CharacterRule("stowaway", keepsAbilityWhenDead = true),
-    CharacterRule("albatross"),
-    CharacterRule("wrecker", firstNight = NightRule(infoId = ""), otherNight = NightRule(infoId = "")),
-    CharacterRule("smuggler", firstNight = NightRule(infoId = ""), otherNight = NightRule(infoId = "")),
-    CharacterRule("siren", otherNight = NightRule(infoId = "")),
-    CharacterRule("kraken", otherNight = NightRule(infoId = "")),
-)
+/** The bundled homebrews use the same action and effect interpreter as the official characters. */
+internal val SALT_AND_LANTERN_RULES: List<CharacterRule> = SaltAndLanternAutomation.rules()
