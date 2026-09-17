@@ -1,6 +1,7 @@
 package com.clocktower.engine
 
 import kotlinx.serialization.Serializable
+import com.clocktower.engine.rules.SaltAndLanternAutomation
 
 /** What the engine owes this player tonight. MUST_LIE outranks MAY_LIE (lead D50). */
 @Serializable
@@ -89,6 +90,8 @@ data class InfoResult(
      * offered as a card and never wear the `SHOW … TO …` primary (B2-2).
      */
     val audience: InfoAudience = InfoAudience.PLAYER,
+    /** An ordered replay of cards actually delivered; never recompute these from today's board. */
+    val exactCards: List<ShowCardSpec> = emptyList(),
 )
 
 /**
@@ -114,11 +117,12 @@ object InfoCalc {
         "noble" -> 3
         "knight", "sage" -> 2
         "steward", "bountyhunter", "balloonist" -> 1
-        else -> 0
+        else -> SaltAndLanternAutomation.infoTargets[Character.normalizeId(characterId)] ?: 0
     }
 
     /** Whether we can compute anything useful for this character. */
-    fun supports(characterId: String): Boolean = Character.normalizeId(characterId) in supportedIds
+    fun supports(characterId: String): Boolean = Character.normalizeId(characterId) in supportedIds ||
+        Character.normalizeId(characterId) in SaltAndLanternAutomation.infoTargets
 
     /** Every id this calculator knows. WP7 files new ones to WP2, in one batch per wave. */
     val supportedIds: Set<String> = setOf(
@@ -157,9 +161,10 @@ object InfoCalc {
         targets: List<Long> = emptyList(),
     ): InfoResult? {
         val id = Character.normalizeId(characterId)
-        if (!supports(id) || id in state.script.manualNightInstructions) return null
-        val ctx = Ctx(state, lookup, holderId?.let { state.player(it) })
-        val result = when (id) {
+        if (!supports(id) || SaltAndLanternAutomation.manualInstruction(state.script, id) != null) return null
+        val ctx = Ctx(state, lookup, holderId?.let { state.player(it) }, id)
+        val resolved = SaltAndLanternAutomation.redirectTargets(state, lookup, id, holderId, targets)
+        val result = SaltAndLanternAutomation.information(state, lookup, id, holderId, resolved) ?: when (id) {
             "chef" -> chef(ctx)
             "empath" -> empath(ctx)
             "clockmaker" -> clockmaker(ctx)
@@ -168,11 +173,11 @@ object InfoCalc {
             "undertaker" -> undertaker(ctx)
             "towncrier" -> townCrier(ctx)
             "flowergirl" -> flowergirl(ctx)
-            "fortuneteller" -> fortuneTeller(ctx, targets)
+            "fortuneteller" -> fortuneTeller(ctx, resolved)
             "dreamer" -> dreamer(ctx, targets)
             "seamstress" -> seamstress(ctx, targets)
             "villageidiot" -> villageIdiot(ctx, targets)
-            "ravenkeeper" -> revealCharacter(ctx, targets, "Ravenkeeper")
+            "ravenkeeper" -> revealCharacter(ctx, resolved, "Ravenkeeper")
             "grandmother" -> revealCharacter(ctx, targets, "Grandmother")
             "cultleader" -> cultLeader(ctx)
             "king" -> king(ctx)
@@ -226,8 +231,9 @@ object InfoCalc {
         val state: GameState,
         val lookup: (String) -> Character?,
         val holder: Player?,
+        val abilityId: String = "",
     ) {
-        val players: List<Player> get() = state.players
+        val players: List<Player> get() = SaltAndLanternAutomation.informationSeats(state, lookup, abilityId)
         fun character(p: Player): Character? = p.characterId?.let(lookup)
         fun isEvil(p: Player): Boolean = p.isEvil(lookup)
         fun name(p: Player): String = p.name

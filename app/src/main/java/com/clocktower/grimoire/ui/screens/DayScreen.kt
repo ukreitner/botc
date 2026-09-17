@@ -58,6 +58,7 @@ import com.clocktower.grimoire.ui.components.rememberTimerNow
 import com.clocktower.grimoire.ui.screens.day.BRIEFING_SECTIONS
 import com.clocktower.grimoire.ui.screens.day.BriefingRow
 import com.clocktower.grimoire.ui.screens.day.DayModel
+import com.clocktower.grimoire.ui.screens.day.DayAbilitiesPanel
 import com.clocktower.grimoire.ui.screens.day.DayStage
 import com.clocktower.grimoire.ui.screens.day.ExecutionSheet
 import com.clocktower.grimoire.ui.screens.day.DayStats
@@ -210,7 +211,7 @@ fun DayScreen(
         LaunchedEffect(nomineeId, expanded) {
             if (nomineeId != null && expanded == DayStage.NOMINATIONS) {
                 val index = rows.indexOfFirst { it.stage == DayStage.NOMINATIONS }
-                if (index >= 0) listState.animateScrollToItem(index)
+                if (index >= 0) listState.animateScrollToItem(index + 1)
             }
         }
 
@@ -222,6 +223,7 @@ fun DayScreen(
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            item(key = "day-abilities") { DayAbilitiesPanel(viewModel, state) }
             for (row in rows) {
                 item(key = row.stage.name) {
                     StageCard(

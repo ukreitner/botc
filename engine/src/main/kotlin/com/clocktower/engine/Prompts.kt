@@ -48,6 +48,8 @@ data class Prompt(
     val becomesCharacterId: String = "",
     /** How that change is recorded in the identity log. */
     val becomesReason: ChangeReason = ChangeReason.STORYTELLER,
+    /** Ordered cards owed to this prompt's recipient. */
+    val cards: List<ShowCardSpec> = emptyList(),
 )
 
 /**

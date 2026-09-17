@@ -9,6 +9,8 @@ import com.clocktower.engine.Briefings
 import com.clocktower.engine.ChangeReason
 import com.clocktower.engine.Character
 import com.clocktower.engine.DayRules
+import com.clocktower.engine.DayAbilities
+import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.Decisions
@@ -430,8 +432,11 @@ interface GameActionsApi {
      * (ux/night-screen defect #10). A card with no single recipient (a sheet
      * held out to the table) is recorded as a plain note.
      */
-    fun recordShown(playerId: Long?, sourceId: String, shown: String, truthful: Boolean? = true) =
-        update { Ledger.shown(it, playerId, sourceId, shown, truthful) }
+    fun recordShown(playerId: Long?, sourceId: String, shown: String, truthful: Boolean? = true, card: ShowCardSpec? = null) =
+        update { Ledger.shown(it, playerId, sourceId, shown, truthful, card) }
+
+    fun resolveDayAbility(sourceId: String, holderId: Long, targetId: Long? = null) =
+        update { DayAbilities.resolve(it, lookup, sourceId, holderId, targetId) }
 
     /**
      * A Traveller joins mid-game: seat, character, alignment and the

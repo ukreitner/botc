@@ -1,5 +1,7 @@
 package com.clocktower.engine
 
+import com.clocktower.engine.rules.SaltAndLanternAutomation
+
 /**
  * The phase pipeline (ARCHITECTURE §2.15).
  *
@@ -119,7 +121,7 @@ object Phases {
                 // "are OR BECOME drunk or poisoned tonight" — a seat that walked
                 // into the night already impaired counts from the first moment.
                 nightImpaired = impairedNow(next, lookup),
-            )
+            ).let { SaltAndLanternAutomation.beginNight(it, lookup) }
         }
     }
 

@@ -89,6 +89,10 @@ data class LedgerEntry(
     val textB: String = "",
     /** What the storyteller actually showed: "3", "YES", "Ravenkeeper", "warm". */
     val shown: String = "",
+    /** The exact player-facing card, including custom wording, for faithful replay. */
+    val shownCard: ShowCardSpec? = null,
+    /** Death which caused this choice or resolution. */
+    val causeEventId: Long? = null,
     val verdict: Verdict = Verdict.UNJUDGED,
     /** Integer payload: Juggler correct count, Yaggababble phrase count. */
     val count: Int? = null,
@@ -202,6 +206,7 @@ object Ledger {
         sourceId: String,
         shown: String,
         truthful: Boolean? = true,
+        card: ShowCardSpec? = null,
     ): GameState {
         if (playerId == null) {
             return note(state, "Shown${if (truthful == null) " (custom choice)" else ""}: $shown")
@@ -213,6 +218,7 @@ object Ledger {
                 sourceId = sourceId,
                 actorId = playerId,
                 shown = shown,
+                shownCard = card,
                 impaired = truthful == false,
                 byStoryteller = truthful == null,
                 verdict = if (truthful == null) Verdict.ST_CHOICE else Verdict.UNJUDGED,

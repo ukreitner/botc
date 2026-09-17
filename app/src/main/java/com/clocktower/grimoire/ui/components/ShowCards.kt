@@ -131,12 +131,24 @@ fun ShowCardSpec.asCard(): ShowCard = when (this) {
     is ShowCardSpec.Message -> ShowCard.Message(title, subtitle)
     is ShowCardSpec.CharacterCard -> ShowCard.CharacterCard(prefix, characterId)
     is ShowCardSpec.NumberCard -> ShowCard.NumberCard(number)
-    is ShowCardSpec.AlignmentCard -> ShowCard.AlignmentCard(evil)
+    is ShowCardSpec.AlignmentCard -> ShowCard.AlignmentCard(evil, text)
     is ShowCardSpec.BluffsCard -> ShowCard.BluffsCard(characterIds)
     is ShowCardSpec.SheetCard -> ShowCard.SheetCard(characterIds)
     is ShowCardSpec.PointCard ->
         ShowCard.PointCard(prefix, playerNames, seatNumbers, characterId)
     is ShowCardSpec.MultiTokenCard -> ShowCard.MultiTokenCard(prefix, characterIds)
+}
+
+/** Lossless persistence of the card actually shown, including custom captions and neutral alignment. */
+fun ShowCard.asSpec(): ShowCardSpec = when (this) {
+    is ShowCard.Message -> ShowCardSpec.Message(title, subtitle)
+    is ShowCard.CharacterCard -> ShowCardSpec.CharacterCard(prefix, characterId)
+    is ShowCard.NumberCard -> ShowCardSpec.NumberCard(number)
+    is ShowCard.AlignmentCard -> ShowCardSpec.AlignmentCard(evil, text)
+    is ShowCard.BluffsCard -> ShowCardSpec.BluffsCard(characterIds)
+    is ShowCard.SheetCard -> ShowCardSpec.SheetCard(characterIds)
+    is ShowCard.PointCard -> ShowCardSpec.PointCard(prefix, playerNames, seatNumbers, characterId)
+    is ShowCard.MultiTokenCard -> ShowCardSpec.MultiTokenCard(prefix, characterIds)
 }
 
 /** What this card said, in one line, for the ledger ("Ben was shown: 1"). */

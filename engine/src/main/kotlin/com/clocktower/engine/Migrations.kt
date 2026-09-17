@@ -1,7 +1,10 @@
 package com.clocktower.engine
 
+import com.clocktower.engine.rules.SaltAndLantern
+import com.clocktower.engine.rules.SaltAndLanternAutomation
+
 /** Current save schema. Bump only when a migration step is added below. */
-const val SCHEMA_VERSION = 2
+const val SCHEMA_VERSION = 3
 
 /**
  * Folds every legacy field into its modern home. Idempotent, pure, and called
@@ -20,6 +23,11 @@ const val SCHEMA_VERSION = 2
  */
 fun GameState.migrated(lookup: (String) -> Character? = { null }): GameState {
     var next = this
+
+    // Refresh the old bundled script's manual-only instructions, preserving the entire game history.
+    if (SaltAndLanternAutomation.active(next.script) && next.script.manualNightInstructions.isNotEmpty()) {
+        next = next.copy(script = SaltAndLantern.load())
+    }
 
     // 1. demonBluffIds -> bluffSets["demon"]
     if (next.legacyDemonBluffIds.isNotEmpty()) {

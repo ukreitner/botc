@@ -168,6 +168,10 @@ data class Options(
 @Serializable
 enum class TargetConstraint {
     ALIVE, DEAD, ANY_LIVING_STATE,
+    /** A recorded actual night death, on any night (resurrection does not erase the history). */
+    DIED_AT_NIGHT,
+    /** The target was already dead when this ability's holder last actually died. */
+    DEAD_WHEN_SOURCE_DIED,
     NOT_SELF, SELF_ALLOWED,
     NOT_TRAVELLER, TOWNSFOLK, OUTSIDER, MINION, DEMON, NOT_DEMON, GOOD, EVIL,
 
@@ -359,6 +363,7 @@ sealed interface NightEffect {
         val title: String,
         val on: Ref? = null,
         val stepSlotId: String = "",
+        val cards: List<ShowCardSpec> = emptyList(),
     ) : NightEffect
 
     @Serializable
@@ -380,6 +385,10 @@ sealed interface NightEffect {
      */
     @Serializable
     data class SetAlignment(val on: Ref, val evil: Boolean, val note: String = "") : NightEffect
+
+    /** A player learns their true token; their previous believed role no longer supplies fake wakes. */
+    @Serializable
+    data class RevealTrueCharacter(val on: Ref) : NightEffect
 
     /**
      * Gives a seat a second (or replacement) ability — the Philosopher's chosen

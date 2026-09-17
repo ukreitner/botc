@@ -80,9 +80,15 @@ If the icon-fetch step is skipped, the app still builds but uses emoji
 fallbacks for official characters. Salt & Lantern's original homebrew art is
 committed and works without the fetch step. On Windows, run the script with Git Bash.
 
-Salt & Lantern's homebrew effects and the official abilities they affect are
-resolved manually using the included night instructions and seat controls.
-Marking a manual night row done records its completion, not its effects.
+Salt & Lantern uses the normal automatic night actions and information cards.
+The engine handles Wrecker redirects and legal targets, Stowaway seat counting,
+Keeper protection and dawn announcements, Siren conversion, Kraken attacks,
+and Ferryman resurrection. The day screen records Harbourmaster declarations
+and daytime Ferryman choices; phase changes apply closure and Albatross curses.
+Smuggler replays the actual cards shown, including custom or false information.
+Existing saved Salt & Lantern games receive the same automation on resume.
+Players still make their choices, and the Storyteller retains custom information
+and ruling controls for drunkenness, poisoning, and optional registration.
 See the script's **Guide** and **Jinxes** tabs and [the supplied Storyteller
 document](docs/salt-and-lantern.md) for its rulings.
 The illustrated [player reference PDF](docs/salt-and-lantern-player-reference.pdf)
@@ -90,7 +96,8 @@ contains all 25 characters and the public rulings, ready to share with players.
 
 The GitHub Actions workflow also assembles a debug APK on every push —
 grab it from the workflow run's artifacts if you don't have Android
-Studio handy.
+Studio handy. Only the default branch updates the shared latest-APK release,
+so concurrent feature branches cannot replace the build players download.
 
 ## Project layout
 

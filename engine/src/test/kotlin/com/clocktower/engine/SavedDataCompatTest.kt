@@ -191,7 +191,7 @@ class SavedDataCompatTest {
             "schemaVersion = SCHEMA_VERSION" in source,
             "SavedData.migratedSavedData must stamp the engine's SCHEMA_VERSION, not a literal",
         )
-        assertEquals(2, SCHEMA_VERSION, "SCHEMA_VERSION moved; check the migration steps")
+        assertEquals(3, SCHEMA_VERSION, "Schema 3 refreshes the bundled Salt & Lantern automation")
     }
 
     // ------------------------------------------------------------------

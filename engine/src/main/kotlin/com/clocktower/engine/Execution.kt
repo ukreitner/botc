@@ -1,5 +1,7 @@
 package com.clocktower.engine
 
+import com.clocktower.engine.rules.SaltAndLanternAutomation
+
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -132,6 +134,7 @@ object Execution {
 
         // 3. Snapshots, taken before anything changes.
         val nomination = nominationIndex?.let { state.nominations.getOrNull(it) }
+            ?: state.nominations.lastOrNull { it.day == state.cycle && !it.isExile && it.nomineeId == playerId }
         val record = ExecutionRecord(
             day = state.cycle,
             outcome = ExecutionOutcome.SURVIVED,
@@ -240,6 +243,7 @@ object Execution {
                 },
                 playerId = playerId,
                 via = ExecutionVia.STORYTELLER,
+                nominatorId = state.nominations.lastOrNull { it.day == state.cycle && !it.isExile && it.nomineeId == playerId }?.nominatorId,
                 characterIdAtExecution = died?.characterIdAtDeath ?: target.characterId,
                 wasEvilAtExecution = Registration.registersEvil(state, lookup, target),
                 abilityImpairedAtExecution = died?.abilityImpairedAtDeath
@@ -455,12 +459,12 @@ object Execution {
             .firstOrNull { it in script }
     }
 
-    private fun append(state: GameState, record: ExecutionRecord): GameState = state.copy(
+    private fun append(state: GameState, record: ExecutionRecord): GameState = SaltAndLanternAutomation.afterExecution(state.copy(
         // A declared "no execution" is replaced the moment a real one happens.
         executions = state.executions.filterNot {
             it.day == record.day && it.outcome == ExecutionOutcome.NO_EXECUTION
         } + record,
-    )
+    ), record)
 
     private fun replaceLast(state: GameState, record: ExecutionRecord): GameState {
         val index = state.executions.indexOfLast { it.day == record.day }

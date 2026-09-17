@@ -1253,6 +1253,18 @@ data class OfferedDayAbility(
  */
 object DayAbilities {
 
+    /** Immediate registry actions are validated again when confirmed, using the current board. */
+    fun resolve(state: GameState, lookup: (String) -> Character?, sourceId: String, holderId: Long, targetId: Long? = null): GameState {
+        if (state.phase != Phase.DAY) return state
+        val offer = forState(state, lookup).firstOrNull { it.sourceId == sourceId && it.holderId == holderId && it.available }
+            ?: return state
+        val holder = state.player(holderId) ?: return state
+        val resolve = offer.ability.resolve ?: return state
+        val targets = offer.ability.targets?.invoke(state, lookup, holder)
+        if (targets != null && targetId !in targets) return state
+        return Effects.reconcile(resolve(state, lookup, holder, targetId), lookup)
+    }
+
     fun forState(state: GameState, lookup: (String) -> Character?): List<OfferedDayAbility> =
         buildList {
             for (seat in state.seats) {
@@ -1269,6 +1281,16 @@ object DayAbilities {
                         reason = if (ok) "" else unavailableReason(state, lookup, seat),
                     ),
                 )
+            }
+            // Believed or granted immediate abilities still need controls. Their rule checks
+            // whether the real holder's ability works when resolving the declaration.
+            for (role in Identity.allActingRoles(state, lookup)) {
+                val ability = CharacterRules.all[role.abilityId]?.day?.ability ?: continue
+                if (ability.resolve == null || any { it.holderId == role.playerId && it.sourceId == role.abilityId }) continue
+                val seat = state.player(role.playerId) ?: continue
+                val ok = ability.available(state, lookup, seat)
+                add(OfferedDayAbility(ability, seat.id, seat.name, role.abilityId, ok,
+                    if (ok) "" else unavailableReason(state, lookup, seat)))
             }
             for (rule in CharacterRules.fabledRows(state)) {
                 val ability = rule.day?.ability ?: continue

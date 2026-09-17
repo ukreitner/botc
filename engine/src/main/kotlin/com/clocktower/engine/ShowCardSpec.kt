@@ -27,7 +27,7 @@ sealed interface ShowCardSpec {
 
     /** GOOD / EVIL. */
     @Serializable
-    data class AlignmentCard(val evil: Boolean) : ShowCardSpec
+    data class AlignmentCard(val evil: Boolean?, val text: String = "") : ShowCardSpec
 
     /** The Demon's three not-in-play bluffs. */
     @Serializable
