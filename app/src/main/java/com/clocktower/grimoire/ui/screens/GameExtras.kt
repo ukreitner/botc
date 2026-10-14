@@ -143,7 +143,7 @@ fun ReorderSeatsDialog(
         title = { Text("Seat order (clockwise)") },
         text = {
             LazyColumn {
-                items(state.players, key = { it.id }) { p ->
+                items(state.seats, key = { it.id }) { p ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text(
                             p.name,

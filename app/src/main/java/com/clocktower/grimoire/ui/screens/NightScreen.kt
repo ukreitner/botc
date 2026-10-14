@@ -41,6 +41,7 @@ import com.clocktower.engine.Memory
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
+import com.clocktower.engine.Phase
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.FullScreenShow
 import com.clocktower.grimoire.ui.components.ShowCard
@@ -95,6 +96,17 @@ fun NightScreen(
      */
     onShowGrimoire: (() -> Unit)? = null,
 ) {
+    if (state.phase != Phase.NIGHT) {
+        InactivePhaseNotice(
+            title = "The night is not open",
+            detail = if (state.phase == Phase.SETUP) {
+                "Finish setup, then tap Begin night to start the first night."
+            } else {
+                "Day ${state.cycle} is in progress. Close the day from the Day tab to begin the next night."
+            },
+        )
+        return
+    }
     // Pure and cheap: rebuilt on every state change so an insertion (a
     // resurrection's re-run, a Scarlet Woman promotion) appears at once (I6).
     val plan = remember(state) { viewModel.nightPlan(state) }
@@ -108,7 +120,7 @@ fun NightScreen(
     var openRow by rememberSaveable { mutableStateOf("") }
     val activeToken = openRowToken(openRow, state.cycle)
     var listOpen by rememberSaveable { mutableStateOf(false) }
-    var forced by remember(state.cycle) { mutableStateOf(emptySet<String>()) }
+    var forced by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var shown by remember { mutableStateOf<ShownCard?>(null) }
     var remainingCards by remember { mutableStateOf(emptyList<ShownCard>()) }
     var showSerial by remember { mutableStateOf(0) }
@@ -159,11 +171,6 @@ fun NightScreen(
             onDawn()
         }
     }
-    LaunchedEffect(activeToken) {
-        val index = plan.steps.indexOfFirst { it.key.token == activeToken }
-        if (index >= 0) listState.animateScrollToItem(index)
-    }
-
     val rows = rowViews(
         plan = plan,
         done = done,
@@ -172,10 +179,12 @@ fun NightScreen(
         holderNames = { step -> step.wakes.mapNotNull { state.player(it)?.name }.joinToString(", ") },
         results = { step -> resultOf(state, step) },
     )
-    val window = if (listOpen || activeIndex < 0) {
-        rows.indices
-    } else {
-        (activeIndex - WINDOW..activeIndex + WINDOW)
+    val window = nightRowWindow(rows.size, activeIndex, listOpen, WINDOW)
+    LaunchedEffect(active?.key?.token, activeIndex, window) {
+        // The compact list contains only the visible window. Using the full
+        // plan index scrolled past the active card after the first few steps.
+        val visibleIndex = activeIndex - window.first
+        if (activeIndex in window) listState.animateScrollToItem(visibleIndex)
     }
 
     Column(Modifier.fillMaxSize()) {

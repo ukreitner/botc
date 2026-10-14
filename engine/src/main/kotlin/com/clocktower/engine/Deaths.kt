@@ -468,7 +468,11 @@ object Deaths {
         } else {
             decided
         }
-        return apply(state, lookup, targetId, cause, outcome)
+        val applied = apply(state, lookup, targetId, cause, outcome)
+        if (cause.cause != DeathCause.EXILE || outcome is KillOutcome.Choice ||
+            (outcome is KillOutcome.Redirect && applied.event == null)
+        ) return applied
+        return applied.copy(state = DayRules.resolveExile(applied.state, targetId))
     }
 
     private fun apply(

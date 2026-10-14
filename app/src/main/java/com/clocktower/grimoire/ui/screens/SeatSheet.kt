@@ -264,7 +264,7 @@ private fun SeatActions(
     onDismiss: () -> Unit,
 ) {
     val lookup = viewModel::characterById
-    val seatNumber = state.players.indexOfFirst { it.id == player.id } + 1
+    val seatNumber = state.seats.indexOfFirst { it.id == player.id } + 1
     val neighbours = state.seatNeighbours(player.id)
     val tokens = remember(state, player.id) { Effects.rendered(state, lookup, player.id) }
     val onBlock = remember(state.nominations, state.cycle) {
@@ -341,6 +341,11 @@ private fun SeatActions(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Spacer(Modifier.height(2.dp))
+            if (player.isTraveller && state.phase != Phase.SETUP) {
+                OutlinedButton(onClick = { viewModel.leaveTraveller(player.id); onDismiss() }) {
+                    Text("Traveller leaves the game")
+                }
+            }
             player.shownCharacterId?.let { shownId ->
                 val shown = viewModel.characterById(shownId)
                 Surface(
@@ -479,7 +484,7 @@ private fun SeatActions(
                             Text(if (player.ghostVoteUsed) "Restore ghost vote" else "Use ghost vote")
                         }
                     }
-                    if (state.phase == Phase.SETUP || player.isTraveller) {
+                    if (state.phase == Phase.SETUP) {
                         OutlinedButton(onClick = { viewModel.removeSeat(player.id); onDismiss() }) {
                             Text("Remove seat", color = MaterialTheme.colorScheme.error)
                         }

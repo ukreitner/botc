@@ -29,15 +29,27 @@ object Seats {
     fun removeSeat(state: GameState, playerId: Long): GameState =
         state.copy(players = state.players.filterNot { it.id == playerId })
 
+    /** Departure is not a death. Retain identity so past votes and notes keep their owner. */
+    fun leaveTraveller(state: GameState, playerId: Long): GameState {
+        val player = state.player(playerId) ?: return state
+        if (!player.isTraveller || !player.seated) return state
+        return Ledger.announce(
+            state.updatePlayer(playerId) { it.copy(leftGame = true) },
+            text = "${player.name} leaves the game.",
+            actorId = playerId,
+        )
+    }
+
     /** Moves a seat one position around the circle (for seat swaps). */
     fun moveSeat(state: GameState, playerId: Long, delta: Int): GameState {
-        val players = state.players.toMutableList()
-        val from = players.indexOfFirst { it.id == playerId }
-        if (from < 0 || players.size < 2) return state
-        val to = ((from + delta) % players.size + players.size) % players.size
-        val p = players.removeAt(from)
-        players.add(to, p)
-        return state.copy(players = players)
+        val seats = state.seats.toMutableList()
+        val from = seats.indexOfFirst { it.id == playerId }
+        if (from < 0 || seats.size < 2) return state
+        val to = ((from + delta) % seats.size + seats.size) % seats.size
+        val p = seats.removeAt(from)
+        seats.add(to, p)
+        val reordered = seats.iterator()
+        return state.copy(players = state.players.map { if (it.seated) reordered.next() else it })
     }
 
     /**

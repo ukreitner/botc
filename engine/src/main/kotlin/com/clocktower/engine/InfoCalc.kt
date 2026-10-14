@@ -302,9 +302,9 @@ object InfoCalc {
                 source == own && own.isNotEmpty() ->
                     "${player.name} IS the $sourceName — their ability malfunctions."
                 reason.effect.kind == EffectKind.POISONED ->
-                    "${player.name} is POISONED ($sourceName) — give false info."
+                    "${player.name} is POISONED ($sourceName) — you may give true or false info."
                 reason.effect.kind == EffectKind.DRUNK ->
-                    "${player.name} is DRUNK ($sourceName) — give false info."
+                    "${player.name} is DRUNK ($sourceName) — you may give true or false info."
                 else -> "${player.name} has no ability ($sourceName)."
             }
         }

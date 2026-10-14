@@ -134,11 +134,11 @@ fun GrimoireScreen(
     // One pass over the effect model per state, shared by both views: the old
     // screen re-derived impairment per seat on every recomposition.
     val tokens: Map<Long, List<RenderedToken>> = remember(state) {
-        state.players.associate { it.id to Effects.rendered(state, viewModel::characterById, it.id) }
+        state.seats.associate { it.id to Effects.rendered(state, viewModel::characterById, it.id) }
     }
     val onBlockId = remember(state.nominations, state.cycle) { DayRules.aboutToDie(state) }
     val matches = remember(state, filter, search, tokens) {
-        state.players.filter { seatMatches(it, tokens[it.id].orEmpty(), viewModel.characterById(it.characterId), filter, search) }
+        state.seats.filter { seatMatches(it, tokens[it.id].orEmpty(), viewModel.characterById(it.characterId), filter, search) }
             .map { it.id }
             .toSet()
     }
@@ -184,7 +184,7 @@ fun GrimoireScreen(
                 )
                 // The circle stops being the better instrument well before 20
                 // seats; say so once instead of letting it degrade silently.
-                if (state.players.size >= 18 && !hintDismissed) {
+                if (state.seats.size >= 18 && !hintDismissed) {
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         shape = RoundedCornerShape(12.dp),
@@ -194,7 +194,7 @@ fun GrimoireScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
                             Text(
-                                "${state.players.size} seats — the Board view reads better on a phone.",
+                                "${state.seats.size} seats — the Board view reads better on a phone.",
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.weight(1f),
                             )
@@ -204,7 +204,7 @@ fun GrimoireScreen(
                     }
                 }
             }
-            if (state.players.isEmpty()) {
+            if (state.seats.isEmpty()) {
                 Text(
                     text = "No seats yet — add players from setup.",
                     modifier = Modifier.align(Alignment.Center),
@@ -287,7 +287,7 @@ private fun GrimoireHeader(
 ) {
     val header = remember(state) { grimoireHeaderLine(state, viewModel::characterById) }
     val expiringAtDusk = tokens.values.sumOf { list -> list.count { it.expiryText.contains("dusk") } }
-    val counts = remember(tokens, state.players) { groupCounts(state, tokens) }
+    val counts = remember(tokens, state.seats) { groupCounts(state, tokens) }
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -486,7 +486,7 @@ private fun CircleView(
     // Wake-order badges. `Player.nightRoleId` is deleted (lead D39): the seats
     // that act tonight come from Identity.actingRoles, which is the only thing
     // that knows about a Philosopher's borrowed ability or a Hermit's many.
-    val wakeOrder: Map<Long, Int> = remember(state.players, state.phase, state.cycle, state.fabled) {
+    val wakeOrder: Map<Long, Int> = remember(state.seats, state.phase, state.cycle, state.fabled) {
         if (state.phase != Phase.NIGHT) {
             emptyMap()
         } else {
@@ -495,7 +495,7 @@ private fun CircleView(
             val acting = steps.filter { it.slotId !in NightMarkers.all && it.wakes.isNotEmpty() }
             val slotIndex = acting.mapIndexed { index, step -> step.slotId to index + 1 }.toMap()
             val out = LinkedHashMap<Long, Int>()
-            for (p in state.players) {
+            for (p in state.seats) {
                 val roles = Identity.actingRoles(state, viewModel::characterById, p)
                 val n = roles.mapNotNull { slotIndex[it.slotId] ?: slotIndex[it.abilityId] }.minOrNull()
                     ?: acting.firstOrNull { p.id in it.wakes }?.let { slotIndex[it.slotId] }
@@ -548,8 +548,8 @@ private fun CircleView(
             // The allocation is computed HERE, at composition time, so the
             // seat cards can size themselves to it and the Layout below can
             // measure them against exactly the same budget.
-            val alloc = remember(state.players.size, maxWidth, maxHeight) {
-                SeatGeometry.allocate(state.players.size, maxWidth.value, maxHeight.value)
+            val alloc = remember(state.seats.size, maxWidth, maxHeight) {
+                SeatGeometry.allocate(state.seats.size, maxWidth.value, maxHeight.value)
             }
             Box(
                 Modifier.fillMaxSize().drawBehind {
@@ -566,7 +566,7 @@ private fun CircleView(
                 },
             )
             CircleLayout(allocation = alloc, modifier = Modifier.fillMaxSize()) {
-                for ((index, player) in state.players.withIndex()) {
+                for ((index, player) in state.seats.withIndex()) {
                     SeatView(
                         viewModel = viewModel,
                         state = state,
@@ -1104,10 +1104,10 @@ private fun BoardView(
     onOpenSeat: (Long) -> Unit,
     onPeek: (Long) -> Unit,
 ) {
-    val rows = if (filtering) state.players.filter { it.id in matches } else state.players
+    val rows = if (filtering) state.seats.filter { it.id in matches } else state.seats
     LazyColumn(Modifier.fillMaxSize()) {
         items(rows, key = { "board-${it.id}" }) { player ->
-            val index = state.players.indexOfFirst { it.id == player.id } + 1
+            val index = state.seats.indexOfFirst { it.id == player.id } + 1
             BoardRow(
                 viewModel = viewModel,
                 state = state,

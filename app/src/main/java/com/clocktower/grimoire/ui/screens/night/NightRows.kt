@@ -533,14 +533,11 @@ fun answerLabel(
 }
 
 /**
- * True when the engine says this holder's information is owed FALSE: a Vortox
- * forces it, or their own ability is not working (poisoned, drunk, no ability).
- *
- * The card already prints "! Eve is POISONED (Poisoner) — give false info."; the
- * primary button beneath it used to be `SHOW "1" TO EVE`, the truth, in the one
- * place a storyteller is trained to press without reading (playtest B P1 #9).
+ * Require a deliberate choice for an impaired holder rather than automatically
+ * showing the computed truth. Poisoning/drunkenness allow true OR false info;
+ * MUST_LIE (for example Vortox) requires false information.
  */
-fun mustNotShowTruth(obligation: InfoObligation, malfunctions: Boolean): Boolean =
+fun requiresInformationChoice(obligation: InfoObligation, malfunctions: Boolean): Boolean =
     obligation == InfoObligation.MUST_LIE || malfunctions
 
 /** The answer inside a card offer's label: "LIE · SHOW 0" and "SHOW: 0" -> "0". */

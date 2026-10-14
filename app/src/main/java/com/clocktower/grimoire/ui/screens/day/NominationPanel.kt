@@ -92,7 +92,8 @@ fun SeatRingPanel(
     // A closed day disables the ring instead of pretending to take a
     // nomination it will drop on the floor (C-4). The reason is stated where
     // the taps would have gone, and reopening is one deliberate tap.
-    val locked = NominationModel.ringLocked(closedReason, reopened)
+    val exileAvailable = state.seats.any { it.isTraveller && DayRules.canBeExiled(state, it.id).allowed }
+    val locked = NominationModel.ringLocked(closedReason, reopened, exileAvailable)
     Column(Modifier.fillMaxWidth()) {
         if (closedReason.isNotBlank()) {
             Row(
@@ -100,13 +101,13 @@ fun SeatRingPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    closedReason,
+                    if (exileAvailable) "$closedReason Exile calls remain available." else closedReason,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = EmberRed,
                     modifier = Modifier.weight(1f),
                 )
-                if (locked) {
+                if (!reopened) {
                     TextButton(onClick = onReopen) { Text("Nominate anyway") }
                 }
             }
@@ -122,8 +123,8 @@ fun SeatRingPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "${ring.firstOrNull { it.pick == SeatPick.NOMINATOR }?.name ?: "?"} » " +
-                        (ring.firstOrNull { it.pick == SeatPick.NOMINEE }?.name ?: "?"),
+                    "${nominatorId?.let { state.player(it)?.name } ?: "?"} » " +
+                        (nomineeId?.let { state.player(it)?.name } ?: "?"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = EmberRed,
@@ -138,6 +139,9 @@ fun SeatRingPanel(
         Text(
             if (locked) {
                 "Nominations are closed. Tap Nominate anyway to take one regardless."
+            } else if (closedReason.isNotBlank() && !reopened && exileAvailable) {
+                if (nominatorId == null) "Tap who calls for exile, then the Traveller." else
+                    "Tap the Traveller whose exile is being called."
             } else {
                 NominationModel.ringPrompt(
                     nominatorId,

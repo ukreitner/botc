@@ -25,12 +25,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.clocktower.engine.Deaths
+import com.clocktower.engine.Execution
 import com.clocktower.engine.ExecutionConsequence
+import com.clocktower.engine.ExecutionOutcome
 import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameState
 import com.clocktower.engine.KillOutcome
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.overlayBottomPadding
+import com.clocktower.grimoire.ui.screens.PhaseOrigin
 import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.FadedInk
@@ -99,14 +102,24 @@ private fun ExecutionSheetBody(
     }
     val secret = viewModel.secretVoting(state)
 
-    fun execute(optionId: String = "") {
-        viewModel.execute(
-            playerId = targetId,
-            nominatorId = nominatorId,
-            via = ExecutionVia.VOTE,
-            nominationIndex = nominationIndex,
-            optionId = optionId,
-        )
+    fun execute(optionId: String = "", survived: Boolean = false) {
+        val origin = PhaseOrigin(state)
+        viewModel.update { current ->
+            // The same sheet can only record once, including in a Butcher
+            // game where a second execution would otherwise accept a double tap.
+            if (origin.matches(current) && current.executions == state.executions) {
+                Execution.execute(
+                    state = current,
+                    lookup = viewModel::characterById,
+                    playerId = targetId,
+                    nominatorId = nominatorId,
+                    via = ExecutionVia.VOTE,
+                    nominationIndex = nominationIndex,
+                    optionId = optionId,
+                    outcome = if (survived) ExecutionOutcome.SURVIVED else null,
+                )
+            } else current
+        }
         onDismiss()
     }
 
@@ -205,10 +218,7 @@ private fun ExecutionSheetBody(
         // First-class, always present: an execution that kills nobody is still
         // an execution (lead D30, day-engine §F).
         OutlinedButton(
-            onClick = {
-                viewModel.executeButSurvives(playerId = targetId, nominatorId = nominatorId)
-                onDismiss()
-            },
+            onClick = { execute(survived = true) },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Executed — but they don't die") }
 
@@ -232,7 +242,7 @@ private fun ExecutionSheetBody(
  * no ghost vote is spent, and it writes no `ExecutionRecord`. It still goes
  * through the kill funnel, so a Choice is answered before anything is written.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ExileSheet(
     viewModel: GameViewModel,
@@ -248,6 +258,16 @@ fun ExileSheet(
             return@ModalBottomSheet
         }
         val preview = remember(state, targetId) { viewModel.exilePreview(state, targetId) }
+        fun exile(optionId: String = "") {
+            val origin = PhaseOrigin(state)
+            viewModel.update { current ->
+                val player = current.player(targetId)
+                if (origin.matches(current) && player?.seated == true && player.alive &&
+                    current.nominations == state.nominations && current.ledger == state.ledger
+                ) Execution.exile(current, viewModel.lookup, targetId, optionId) else current
+            }
+            onDismiss()
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -263,18 +283,31 @@ fun ExileSheet(
             )
             Text(
                 "An exile is not an execution: today's execution stays available, " +
-                    "no vote token is spent, and no ability changes the result.",
+                    "no vote token is spent, and no ability changes the support count. " +
+                    "A protected Traveller may survive.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = FadedInk,
             )
             PreviewLine(preview)
-            Button(
-                onClick = {
-                    viewModel.exile(targetId)
-                    onDismiss()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("EXILE ${target.name.uppercase()}", fontWeight = FontWeight.Bold) }
+            if (preview is KillOutcome.Choice) {
+                Text(preview.question, style = MaterialTheme.typography.bodyMedium, color = PaleGold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (option in preview.options) {
+                        AssistChip(
+                            onClick = { exile(option.id) },
+                            label = { Text(option.label) },
+                        )
+                    }
+                }
+            } else {
+                Button(
+                    onClick = { exile() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("EXILE ${target.name.uppercase()}", fontWeight = FontWeight.Bold) }
+            }
             HorizontalDivider()
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Not yet") }
         }
