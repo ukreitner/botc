@@ -35,6 +35,7 @@ import com.clocktower.engine.Answer
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.GameState
 import com.clocktower.engine.InfoAudience
+import com.clocktower.engine.InfoObligation
 import com.clocktower.engine.InfoCalc
 import com.clocktower.engine.InfoResult
 import com.clocktower.engine.KillCause
@@ -241,24 +242,32 @@ fun NightCard(
     }.trim(' ', '·')
 
     // A card the storyteller has deliberately chosen from the offers. It, and
-    // not the computed truth, is then what the primary promises: for a poisoned
-    // holder the card itself says "give false info", and the one gold button
-    // must not be the true answer (playtest B P1 #9).
-    var chosen by remember(state.cycle, key.token, pick.playerIds, pick.characterIds) { mutableStateOf<UiOffer?>(null) }
+    // not an automatic computed answer, is what the primary confirms. An
+    // impaired ability permits true or false information; the storyteller
+    // chooses deliberately. Only MUST_LIE requires a false answer.
+    var chosen by remember(state.cycle, key.token, pick) { mutableStateOf<UiOffer?>(null) }
+    var presented by remember(state.cycle, key.token, pick) { mutableStateOf<ShowCard?>(null) }
+    fun showOffer(offer: UiOffer) {
+        chosen = offer
+        presented = offer.card
+        onShow(offer.card, step.holderId, offer.truthful)
+    }
     // Nothing is shown, so nothing can be shown falsely: an impaired Courtier
     // must not be held on "PICK WHAT TO SHOW" with no card to pick.
-    val owesFalseInfo = info != null && !forStorytellerOnly &&
-        mustNotShowTruth(info.obligation, info.abilityMalfunctions)
+    val needsInfoChoice = info != null && !forStorytellerOnly &&
+        requiresInformationChoice(info.obligation, info.abilityMalfunctions)
     val shownAnswer = when {
         chosen != null -> chosen!!.answerText
-        owesFalseInfo -> ""
+        needsInfoChoice -> ""
         else -> answer
     }
 
     val isDawn = step.slotId == NightMarkers.DAWN
     val replay = info?.exactCards.orEmpty().takeIf {
-        !owesFalseInfo && (chosen == null || chosen?.truthful == true)
+        !needsInfoChoice && (chosen == null || chosen?.truthful == true)
     }.orEmpty()
+    val primaryCard = chosen?.card ?: truthCard.takeIf { !needsInfoChoice }
+    val alreadyPresented = nightCardAlreadyPresented(replay.map { it.asCard() }, primaryCard, presented)
     val resolvedNames = choicePreview.targetIds.mapNotNull { state.player(it)?.name }
     val transitionLine = choicePreview.effects.mapNotNull { effect ->
         when (effect) {
@@ -276,12 +285,14 @@ fun NightCard(
         lastPickPlaces = placedLabels(lastPickEffects(step.action)),
         deathLine = deathLine.ifBlank { transitionLine },
         deferredLine = deferredLine,
-        answer = shownAnswer,
+        // An offer chip already displayed and recorded its card. Finishing
+        // the step still applies its choices/effects, but need not show it twice.
+        answer = shownAnswer.takeUnless { alreadyPresented }.orEmpty(),
         holder = holderName,
         none = pick.none,
         skipped = skipped,
         dawn = isDawn,
-        impairedHolder = if (owesFalseInfo && chosen == null) {
+        impairedHolder = if (needsInfoChoice && chosen == null) {
             holders.firstOrNull()?.name.orEmpty()
         } else {
             ""
@@ -448,11 +459,14 @@ fun NightCard(
             // P2 #18). The lies come out only when the engine says one is
             // owed, at most three of them, under a line that gives the reason;
             // the rest stay one tap away in the drawer.
-            val liesOnCard = if (owesFalseInfo) lies.take(MAX_LIE_CHIPS) else emptyList()
+            val liesOnCard = if (needsInfoChoice) lies.take(MAX_LIE_CHIPS) else emptyList()
             if (liesOnCard.isNotEmpty()) {
                 Text(
-                    text = "SHOW ONE OF THESE INSTEAD — " +
-                        info?.caveats?.firstOrNull().orEmpty().ifBlank { "their ability is not working" },
+                    text = if (info?.obligation == InfoObligation.MUST_LIE) {
+                        "FALSE INFORMATION REQUIRED — choose a false answer or a custom choice."
+                    } else {
+                        "CHOOSE WHAT TO SHOW — true or false information is allowed."
+                    },
                     fontSize = NIGHT_MIN_SP.sp,
                     lineHeight = nightSp(19f).sp,
                     fontWeight = FontWeight.Bold,
@@ -463,10 +477,7 @@ fun NightCard(
                 CardOffers(
                     offers = truthful + liesOnCard,
                     chosen = chosen,
-                    onShow = { offer ->
-                        chosen = offer
-                        onShow(offer.card, step.holderId, offer.truthful)
-                    },
+                    onShow = ::showOffer,
                     onEdit = { editing = it; customOpen = true },
                 )
             }
@@ -509,7 +520,7 @@ fun NightCard(
                         replay.size > 1 -> "REPLAY ${replay.size} CARDS TO ${holderName.uppercase()}"
                         else -> label
                     },
-                    enabled = primaryEnabled(action, pick) && !(owesFalseInfo && chosen == null),
+                    enabled = primaryEnabled(action, pick) && !(needsInfoChoice && chosen == null),
                     // A standing death is as destructive as a chosen one.
                     holdMillis = if (
                         (isDestructive(effects) || deferred.isNotEmpty()) && !needsKillSheet
@@ -528,11 +539,10 @@ fun NightCard(
                                 // A primary that says SHOW performs the showing:
                                 // the card goes up and the `shown:` row is
                                 // written, then the step is ticked (§B.7).
-                                val card = chosen?.card ?: truthCard.takeIf { !owesFalseInfo }
-                                if (replay.isNotEmpty()) {
+                                if (!alreadyPresented && replay.isNotEmpty()) {
                                     onShowCards(replay.map { it.asCard() }, step.holderId, true)
-                                } else if (shownAnswer.isNotBlank() && card != null) {
-                                    onShow(card, step.holderId, if (chosen != null) chosen!!.truthful else true)
+                                } else if (!alreadyPresented && shownAnswer.isNotBlank() && primaryCard != null) {
+                                    onShow(primaryCard, step.holderId, if (chosen != null) chosen!!.truthful else true)
                                 }
                                 viewModel.resolveNightStep(
                                     key,
@@ -591,10 +601,7 @@ fun NightCard(
                     attacked = pick.playerIds,
                     hasAttack = attack != null,
                     otherCards = lies - liesOnCard.toSet(),
-                    onShow = { offer ->
-                        chosen = offer
-                        onShow(offer.card, step.holderId, offer.truthful)
-                    },
+                    onShow = ::showOffer,
                     onEdit = { editing = it; customOpen = true },
                     onOpenShowTool = onOpenShowTool,
                     onKillSheet = onKillSheet,
@@ -613,8 +620,7 @@ fun NightCard(
             onShow = { card ->
                 customOpen = false
                 val offer = customOffer(card) { id -> viewModel.characterById(id)?.name ?: id }
-                chosen = offer
-                onShow(card, step.holderId, offer.truthful)
+                showOffer(offer)
             },
         )
     }
@@ -785,6 +791,16 @@ data class UiOffer(
 fun customOffer(card: ShowCard, nameOf: (String) -> String): UiOffer {
     val answer = card.describe(nameOf)
     return UiOffer("CUSTOM · SHOW: ${answer.take(70)}", card, truthful = null, answerText = answer)
+}
+
+/** A chip satisfies one identical card, never a multi-card replay sequence. */
+fun nightCardAlreadyPresented(
+    replay: List<ShowCard>,
+    primaryCard: ShowCard?,
+    presented: ShowCard?,
+): Boolean {
+    val expected = if (replay.isEmpty()) primaryCard else replay.singleOrNull()
+    return expected != null && expected == presented
 }
 
 /**

@@ -310,9 +310,10 @@ data class GameState(
 
     /** The two physical neighbours of a seat, over ALL seats including Travellers. */
     fun seatNeighbours(playerId: Long): List<Player> {
-        val i = players.indexOfFirst { it.id == playerId }
-        if (i < 0 || players.size < 2) return emptyList()
-        return listOf(players[(i - 1 + players.size) % players.size], players[(i + 1) % players.size])
+        val seated = seats
+        val i = seated.indexOfFirst { it.id == playerId }
+        if (i < 0 || seated.size < 2) return emptyList()
+        return listOf(seated[(i - 1 + seated.size) % seated.size], seated[(i + 1) % seated.size])
     }
 
     // ---- derived compatibility accessors (read-only) ----

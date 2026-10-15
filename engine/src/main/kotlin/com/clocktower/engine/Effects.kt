@@ -452,6 +452,7 @@ internal class StatusQuery(
         isActive: (Effect, Long) -> Boolean,
     ): Boolean {
         val p = state.player(playerId) ?: return false
+        if (!p.seated) return false
         val actives = on.filter { !it.suspended && !expired(it) }
         val hasAbilityToken = actives.any { it.kind == EffectKind.HAS_ABILITY && isActive(it, cap) }
         if (!p.alive && !keepsAbilityWhenDead(p.characterId) && !hasAbilityToken) return false
@@ -606,6 +607,7 @@ object Status {
     fun roleWorks(state: GameState, lookup: (String) -> Character?, role: ActingRole): Boolean {
         if (role.alwaysFalse) return false
         val player = state.player(role.playerId) ?: return false
+        if (!player.seated) return false
         if (role.worksWhileImpaired) {
             // Impairment is waived, but being dead is not: the seat must still be
             // alive, keep its ability when dead, or hold a LIVE HAS_ABILITY effect.

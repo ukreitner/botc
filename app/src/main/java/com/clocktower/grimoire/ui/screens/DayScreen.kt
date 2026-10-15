@@ -48,6 +48,7 @@ import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.LedgerKind
 import com.clocktower.engine.Nomination
 import com.clocktower.engine.NominationResult
+import com.clocktower.engine.Phase
 import com.clocktower.engine.Verdict
 import com.clocktower.grimoire.ui.GameViewModel
 import com.clocktower.grimoire.ui.components.DayTimer
@@ -106,6 +107,17 @@ fun DayScreen(
     /** Opens a seat's sheet on the Grimoire tab, when the shell wires it. */
     onOpenSeat: ((Long) -> Unit)? = null,
 ) {
+    if (state.phase != Phase.DAY) {
+        InactivePhaseNotice(
+            title = "The day is not open",
+            detail = if (state.phase == Phase.SETUP) {
+                "Finish setup and the first night, then open the day to record statements and nominations."
+            } else {
+                "Night ${state.cycle} is in progress. Finish the Night tab and open the day to continue."
+            },
+        )
+        return
+    }
     val lookup: (String) -> Character? = viewModel::characterById
 
     // ---- draft nomination, kept across tab switches by the shell's holder ----
@@ -117,6 +129,7 @@ fun DayScreen(
     var reopenedDay by rememberSaveable { mutableStateOf(false) }
 
     var openStage by rememberSaveable { mutableStateOf<DayStage?>(null) }
+    var stageChosen by rememberSaveable { mutableStateOf(false) }
     var ticked by rememberSaveable { mutableStateOf(setOf<String>()) }
     var sayFor by rememberSaveable { mutableStateOf<Long?>(null) }
     var saySource by rememberSaveable { mutableStateOf<String?>(null) }
@@ -127,14 +140,18 @@ fun DayScreen(
     /** [Change] on the collapsed ring brings the seats back (C2-9). */
     var ringForcedOpen by rememberSaveable { mutableStateOf(false) }
 
-    val currentPlayerIds = state.players.map { it.id }.toSet()
+    val currentPlayerIds = state.seats.map { it.id }.toSet()
     LaunchedEffect(currentPlayerIds) {
+        val nomineeIds = currentPlayerIds + GameState.STORYTELLER_SEAT_ID
         if (nominatorId !in currentPlayerIds) nominatorId = null
-        if (nomineeId !in currentPlayerIds) nomineeId = null
+        if (nomineeId !in nomineeIds) nomineeId = null
         voters = voters.intersect(currentPlayerIds)
+        if (sayFor !in currentPlayerIds) sayFor = null
+        if (executeId !in nomineeIds) executeId = null
+        if (exileId !in currentPlayerIds) exileId = null
     }
-    // Reopening a closed day is a decision about TODAY and never survives it.
-    LaunchedEffect(state.cycle) { reopenedDay = false }
+    // The shell scopes this saved state to the game and day. Resetting it in
+    // a LaunchedEffect would also revoke the override on every tab switch.
 
     val dayStart = remember(state) { viewModel.dayBriefing(state) }
     val dawn = state.lastDawn?.takeIf { it.slot == BriefingSlot.DAWN && it.cycle == state.cycle }
@@ -142,7 +159,7 @@ fun DayScreen(
         DayModel.stages(state, lookup, dawn, dayStart, ticked)
     }
     val stats = remember(state) { DayModel.stats(state, lookup) }
-    val expanded = openStage ?: DayModel.autoExpanded(rows)
+    val expanded = expandedDayStage(DayModel.autoExpanded(rows), openStage, stageChosen)
     val sources = remember(dayStart) { DayModel.statementSources(dayStart) }
 
     fun resetDraft() {
@@ -158,6 +175,7 @@ fun DayScreen(
         saySource = sourceId
         sayOpen = true
         openStage = DayStage.SAID
+        stageChosen = true
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -178,15 +196,12 @@ fun DayScreen(
                     ringForcedOpen,
                 ),
                 onPickSeat = { id ->
-                    when {
-                        nominatorId == id -> nominatorId = null
-                        nomineeId == id -> nomineeId = null
-                        nominatorId == null -> nominatorId = id
-                        else -> {
-                            nomineeId = id
-                            voters = emptySet()
-                        }
-                    }
+                    val pair = nominationPairAfterTap(nominatorId, nomineeId, id)
+                    nominatorId = pair.first
+                    nomineeId = pair.second
+                    // Votes belong to this exact pair. Changing the nominator
+                    // must not silently reuse hands from a different vote.
+                    voters = emptySet()
                     // A fresh pair collapses the ring again; picking one half
                     // apart leaves it open until the second tap lands.
                     ringForcedOpen = false
@@ -229,7 +244,10 @@ fun DayScreen(
                     StageCard(
                         row = row,
                         expanded = expanded == row.stage,
-                        onToggle = { openStage = if (expanded == row.stage) null else row.stage },
+                        onToggle = {
+                            openStage = if (expanded == row.stage) null else row.stage
+                            stageChosen = true
+                        },
                     ) {
                         when (row.stage) {
                             DayStage.DAWN -> DawnBody(
@@ -290,7 +308,10 @@ fun DayScreen(
             timerOpen = timerOpen,
             onTimer = { timerOpen = !timerOpen },
             onSay = { openSay(null, null) },
-            onNominate = { openStage = DayStage.NOMINATIONS },
+            onNominate = {
+                openStage = DayStage.NOMINATIONS
+                stageChosen = true
+            },
         )
     }
 

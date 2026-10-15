@@ -55,6 +55,8 @@ data class Nomination(
     val judgeForced: JudgeForce? = null,
     /** Ability triggers that fired on this nomination, for the log. */
     val triggersFired: List<String> = emptyList(),
+    /** The exile was carried out, including a Traveller who survived it (e.g. Deviant). */
+    val exileResolved: Boolean = false,
 )
 
 /** What a nomination trigger does to the day. */
@@ -243,11 +245,34 @@ object DayRules {
         val player = state.player(playerId)
             ?: return Right(false, "That seat is not in the game.")
         if (!player.seated) return Right(false, "${player.name} has left the game.")
+        if (player.isTraveller) return canBeExiled(state, playerId)
         if (nominationsClosed(state, lookup)) {
             return Right(false, "Nominations are closed today — the day's execution is settled.")
         }
         if (hasBeenNominatedToday(state, playerId)) {
             return Right(false, "${player.name} has already been nominated today.")
+        }
+        return Right(true)
+    }
+
+    /** Exile is a separate group decision: the dead and previous nominators may call it. */
+    fun canCallExile(state: GameState, playerId: Long): Right {
+        val player = state.player(playerId)
+            ?: return Right(false, "That seat is not in the game.")
+        if (!player.seated) return Right(false, "${player.name} has left the game.")
+        if (state.phase != Phase.DAY) return Right(false, "Exiles only happen during the day.")
+        return Right(true)
+    }
+
+    /** Main rulebook, Travellers: each Traveller may face one exile call per day. */
+    fun canBeExiled(state: GameState, playerId: Long): Right {
+        val player = state.player(playerId)
+            ?: return Right(false, "That seat is not in the game.")
+        if (!player.seated) return Right(false, "${player.name} has left the game.")
+        if (!player.isTraveller) return Right(false, "Only Travellers can be exiled.")
+        if (state.phase != Phase.DAY) return Right(false, "Exiles only happen during the day.")
+        if (state.nominations.any { it.day == state.cycle && it.nomineeId == playerId && it.isExile }) {
+            return Right(false, "${player.name} has already faced an exile call today.")
         }
         return Right(true)
     }
@@ -261,15 +286,18 @@ object DayRules {
     ): NominationCheck {
         val blockers = mutableListOf<String>()
         val cautions = mutableListOf<String>()
+        val isExile = nomineeId?.let { state.player(it)?.isTraveller } == true
 
         nominatorId?.let { id ->
-            canNominate(state, lookup, id).takeIf { !it.allowed }?.let { blockers += it.reason }
+            val right = if (isExile) canCallExile(state, id) else canNominate(state, lookup, id)
+            right.takeIf { !it.allowed }?.let { blockers += it.reason }
         }
         nomineeId?.let { id ->
             canBeNominated(state, lookup, id).takeIf { !it.allowed }?.let { blockers += it.reason }
         }
         if (nominatorId != null && nomineeId != null && nominatorId == nomineeId) {
-            cautions += "Self-nomination — legal, but check that is what was said."
+            cautions += if (isExile) "Calling for your own exile — legal." else
+                "Self-nomination — legal, but check that is what was said."
         }
         nomineeId?.let { id ->
             val nominee = state.player(id)
@@ -280,7 +308,10 @@ object DayRules {
                 cautions += "${nominee.name} is a Traveller — this is an exile call, not an execution."
             }
         }
+        // An exile cannot trigger a Witch, Golem, Riot or other nomination
+        // ability. Keep explanatory rows (such as the Gnome's exemption).
         val triggers = triggersFor(state, lookup, nominatorId, nomineeId)
+            .filter { !isExile || it.kind == TriggerKind.WARN }
         return NominationCheck(
             legal = blockers.isEmpty(),
             // One reason, one row, one override. A closed day is a fact about
@@ -938,8 +969,8 @@ object DayRules {
         isExile: Boolean,
         rules: VoteRules = voteRules(state, lookup, isExile),
     ): List<Long> {
-        if (isExile) return voterIds
-        val eligible = voterIds.filter { it in rules.eligibleVoterIds }
+        val eligible = voterIds.distinct().filter { it in rules.eligibleVoterIds }
+        if (isExile) return eligible
         return eligible.filterNot { butlerVotingIllegally(state, lookup, it, eligible) }
     }
 
@@ -1110,10 +1141,23 @@ object DayRules {
     fun exileOwed(state: GameState): Long? = state.nominations
         .lastOrNull {
             it.isExile &&
+                !it.exileResolved &&
                 it.result == NominationResult.ABOUT_TO_DIE &&
-                state.player(it.nomineeId)?.alive == true
+                state.player(it.nomineeId)?.let { player -> player.seated && player.alive } == true
         }
         ?.nomineeId
+
+    /** Completing an exile need not kill its target; remember the resolution itself. */
+    fun resolveExile(state: GameState, playerId: Long): GameState {
+        val index = state.nominations.indexOfLast {
+            it.isExile && !it.exileResolved && it.nomineeId == playerId &&
+                it.result == NominationResult.ABOUT_TO_DIE
+        }
+        if (index < 0) return state
+        return state.copy(nominations = state.nominations.mapIndexed { i, nomination ->
+            if (i == index) nomination.copy(exileResolved = true) else nomination
+        })
+    }
 
     /**
      * How many votes the NEXT nomination must reach to beat today's standing

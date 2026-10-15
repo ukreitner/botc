@@ -231,7 +231,7 @@ fun GameShell(
                     Column {
                         Text(state.script.name, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "$phaseLabel · ${state.alivePlayers.size}/${state.players.size} alive",
+                            "$phaseLabel · ${state.alivePlayers.size}/${state.seats.size} alive",
                             // 14 sp floor: the top bar is read at arm's length
                             // in a dark room like everything else.
                             style = MaterialTheme.typography.bodyMedium,
@@ -413,9 +413,13 @@ fun GameShell(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            // SaveableStateProvider keeps each tab's in-progress state (an
-            // unrecorded vote tally, scroll positions) across tab switches.
-            stateHolder.SaveableStateProvider(tab.name) {
+            // Preserve drafts across tab switches within this day/night, but
+            // never carry yesterday's voters, nominee or dialogs into a new cycle.
+            val tabStateKey = when (tab) {
+                GameTab.NIGHT, GameTab.DAY -> "${state.id}:${tab.name}:${state.cycle}"
+                else -> "${state.id}:${tab.name}"
+            }
+            stateHolder.SaveableStateProvider(tabStateKey) {
                 when (tab) {
                     GameTab.GRIMOIRE -> GrimoireScreen(
                         viewModel, state,
@@ -428,7 +432,7 @@ fun GameShell(
                         onOpenShowTool = { showCardTool = true },
                         // The last card of the sheet IS the dawn button
                         // (ux/night-screen §F): "OPEN THE DAY →".
-                        onDawn = onPhaseButton,
+                        onDawn = { if (state.phase == Phase.NIGHT) onPhaseButton() },
                         // B2-12: the read-only grimoire is the shell's, so the
                         // night sheet can only ask for it. The Spy's row is the
                         // one that always needs it and had no link to the
@@ -440,7 +444,7 @@ fun GameShell(
                         state = state,
                         // The Day tab hands the close of day back to the
                         // shell's dusk sheet rather than duplicating it.
-                        onDusk = onPhaseButton,
+                        onDusk = { if (state.phase == Phase.DAY) onPhaseButton() },
                         onOpenSeat = { openSeat = it },
                     )
                     // WP11: passing the live state marks what is in play and
@@ -679,7 +683,7 @@ private fun TravellerJoinDialog(
     var name by rememberSaveable { mutableStateOf("") }
     var afterId by rememberSaveable { mutableStateOf(state.seats.lastOrNull()?.id) }
     var characterId by rememberSaveable { mutableStateOf<String?>(null) }
-    var evil by rememberSaveable { mutableStateOf(false) }
+    var evil by rememberSaveable { mutableStateOf<Boolean?>(null) }
 
     val travellers = remember(state.script) {
         val onScript = viewModel.gameData.resolve(state.script).filter { it.team == Team.TRAVELLER }
@@ -760,12 +764,12 @@ private fun TravellerJoinDialog(
                     Text("Alignment", style = MaterialTheme.typography.titleSmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilterChip(
-                            selected = !evil,
+                            selected = evil == false,
                             onClick = { evil = false },
                             label = { Text("Good") },
                         )
                         FilterChip(
-                            selected = evil,
+                            selected = evil == true,
                             onClick = { evil = true },
                             label = { Text("Evil") },
                         )
@@ -779,6 +783,14 @@ private fun TravellerJoinDialog(
                 item {
                     Text("Announce", style = MaterialTheme.typography.titleSmall)
                     Text(announce, style = MaterialTheme.typography.bodyMedium, color = AgedGold)
+                    character?.let {
+                        Text(it.ability, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Text(
+                        "Privately tell them their alignment. An evil Traveller also learns who the Demon is.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             // Pinned above the keyboard AND above the home indicator.
@@ -791,14 +803,14 @@ private fun TravellerJoinDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FilledTonalButton(
-                    enabled = name.isNotBlank(),
+                    enabled = name.isNotBlank() && character != null && evil != null,
                     modifier = Modifier.weight(1f),
                     onClick = {
                         viewModel.joinTraveller(
                             name = name.trim(),
                             afterPlayerId = afterId,
                             characterId = characterId,
-                            evil = evil,
+                            evil = evil == true,
                             announce = announce,
                         )
                         onDismiss()

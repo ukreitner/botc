@@ -37,6 +37,56 @@ object Phases {
     /** The production source: WP6's pure `Briefings.at`. */
     val DEFAULT_BRIEFINGS: BriefingSource = BriefingSource(Briefings::at)
 
+    /** A confirmation belongs to the phase that opened it, even after a second tap or undo. */
+    fun advanceFrom(
+        state: GameState,
+        expectedPhase: Phase,
+        expectedCycle: Int,
+        lookup: (String) -> Character? = { null },
+    ): GameState = if (state.phase == expectedPhase && state.cycle == expectedCycle) {
+        advancePhase(state, lookup)
+    } else {
+        state
+    }
+
+    /**
+     * Close one day as one undoable action. An execution that still needs a
+     * storyteller choice must leave the day open; silently beginning the night
+     * would lose both the execution and the question (Pacifist, Scapegoat).
+     * The expected cycle makes repeat taps on the same confirmation harmless.
+     */
+    fun closeDay(
+        state: GameState,
+        expectedCycle: Int,
+        lookup: (String) -> Character? = { null },
+        executePlayerId: Long? = null,
+        exilePlayerId: Long? = null,
+        recordNoExecution: Boolean = false,
+    ): GameState {
+        if (state.phase != Phase.DAY || state.cycle != expectedCycle) return state
+        var next = state
+        if (executePlayerId != null) {
+            val index = state.nominations.indexOfLast {
+                it.day == state.cycle && !it.isExile && it.nomineeId == executePlayerId
+            }.takeIf { it >= 0 }
+            next = Execution.execute(
+                next, lookup, executePlayerId,
+                via = ExecutionVia.VOTE,
+                nominationIndex = index,
+            )
+            // A refused execution (including an unanswered choice) is never
+            // permission to skip it. Keep the entire transaction untouched.
+            if (next.executions == state.executions) return state
+        }
+        if (exilePlayerId != null) {
+            val exiled = Execution.exile(next, lookup, exilePlayerId)
+            if (exiled == next) return state
+            next = exiled
+        }
+        if (recordNoExecution) next = Execution.noExecution(next)
+        return advancePhase(next, lookup)
+    }
+
     /**
      * Removes every effect and every hand-placed token whose [TokenRule] retires
      * at [at]. Countdown steps are advanced instead, never swept.

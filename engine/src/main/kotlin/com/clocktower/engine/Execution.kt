@@ -272,13 +272,14 @@ object Execution {
      * Exile a Traveller. Never an execution — no `ExecutionRecord` is written,
      * the day's execution stays available, and no ability modifies the vote.
      */
-    fun exile(state: GameState, lookup: (String) -> Character?, playerId: Long): GameState {
+    fun exile(state: GameState, lookup: (String) -> Character?, playerId: Long, optionId: String = ""): GameState {
         val player = state.player(playerId) ?: return state
         val attempt = Deaths.attempt(
             state = state,
             lookup = lookup,
             targetId = playerId,
             cause = KillCause(DeathCause.EXILE, sourceCharacterId = "st"),
+            optionId = optionId,
         )
         if (attempt.outcome is KillOutcome.Choice) return state
         return Ledger.announce(

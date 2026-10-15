@@ -14,8 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,17 +31,28 @@ import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.Briefings
 import com.clocktower.engine.Character
 import com.clocktower.engine.DayRules
-import com.clocktower.engine.ExecutionVia
 import com.clocktower.engine.GameState
+import com.clocktower.engine.KillOutcome
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.Phase
+import com.clocktower.engine.Phases
 import com.clocktower.engine.Prompts
 import com.clocktower.engine.SetupRequirements
 import com.clocktower.engine.WinCheck
 import com.clocktower.grimoire.ui.GameViewModel
+import com.clocktower.grimoire.ui.screens.day.ExecutionSheet
+import com.clocktower.grimoire.ui.screens.day.ExileSheet
 
 /** The in-game tabs. Moved out of GameShell by WP0 so the phase flow can steer them. */
 internal enum class GameTab { GRIMOIRE, NIGHT, DAY, REFERENCE }
+
+/** A queued click or open sheet must never act on a later phase or another game. */
+data class PhaseOrigin(val gameId: String, val phase: Phase, val cycle: Int) {
+    constructor(state: GameState) : this(state.id, state.phase, state.cycle)
+
+    fun matches(state: GameState): Boolean =
+        gameId == state.id && phase == state.phase && cycle == state.cycle
+}
 
 /** What the phase button should do right now (ARCHITECTURE §3.2). */
 sealed interface PhaseRequest {
@@ -73,6 +84,13 @@ object PhaseFlow {
 
     /** Blocked title for a night with required steps still unticked. */
     const val TITLE_NIGHT: String = "Night checklist incomplete"
+
+    /** A just-completed row is current even before the screen recomposes. */
+    fun requestFrom(
+        rendered: GameState,
+        current: GameState,
+        lookup: (String) -> Character?,
+    ): PhaseRequest? = if (PhaseOrigin(rendered).matches(current)) request(current, lookup) else null
 
     fun request(state: GameState, lookup: (String) -> Character?): PhaseRequest = when (state.phase) {
         Phase.SETUP -> setupBlockers(state, lookup)?.let {
@@ -218,8 +236,14 @@ class PhaseGuards {
     /** Blocking endings the dusk sheet must show alongside the briefing. */
     var duskAdvisories by mutableStateOf(listOf<WinCheck.Advisory>())
 
-    /** Debounce: an accidental double tap must not skip a whole phase. */
-    var lastAdvanceAt by mutableLongStateOf(0L)
+    /** The phase the visible guard or briefing was opened from. */
+    var origin by mutableStateOf<PhaseOrigin?>(null)
+
+    /** Execution choices must be answered before dusk can finish. */
+    var executionChoiceId by mutableStateOf<Long?>(null)
+
+    /** The Deviant can require a storyteller ruling on their exile. */
+    var exileChoiceId by mutableStateOf<Long?>(null)
 
     /** Someone is on the block and has not been executed. */
     var onBlockId by mutableStateOf<Long?>(null)
@@ -244,6 +268,9 @@ class PhaseGuards {
         onBlockId = null
         exileOwedId = null
         actedKeys = emptySet()
+        origin = null
+        executionChoiceId = null
+        exileChoiceId = null
     }
 }
 
@@ -259,15 +286,19 @@ internal fun requestPhaseAdvance(
     state: GameState,
     guards: PhaseGuards,
 ): GameTab? {
-    // Debounce: an accidental double tap must not skip a whole phase.
-    val nowMs = com.clocktower.engine.Time.epochMillis()
-    if (nowMs - guards.lastAdvanceAt < DEBOUNCE_MS) return null
-    guards.lastAdvanceAt = nowMs
+    // Read the current model: the night card may have just ticked its final
+    // row before Compose has delivered the new state to this callback.
+    // Guarding by phase replaces a timer that silently discarded valid taps.
+    val current = viewModel.game.value ?: return null
+    val origin = PhaseOrigin(state)
+    val request = PhaseFlow.requestFrom(state, current, viewModel::characterById) ?: return null
+    guards.clear()
+    guards.origin = origin
 
-    return when (val request = PhaseFlow.request(state, viewModel::characterById)) {
+    return when (request) {
         is PhaseRequest.Blocked -> {
             val lines = request.items.map { it.text }
-            if (state.phase == Phase.SETUP) {
+            if (current.phase == Phase.SETUP) {
                 guards.setupIssues = lines
                 GameTab.GRIMOIRE
             } else {
@@ -284,21 +315,22 @@ internal fun requestPhaseAdvance(
         is PhaseRequest.ConfirmDusk -> {
             guards.dusk = request.briefing
             guards.duskAdvisories = request.advisories.filter { it.blocking }
-            guards.onBlockId = DayRules.aboutToDie(state)
-                ?.takeIf { state.player(it)?.alive == true && !DayRules.executionSpent(state) }
-            guards.exileOwedId = DayRules.exileOwed(state)
+            guards.onBlockId = DayRules.aboutToDie(current)
+                ?.takeIf { !DayRules.executionSpent(current) }
+            guards.exileOwedId = DayRules.exileOwed(current)
             null
         }
 
         PhaseRequest.Advance -> {
-            viewModel.advancePhase()
+            guards.clear()
+            viewModel.update {
+                if (origin.matches(it)) Phases.advanceFrom(it, origin.phase, origin.cycle, viewModel::characterById)
+                else it
+            }
             GameTab.NIGHT
         }
     }
 }
-
-/** An accidental double tap must not skip a whole phase. */
-private const val DEBOUNCE_MS = 800L
 
 /**
  * The guard dialogs and the two read-aloud briefing sheets.
@@ -323,8 +355,15 @@ internal fun PhaseGuardDialogs(
     onDeclareWinner: ((goodWins: Boolean) -> Unit)? = null,
     onTab: (GameTab) -> Unit,
 ) {
+    val origin = guards.origin
+    if (origin != null && !origin.matches(state)) {
+        LaunchedEffect(origin, state.id, state.phase, state.cycle) { guards.clear() }
+        return
+    }
+    fun isCurrent(): Boolean = viewModel.game.value?.let { origin?.matches(it) } == true
     val handleItem: (BriefingItem) -> Unit = { item ->
-        if (onItem(item)) guards.actedKeys = guards.actedKeys + item.key
+        if (!isCurrent()) guards.clear()
+        else if (onItem(item)) guards.actedKeys = guards.actedKeys + item.key
     }
     if (guards.setupIssues.isNotEmpty()) {
         AlertDialog(
@@ -362,8 +401,12 @@ internal fun PhaseGuardDialogs(
             },
             dismissButton = {
                 TextButton(onClick = {
-                    guards.setupIssues = emptyList()
-                    viewModel.advancePhase()
+                    guards.clear()
+                    viewModel.update {
+                        if (origin?.matches(it) == true) {
+                            Phases.advanceFrom(it, Phase.SETUP, origin.cycle, viewModel::characterById)
+                        } else it
+                    }
                     onTab(GameTab.NIGHT)
                 }) { Text("Start the night anyway") }
             },
@@ -394,11 +437,9 @@ internal fun PhaseGuardDialogs(
                     guards.unfinishedNightSteps = emptyList()
                     // The dawn card still runs: skipping the checklist must not
                     // skip the report (friction §5).
-                    guards.dawn = Briefings.at(
-                        state,
-                        viewModel::characterById,
-                        BriefingSlot.DAWN,
-                    )
+                    viewModel.game.value?.takeIf { origin?.matches(it) == true }?.let {
+                        guards.dawn = Briefings.at(it, viewModel::characterById, BriefingSlot.DAWN)
+                    }
                 }) { Text("Dawn anyway") }
             },
             dismissButton = {
@@ -416,11 +457,10 @@ internal fun PhaseGuardDialogs(
             title = "Dawn · night ${briefing.cycle}",
             confirmLabel = "OPEN DAY ${briefing.cycle} →",
             onConfirm = {
-                val expectedCycle = state.cycle
                 guards.clear()
                 viewModel.update { current ->
-                    if (current.phase == Phase.NIGHT && current.cycle == expectedCycle) {
-                        com.clocktower.engine.Phases.advancePhase(current, viewModel::characterById)
+                    if (origin?.matches(current) == true) {
+                        Phases.advanceFrom(current, Phase.NIGHT, briefing.cycle, viewModel::characterById)
                     } else {
                         current
                     }
@@ -433,51 +473,106 @@ internal fun PhaseGuardDialogs(
         )
     }
 
+    guards.executionChoiceId?.let { targetId ->
+        ExecutionSheet(
+            viewModel = viewModel,
+            state = state,
+            targetId = targetId,
+            nominatorId = blockingNominationIndex(state, targetId)
+                ?.let { state.nominations[it].nominatorId },
+            nominationIndex = blockingNominationIndex(state, targetId),
+            onDismiss = {
+                guards.clear()
+                // Choosing or cancelling returns to a fresh dusk card. Its
+                // primary now reflects whether an execution was recorded.
+                viewModel.game.value?.takeIf { origin?.matches(it) == true }?.let {
+                    requestPhaseAdvance(viewModel, it, guards)
+                }
+            },
+        )
+    }
+
+    guards.exileChoiceId?.let { targetId ->
+        ExileSheet(
+            viewModel = viewModel,
+            state = state,
+            targetId = targetId,
+            onDismiss = {
+                guards.clear()
+                viewModel.game.value?.takeIf { origin?.matches(it) == true }?.let {
+                    requestPhaseAdvance(viewModel, it, guards)
+                }
+            },
+        )
+    }
+
     guards.dusk?.let { briefing ->
-        val onBlock = guards.onBlockId?.let { state.player(it) }
-        val exile = guards.exileOwedId?.let { state.player(it) }
         val spent = DayRules.executionSpent(state)
+        val onBlock = guards.onBlockId?.takeUnless { spent }?.let { state.player(it) }
+        val exile = guards.exileOwedId?.let { state.player(it) }?.takeIf { it.seated }
+        val needsExecutionChoice = onBlock?.let {
+            viewModel.executionPreview(state, it.id) is KillOutcome.Choice
+        } == true
+        val needsExileChoice = exile?.let {
+            viewModel.exilePreview(state, it.id) is KillOutcome.Choice
+        } == true
         val recordOnConfirm = DuskActions.confirmRecordsNoExecution(onBlock?.name, spent)
         val recordOnSecondary = DuskActions.secondaryRecordsNoExecution(onBlock?.name, spent)
         BriefingSheet(
             briefing = briefing,
             title = "Dusk · day ${briefing.cycle}",
-            confirmLabel = DuskActions.confirmLabel(
-                briefing.cycle + 1,
-                onBlock?.name,
-                spent,
-                exile?.name,
-            ),
+            confirmLabel = when {
+                needsExecutionChoice -> "RESOLVE ${onBlock!!.name.uppercase()}'S EXECUTION →"
+                needsExileChoice -> "RESOLVE ${exile!!.name.uppercase()}'S EXILE →"
+                else -> DuskActions.confirmLabel(briefing.cycle + 1, onBlock?.name, spent, exile?.name)
+            },
             advisories = guards.duskAdvisories,
             onDeclareWinner = onDeclareWinner?.let { declare ->
                 { goodWins: Boolean ->
+                    val current = isCurrent()
                     guards.clear()
-                    declare(goodWins)
+                    if (current) declare(goodWins)
                 }
             },
             onConfirm = {
                 val target = onBlock?.id
-                val index = target?.let { blockingNominationIndex(state, it) }
                 val exileId = exile?.id
-                guards.clear()
-                // One execution funnel, always (lead D24): never a bare kill.
-                target?.let {
-                    viewModel.execute(it, via = ExecutionVia.VOTE, nominationIndex = index)
+                if (!isCurrent()) {
+                    guards.clear()
+                } else if (needsExecutionChoice && target != null) {
+                    guards.dusk = null
+                    guards.executionChoiceId = target
+                } else if (needsExileChoice && exileId != null) {
+                    guards.dusk = null
+                    guards.exileChoiceId = exileId
+                } else {
+                    guards.clear()
+                    viewModel.update { current ->
+                        if (origin?.matches(current) == true) {
+                            Phases.closeDay(
+                                current, briefing.cycle, viewModel::characterById,
+                                executePlayerId = target,
+                                exilePlayerId = exileId,
+                                recordNoExecution = recordOnConfirm,
+                            )
+                        } else current
+                    }
+                    if (viewModel.game.value?.phase == Phase.NIGHT) onTab(GameTab.NIGHT)
                 }
-                // A passing exile vote IS the exile; carrying it out is what
-                // the primary is for, and its label said so (C2-3).
-                exileId?.let { viewModel.exile(it) }
-                if (recordOnConfirm) viewModel.noExecution()
-                viewModel.advancePhase()
-                onTab(GameTab.NIGHT)
             },
             onDismiss = { guards.clear() },
             secondaryLabel = DuskActions.secondaryLabel(onBlock?.name, spent),
             onSecondary = {
                 guards.clear()
-                if (recordOnSecondary) viewModel.noExecution()
-                viewModel.advancePhase()
-                onTab(GameTab.NIGHT)
+                viewModel.update { current ->
+                    if (origin?.matches(current) == true) {
+                        Phases.closeDay(
+                            current, briefing.cycle, viewModel::characterById,
+                            recordNoExecution = recordOnSecondary,
+                        )
+                    } else current
+                }
+                if (viewModel.game.value?.phase == Phase.NIGHT) onTab(GameTab.NIGHT)
             },
             acted = guards.actedKeys,
             onItem = handleItem,

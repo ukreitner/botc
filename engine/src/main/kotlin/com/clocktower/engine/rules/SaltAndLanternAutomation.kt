@@ -16,7 +16,7 @@ object SaltAndLanternAutomation {
 
     fun informationSeats(state: GameState, lookup: (String) -> Character?, ability: String): List<Player> {
         if (!active(state.script) || ability !in setOf("chef", "empath", "cartographer", "navigator")) {
-            return state.players
+            return state.seats
         }
         return state.seats.filterNot {
             it.characterId == "stowaway" && Status.hasAbility(state, lookup, it.id)

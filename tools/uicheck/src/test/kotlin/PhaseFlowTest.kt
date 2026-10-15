@@ -180,6 +180,27 @@ class PhaseFlowTest {
         assertEquals(done.cycle, dawn.briefing.cycle)
     }
 
+    @Test
+    fun `dawn reads the final tick even before the night screen has recomposed`() {
+        val rendered = nightTwoWithASkippedStep()
+        val current = rendered.copy(
+            nightStepsDone = NightPlan.build(rendered, lookup).steps.filter { it.required }
+                .map { it.key.token }.toSet(),
+        )
+        assertTrue(PhaseFlow.request(rendered, lookup) is PhaseRequest.Blocked)
+        assertTrue(PhaseFlow.requestFrom(rendered, current, lookup) is PhaseRequest.ConfirmDawn)
+    }
+
+    @Test
+    fun `a queued phase button cannot act after the phase or game changes`() {
+        val night = nightTwoWithASkippedStep()
+        val day = Phases.advancePhase(night, lookup)
+        assertNull(PhaseFlow.requestFrom(night, day, lookup))
+        val laterNight = Phases.advancePhase(day, lookup)
+        assertNull(PhaseFlow.requestFrom(night, laterNight, lookup))
+        assertNull(PhaseFlow.requestFrom(night, night.copy(id = "another-game"), lookup))
+    }
+
     // ------------------------------------------------------------------
     // DAY
     // ------------------------------------------------------------------

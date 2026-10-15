@@ -295,7 +295,7 @@ interface GameActionsApi {
     fun noExecution() = update { Execution.noExecution(it) }
 
     /** Exile a Traveller. Never an execution; never modified by an ability. */
-    fun exile(playerId: Long) = update { Execution.exile(it, lookup, playerId) }
+    fun exile(playerId: Long, optionId: String = "") = update { Execution.exile(it, lookup, playerId, optionId) }
 
     // ---- WP4: setup, identity, bluffs ----
 
@@ -453,6 +453,9 @@ interface GameActionsApi {
         evil: Boolean,
         announce: String = "",
     ) = update { state ->
+        if (name.isBlank() || characterById(characterId)?.team != com.clocktower.engine.Team.TRAVELLER) {
+            return@update state
+        }
         val seated = Seats.addSeat(state, name, afterPlayerId)
         // `Seats.addSeat` stamps the new seat with max(id) + 1, so the highest
         // id in the new state IS the seat that was just added.
@@ -473,6 +476,10 @@ interface GameActionsApi {
             if (evil) "evil" else "good",
         )
         if (announce.isBlank()) decided else Ledger.announce(decided, announce)
+    }
+
+    fun leaveTraveller(playerId: Long) = update {
+        Effects.reconcile(Seats.leaveTraveller(it, playerId), lookup)
     }
 
     // ---- WP9: day screen ----

@@ -87,6 +87,7 @@ object NominationModel {
         nomineeId: Long?,
     ): List<RingSeat> {
         val seats = state.seats
+        val hasExileTarget = seats.any { it.isTraveller && DayRules.canBeExiled(state, it.id).allowed }
         return seats.mapIndexed { index, player ->
             val pick = when (player.id) {
                 nominatorId -> SeatPick.NOMINATOR
@@ -98,7 +99,10 @@ object NominationModel {
             val right = if (asNominee) {
                 DayRules.canBeNominated(state, lookup, player.id)
             } else {
-                DayRules.canNominate(state, lookup, player.id)
+                val nomination = DayRules.canNominate(state, lookup, player.id)
+                if (!nomination.allowed && hasExileTarget) {
+                    DayRules.canCallExile(state, player.id)
+                } else nomination
             }
             RingSeat(
                 id = player.id,
@@ -259,7 +263,7 @@ object NominationModel {
             order = order,
             ineligible = ineligible,
             uncounted = uncounted,
-            mustVote = DayRules.mustVote(state, lookup),
+            mustVote = if (isExile) emptyList() else DayRules.mustVote(state, lookup),
             weights = rules.weights.filterValues { it != 1 },
             reasons = rules.reasons,
             secret = secret,
@@ -316,8 +320,8 @@ object NominationModel {
      * has not said otherwise — a nomination taken now would be dropped by
      * `DayRules.record` and never appear anywhere (C-4).
      */
-    fun ringLocked(closedReason: String, reopened: Boolean): Boolean =
-        closedReason.isNotBlank() && !reopened
+    fun ringLocked(closedReason: String, reopened: Boolean, exileAvailable: Boolean = false): Boolean =
+        closedReason.isNotBlank() && !reopened && !exileAvailable
 
     /**
      * True once the ring has done its job and should get out of the way (C-15,

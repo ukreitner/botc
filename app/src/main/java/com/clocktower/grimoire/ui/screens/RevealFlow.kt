@@ -35,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -192,8 +194,8 @@ fun HandOutMode(
     var showChecklist by rememberSaveable { mutableStateOf(false) }
 
     val queue = remember(state.players, seats, seatOrder) {
-        val pool = seats?.mapNotNull { state.player(it) }
-            ?: state.players.filter { it.characterId != null }
+        val pool = seats?.mapNotNull { state.player(it)?.takeIf { player -> player.seated } }
+            ?: state.seats.filter { it.characterId != null }
         if (seatOrder) {
             pool
         } else {
@@ -209,7 +211,7 @@ fun HandOutMode(
     val done = queue.count { it.tokenShownAt != null }
     val next = queue.firstOrNull { it.tokenShownAt == null && !blockers.containsKey(it.id) }
 
-    val openSeat = openSeatId?.let { state.player(it) }
+    val openSeat = openSeatId?.let { state.player(it)?.takeIf { player -> player.seated } }
     if (openSeatId != null && openSeat == null) openSeatId = null
 
     Box(Modifier.fillMaxSize()) {
@@ -225,10 +227,11 @@ fun HandOutMode(
                 viewModel = viewModel,
                 player = openSeat,
                 // The SEAT, not the queue position (A-6).
-                seatNumber = state.players.indexOfFirst { it.id == openSeat.id } + 1,
+                seatNumber = state.seats.indexOfFirst { it.id == openSeat.id } + 1,
                 seatCount = state.seats.size,
                 // A-7: a Traveller's side is a storyteller CHOICE, and the seat
                 // carries a default one nobody made until the row is answered.
+                applyOwnInsets = applyOwnInsets,
                 alignmentAnswered = !state.decisions[
                     SetupRequirements.travellerAlignmentKey(openSeat.id),
                 ].isNullOrBlank(),
@@ -555,6 +558,7 @@ private fun HandOutCard(
     seatNumber: Int,
     seatCount: Int,
     alignmentAnswered: Boolean,
+    applyOwnInsets: Boolean,
     onFinished: () -> Unit,
     onLater: () -> Unit,
 ) {
@@ -577,118 +581,127 @@ private fun HandOutCard(
         return
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(page, player.id, pages.size) {
-                detectTapGestures(
-                    onPress = {
-                        // Hold, not tap: a stray tap in transit shows nothing,
-                        // and releasing hides immediately (§S6, defect #20).
-                        // Same gate as PrivacyCover.
-                        pressing = true
-                        val releasedEarly = withTimeoutOrNull(HOLD_MILLIS) { tryAwaitRelease() }
-                        if (releasedEarly != null) {
-                            pressing = false
-                        } else {
-                            revealed = true
-                            val released = tryAwaitRelease()
-                            revealed = false
-                            pressing = false
-                            // Only a real finger-lift counts. A CANCELLED
-                            // gesture (the sheet closing, a system takeover)
-                            // leaves the seat exactly where it was.
-                            if (released) {
-                                if (page + 1 < pages.size) page += 1 else onFinished()
-                            }
-                        }
-                    },
-                )
-            },
-        contentAlignment = Alignment.Center,
+            .then(if (applyOwnInsets) Modifier.safeDrawingPadding() else Modifier)
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (!revealed) {
+        // Reserve the card area ABOVE the finger. The hold target never moves
+        // or disappears when the secret is revealed, even for a second card.
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()).padding(vertical = 12.dp),
             ) {
-                Text(current.handOverCaption, fontSize = 26.sp, color = Parchment)
-                Text(
-                    player.name,
-                    fontSize = 52.sp,
-                    fontFamily = FontFamily.Serif,
-                    fontWeight = FontWeight.Bold,
-                    color = AgedGold,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(18.dp))
-                Box(
-                    Modifier
-                        .background(Twilight)
-                        .padding(horizontal = 26.dp, vertical = 16.dp),
-                ) {
+                if (!revealed) {
+                    Text(current.handOverCaption, fontSize = 26.sp, color = Parchment)
                     Text(
-                        if (pressing) "Keep holding…" else "HOLD to reveal",
-                        fontSize = 20.sp,
-                        color = AgedGold,
-                    )
-                }
-                Text(
-                    handOutCardCaption(seatNumber, seatCount, page, pages.size),
-                    fontSize = 14.sp,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-                OutlinedButton(onClick = onLater, modifier = Modifier.padding(top = 12.dp)) {
-                    Text("I'll do this later")
-                }
-            }
-        } else {
-            when (current) {
-                is HandOutPage.CharacterPage -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                    modifier = Modifier.padding(24.dp),
-                ) {
-                    Text("YOU ARE", fontSize = 32.sp, fontFamily = FontFamily.Serif, color = Parchment)
-                    CharacterToken(character = character, size = 180.dp)
-                    Text(
-                        character?.name ?: "?",
-                        fontSize = 42.sp,
+                        player.name,
+                        fontSize = 44.sp,
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
-                        // The BELIEVED character's own team, always. A flipped
-                        // Ogre must not be painted red (defect #18).
-                        color = character?.team?.color ?: AgedGold,
+                        color = AgedGold,
                         textAlign = TextAlign.Center,
                     )
                     Text(
-                        character?.ability.orEmpty(),
+                        "Hold the button below to see your card. Release to hide it.",
                         fontSize = 17.sp,
                         color = Parchment,
                         textAlign = TextAlign.Center,
                     )
-                    Text("release to hide", fontSize = 13.sp, color = Color.Gray)
-                }
-
-                is HandOutPage.AlignmentPage -> Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                    modifier = Modifier.padding(24.dp),
-                ) {
-                    Text(
-                        if (current.evil) "YOU ARE EVIL" else "YOU ARE GOOD",
-                        fontSize = 44.sp,
-                        fontFamily = FontFamily.Serif,
-                        fontWeight = FontWeight.Bold,
-                        color = if (current.evil) EmberRed else TownsfolkBlue,
-                        textAlign = TextAlign.Center,
-                    )
-                    Text(current.caption, fontSize = 17.sp, color = Parchment, textAlign = TextAlign.Center)
-                    Text("release to hide", fontSize = 13.sp, color = Color.Gray)
+                } else {
+                    when (current) {
+                        is HandOutPage.CharacterPage -> {
+                            Text("YOU ARE", fontSize = 28.sp, fontFamily = FontFamily.Serif, color = Parchment)
+                            CharacterToken(character = character, size = 140.dp)
+                            Text(
+                                character?.name ?: "?",
+                                fontSize = 36.sp,
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = FontWeight.Bold,
+                                // Use the believed team: a flipped Ogre must not leak red.
+                                color = character?.team?.color ?: AgedGold,
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(
+                                character?.ability.orEmpty(),
+                                fontSize = 17.sp,
+                                color = Parchment,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        is HandOutPage.AlignmentPage -> {
+                            Text(
+                                if (current.evil) "YOU ARE EVIL" else "YOU ARE GOOD",
+                                fontSize = 40.sp,
+                                fontFamily = FontFamily.Serif,
+                                fontWeight = FontWeight.Bold,
+                                color = if (current.evil) EmberRed else TownsfolkBlue,
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(current.caption, fontSize = 17.sp, color = Parchment, textAlign = TextAlign.Center)
+                        }
+                    }
                 }
             }
+        }
+        Text(
+            handOutCardCaption(seatNumber, seatCount, page, pages.size),
+            fontSize = 14.sp,
+            color = Color.Gray,
+            modifier = Modifier.padding(vertical = 8.dp),
+        )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 72.dp)
+                .background(Twilight, MaterialTheme.shapes.medium)
+                .semantics { contentDescription = "Hold to reveal card" }
+                .pointerInput(page, player.id, pages.size) {
+                    detectTapGestures(onPress = {
+                        pressing = true
+                        try {
+                            val releasedEarly = withTimeoutOrNull(HOLD_MILLIS) { tryAwaitRelease() }
+                            if (releasedEarly == null) {
+                                revealed = true
+                                val released = tryAwaitRelease()
+                                revealed = false
+                                pressing = false
+                                // A cancellation must neither expose nor complete a card.
+                                if (released) {
+                                    if (page + 1 < pages.size) page += 1 else onFinished()
+                                }
+                            }
+                        } finally {
+                            revealed = false
+                            pressing = false
+                        }
+                    })
+                }
+                .padding(horizontal = 16.dp, vertical = 18.dp),
+        ) {
+            Text(
+                when {
+                    revealed -> "Release to hide"
+                    pressing -> "Keep holding…"
+                    else -> "HOLD to reveal"
+                },
+                fontSize = 20.sp,
+                color = AgedGold,
+                textAlign = TextAlign.Center,
+            )
+        }
+        OutlinedButton(
+            onClick = onLater,
+            enabled = !pressing,
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            Text("I'll do this later")
         }
     }
 }

@@ -35,7 +35,7 @@ import com.clocktower.grimoire.ui.screens.night.dimAlpha
 import com.clocktower.grimoire.ui.screens.night.gateBadge
 import com.clocktower.grimoire.ui.screens.night.isDestructive
 import com.clocktower.grimoire.ui.screens.night.nextDimLevel
-import com.clocktower.grimoire.ui.screens.night.mustNotShowTruth
+import com.clocktower.grimoire.ui.screens.night.requiresInformationChoice
 import com.clocktower.grimoire.ui.screens.night.nextToken
 import com.clocktower.grimoire.ui.screens.night.nightSp
 import com.clocktower.grimoire.ui.screens.night.offerAnswerText
@@ -312,14 +312,14 @@ class NightRowsTest {
     }
 
     @Test
-    fun `an impaired holder's primary is not the true answer`() {
-        // The card says "! Eve is POISONED (Poisoner) — give false info."; the
-        // one gold button under it must not read SHOW "1" TO EVE.
-        assertTrue(mustNotShowTruth(InfoObligation.MUST_LIE, malfunctions = false))
-        assertTrue(mustNotShowTruth(InfoObligation.MAY_LIE, malfunctions = true))
-        assertFalse(mustNotShowTruth(InfoObligation.TRUTH, malfunctions = false))
+    fun `an impaired holder requires a deliberate information choice`() {
+        // Impairment permits truth or falsehood, but must ask the storyteller
+        // to choose rather than silently defaulting to the computed answer.
+        assertTrue(requiresInformationChoice(InfoObligation.MUST_LIE, malfunctions = false))
+        assertTrue(requiresInformationChoice(InfoObligation.MAY_LIE, malfunctions = true))
+        assertFalse(requiresInformationChoice(InfoObligation.TRUTH, malfunctions = false))
         assertFalse("a misregistration caveat is not the holder being impaired",
-            mustNotShowTruth(InfoObligation.MAY_LIE, malfunctions = false))
+            requiresInformationChoice(InfoObligation.MAY_LIE, malfunctions = false))
 
         assertEquals(
             "PICK WHAT TO SHOW — EVE IS IMPAIRED",
