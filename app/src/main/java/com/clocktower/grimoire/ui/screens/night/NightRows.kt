@@ -4,6 +4,7 @@ import com.clocktower.engine.Answer
 import com.clocktower.engine.Character
 import com.clocktower.engine.ChooseCharacter
 import com.clocktower.engine.ChoosePlayerAndCharacter
+import com.clocktower.engine.ChoosePlayersAndCharacters
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.InfoObligation
 import com.clocktower.engine.KillOutcome
@@ -11,6 +12,7 @@ import com.clocktower.engine.NightAction
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightPlan
 import com.clocktower.engine.NightStep
+import com.clocktower.engine.Options
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.Ref
 import com.clocktower.engine.Sequence
@@ -193,6 +195,8 @@ fun askSummary(action: NightAction?): String = when (action) {
     }
     is ChooseCharacter -> "a character"
     is ChoosePlayerAndCharacter -> "a seat + a character"
+    is ChoosePlayersAndCharacters -> "seats + characters"
+    is Options -> "choose an answer"
     is YesNo -> "yes / no"
     is ShowInfo -> if (action.targetsNeeded > 0) {
         if (action.targetsNeeded == 1) "1 pick" else "${action.targetsNeeded} picks"
@@ -468,6 +472,8 @@ fun actionEffects(action: NightAction?): List<NightEffect> = when (action) {
     is ChoosePlayers -> action.perTarget + action.onResolve + action.onNone
     is ChooseCharacter -> action.onResolve
     is ChoosePlayerAndCharacter -> action.onResolve
+    is ChoosePlayersAndCharacters -> action.perPair + action.onResolve + action.onNone
+    is Options -> action.options.flatMap { it.effects } + action.onNone
     is YesNo -> action.onYes + action.onNo
     is Sequence -> action.stages.flatMap { actionEffects(it) }
     else -> emptyList()
@@ -508,6 +514,7 @@ fun isDestructive(effects: List<NightEffect>): Boolean = effects.any {
         it is NightEffect.MarkSpent ||
         it is NightEffect.SetAlignment ||
         it is NightEffect.RevealTrueCharacter
+        || it is NightEffect.When && (isDestructive(it.then) || isDestructive(it.otherwise))
 }
 
 /** How long a destructive primary must be held before it fires, in ms. */
@@ -549,15 +556,7 @@ fun offerAnswerText(label: String): String =
  * storyteller has said "they chose nobody" — which is itself a real answer and
  * is recorded as one.
  */
-fun primaryEnabled(action: NightAction?, pick: PickState): Boolean = when {
-    action == null -> true
-    pick.none -> true
-    action is YesNo -> pick.yes != null
-    action is ChooseCharacter -> pick.characterIds.isNotEmpty() || action.allowNone
-    action is ChoosePlayerAndCharacter ->
-        pick.playerIds.isNotEmpty() && pick.characterIds.isNotEmpty()
-    else -> pick.playerIds.size >= picksNeeded(action)
-}
+fun primaryEnabled(action: NightAction?, pick: PickState): Boolean = nightActionInputComplete(action, pick)
 
 /** The three answer shapes a step can be in, as data the tests can build. */
 data class PickState(
@@ -565,6 +564,10 @@ data class PickState(
     val characterIds: List<String> = emptyList(),
     val yes: Boolean? = null,
     val none: Boolean = false,
+    val assignments: List<Pair<Long, String>> = emptyList(),
+    val optionId: String = "",
+    val optionIds: List<String> = emptyList(),
+    val overrideConstraints: Boolean = false,
 )
 
 /** How long the exit control on a full-screen card must be held, in ms. */
@@ -669,6 +672,7 @@ fun picksNeeded(action: NightAction?): Int = when (action) {
     is ChoosePlayers -> action.min
     is ShowInfo -> action.targetsNeeded
     is ChoosePlayerAndCharacter -> 1
+    is ChoosePlayersAndCharacters -> action.min
     else -> 0
 }
 
@@ -689,6 +693,7 @@ fun picksAllowed(action: NightAction?): Int = when (action) {
     is ChoosePlayers -> action.max
     is ShowInfo -> action.targetsNeeded
     is ChoosePlayerAndCharacter -> 1
+    is ChoosePlayersAndCharacters -> action.max
     else -> 0
 }
 

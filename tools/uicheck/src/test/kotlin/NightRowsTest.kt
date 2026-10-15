@@ -2,6 +2,8 @@ package com.clocktower.grimoire.uicheck
 
 import com.clocktower.engine.Answer
 import com.clocktower.engine.ChoosePlayers
+import com.clocktower.engine.ChooseCharacter
+import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.DeathCause
 import com.clocktower.engine.DeferredDeath
 import com.clocktower.engine.InfoObligation
@@ -669,10 +671,26 @@ class NightRowsTest {
         val action = choose(min = 2, max = 2)
         assertFalse(primaryEnabled(action, PickState(playerIds = listOf(1L))))
         assertTrue(primaryEnabled(action, PickState(playerIds = listOf(1L, 2L))))
-        assertTrue(primaryEnabled(action, PickState(none = true)))
+        assertFalse(primaryEnabled(action, PickState(none = true)))
+        assertTrue(primaryEnabled(action.copy(allowNone = true), PickState(none = true)))
         assertFalse(primaryEnabled(YesNo("s", "", "Y", "N"), PickState()))
         assertTrue(primaryEnabled(YesNo("s", "", "Y", "N"), PickState(yes = false)))
         assertTrue(primaryEnabled(null, PickState()))
+    }
+
+    @Test
+    fun `optional abilities require an explicit choice or pass`() {
+        for (role in listOf("philosopher", "courtier")) {
+            val action = ChooseCharacter(role, "Choose", CharacterPool.GOOD, allowNone = true)
+            assertFalse(primaryEnabled(action, PickState()))
+            assertFalse(primaryEnabled(action, PickState(characterIds = listOf(""))))
+            assertTrue(primaryEnabled(action, PickState(characterIds = listOf("chef"))))
+            assertTrue(primaryEnabled(action, PickState(none = true)))
+        }
+        val professor = choose(min = 0, max = 1).copy(allowNone = true)
+        assertFalse("min zero is permission to pass, not a default answer", primaryEnabled(professor, PickState()))
+        assertTrue(primaryEnabled(professor, PickState(none = true)))
+        assertTrue(primaryEnabled(professor, PickState(playerIds = listOf(1L))))
     }
 
     // ---- answers -----------------------------------------------------------

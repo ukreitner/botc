@@ -178,7 +178,7 @@ object InfoCalc {
             "seamstress" -> seamstress(ctx, targets)
             "villageidiot" -> villageIdiot(ctx, targets)
             "ravenkeeper" -> revealCharacter(ctx, resolved, "Ravenkeeper")
-            "grandmother" -> revealCharacter(ctx, targets, "Grandmother")
+            "grandmother" -> grandmother(ctx, targets)
             "cultleader" -> cultLeader(ctx)
             "king" -> king(ctx)
             "washerwoman" -> startKnowing(ctx, Team.TOWNSFOLK, "Townsfolk")
@@ -341,8 +341,15 @@ object InfoCalc {
         val caveats = commonCaveats(ctx, characterId) + result.caveats
         val holderTeam = ctx.holder?.let { ctx.character(it)?.team }
             ?: ctx.lookup(characterId)?.team
-        val malfunctions = ctx.holder?.let { !Status.hasAbility(ctx.state, ctx.lookup, it.id) } ?: false
-        val mustLie = vortoxActive(ctx) && holderTeam == Team.TOWNSFOLK && !malfunctions
+        val malfunctions = ctx.holder?.let { holder ->
+            val roles = Identity.actingRoles(ctx.state, ctx.lookup, holder)
+                .filter { it.abilityId == Character.normalizeId(characterId) }
+            if (roles.isEmpty()) !Status.hasAbility(ctx.state, ctx.lookup, holder.id)
+            else roles.none { Status.roleWorks(ctx.state, ctx.lookup, it) }
+        } ?: false
+        // The Vortox alters Townsfolk information even when that recipient is
+        // drunk or poisoned. Only impairment of the Vortox itself stops it.
+        val mustLie = vortoxActive(ctx) && holderTeam == Team.TOWNSFOLK
         val obligation = when {
             // An impaired Vortox loses the whole ability: Townsfolk info is not
             // forced false any more (lead D11).
@@ -354,7 +361,10 @@ object InfoCalc {
             caveats = caveats,
             obligation = obligation,
             abilityMalfunctions = malfunctions,
-            alternatives = (result.alternatives + generatedLies(ctx, result.answer)).distinct(),
+            // Dreamer alternatives are complete good/evil pairs. A generic
+            // character substitution would turn them back into single tokens.
+            alternatives = (result.alternatives +
+                if (characterId == "dreamer") emptyList() else generatedLies(ctx, result.answer)).distinct(),
         )
     }
 
@@ -647,13 +657,43 @@ object InfoCalc {
 
     private fun dreamer(ctx: Ctx, targets: List<Long>): InfoResult {
         val target = validTargets(ctx, targets, 1)?.single()
-            ?: return InfoResult(Answer.Message("?"), "Pick the player the Dreamer chose")
+            ?.takeUnless { it.id == ctx.holder?.id || it.isTraveller }
+            ?: return InfoResult(Answer.Message("?"), "Pick another non-Traveller player the Dreamer chose")
         val character = ctx.character(target)
-        val good = character?.team?.isEvil == false
+            ?: return InfoResult(Answer.Message("?"), "Pick a player with a character")
+        // Character TYPE, not current alignment or a gained ability: an evil
+        // Townsfolk still supplies the good half, and a Philosopher is still
+        // the Philosopher even after gaining another ability.
+        val pool = (ctx.script + character).distinctBy { Character.normalizeId(it.id) }
+        val good = pool.filter { it.team == Team.TOWNSFOLK || it.team == Team.OUTSIDER }
+        val evil = pool.filter { it.team == Team.MINION || it.team == Team.DEMON }
+        val pairs = good.flatMap { g -> evil.map { e -> Answer.Characters(listOf(g.id, e.id)) } }
+        val real = Character.normalizeId(character.id)
+        val truePairs = pairs.filter { pair -> pair.ids.any { Character.normalizeId(it) == real } }
+        val falsePairs = pairs.filter { pair -> pair.ids.none { Character.normalizeId(it) == real } }
         return InfoResult(
-            answer = Answer.Characters(listOfNotNull(target.characterId)),
+            answer = truePairs.firstOrNull() ?: Answer.Message("Choose one good and one evil character"),
+            alsoTrue = truePairs.drop(1),
+            alternatives = falsePairs.take(MAX_LIES),
+            headline = "${ctx.name(target)} is the ${character.name}",
+            detail = "Show both tokens together: one Townsfolk/Outsider and one Minion/Demon. " +
+                "Choose a pair below, or edit either token with Custom choice.",
+            cardPrefix = "${ctx.name(target)} IS ONE OF THESE CHARACTERS",
+            caveats = misregistrations(ctx, listOf(target)),
+        )
+    }
+
+    private fun grandmother(ctx: Ctx, targets: List<Long>): InfoResult {
+        val target = validTargets(ctx, targets, 1)?.single()
+            ?.takeUnless { it.id == ctx.holder?.id }
+            ?: return InfoResult(Answer.Message("?"), "Pick the Grandchild")
+        val character = ctx.character(target)
+        return InfoResult(
+            answer = Answer.Players(listOf(target.id), target.characterId),
             headline = "${ctx.name(target)} is the ${character?.name ?: "?"}",
-            detail = "Show that token plus 1 ${if (good) "evil" else "good"} character token of your choice",
+            cardPrefix = "THIS IS YOUR GRANDCHILD",
+            alternatives = ctx.script.filter { it.id != target.characterId }
+                .take(MAX_LIES).map { Answer.Players(listOf(target.id), it.id) },
             caveats = misregistrations(ctx, listOf(target)),
         )
     }
@@ -692,7 +732,7 @@ object InfoCalc {
             headline = "${ctx.name(target)} is the ${character?.name ?: "?"}",
             // The card printed the generic stem "THIS CHARACTER" over the token
             // and the ledger recorded it — the physical info token the
-            // Ravenkeeper, the Grandmother and the Harlot are shown reads
+            // Ravenkeeper and the Harlot are shown reads
             // "THIS PLAYER IS" (playtest B2-10, the residue of B-17).
             cardPrefix = "THIS PLAYER IS",
             caveats = misregistrations(ctx, listOf(target)),
@@ -1033,7 +1073,8 @@ object InfoCalc {
         val outsiders = ctx.players.filter { ctx.character(it)?.team == Team.OUTSIDER }
         val ids = outsiders.mapNotNull { it.characterId }
         return InfoResult(
-            answer = Answer.Characters(ids),
+            answer = if (ids.isEmpty()) Answer.Message("NO OUTSIDERS ARE IN PLAY") else Answer.Characters(ids),
+            cardPrefix = if (ids.size == 1) "THIS OUTSIDER IS IN PLAY" else "THESE OUTSIDERS ARE IN PLAY",
             headline = if (ids.isEmpty()) {
                 "No Outsiders are in play"
             } else {

@@ -714,6 +714,8 @@ private fun philosopher(): CharacterRule {
             "Swap the token in ONLY if that character is not in play; if it IS in play, " +
             "make that player drunk instead.",
         action = { ctx ->
+            val works = ctx.role?.let { Status.roleWorks(ctx.state, ctx.lookup, it) }
+                ?: ctx.holder?.let { Status.hasAbility(ctx.state, ctx.lookup, it.id) } ?: false
             ChooseCharacter(
                 sourceId = PHILOSOPHER,
                 prompt = "WHICH CHARACTER DID THEY POINT AT?",
@@ -721,25 +723,32 @@ private fun philosopher(): CharacterRule {
                 allowNone = true,
                 onResolve = listOf(
                     NightEffect.RecordChoice(),
-                    // W7E: the grant is REAL now. REPLACE, because the
-                    // Philosopher exercises the chosen ability instead of their
-                    // own, and the empty id means "the character just picked".
+                    // REPLACE retires the original choice row in favour of the
+                    // borrowed wake. Empty id means "the character just picked".
                     NightEffect.GrantAbility(
                         abilityId = "",
                         sourceId = PHILOSOPHER,
                         on = Ref.Source,
                         mode = GrantMode.REPLACE,
+                        // A poisoned use is still spent, but cannot turn into a
+                        // real grant after poison expires. Keep only the wake
+                        // needed to maintain what the player believes happened.
+                        alwaysFalse = !works,
+                        keepsIllusoryMarkers = false,
+                        tracksApparentUse = true,
                     ),
                     NightEffect.MarkSpent(PHILOSOPHER),
                     // Which in-play copy goes drunk is still a board question the
                     // storyteller settles — the character may not be in play at all.
                     NightEffect.QueuePrompt(
                         at = BriefingSlot.NOW,
-                        kind = PromptKind.CHOOSE_CHARACTER,
+                        kind = if (works) PromptKind.CHOOSE_CHARACTER else PromptKind.INFO,
                         sourceId = PHILOSOPHER,
-                        title = "${ctx.holder?.name ?: "They"} now have that ability. If the " +
-                            "character IS in play, make that player drunk with the " +
-                            "Philosopher's Drunk token.",
+                        title = if (works) "${ctx.holder?.name ?: "They"} now have that ability. If the " +
+                            "character IS in play, make that player drunk with the Philosopher's Drunk token."
+                        else "${ctx.holder?.name ?: "They"} used the Philosopher ability while impaired. " +
+                            "It is spent and no ability was gained. Continue the chosen character's wakes as an illusion; " +
+                            "do not make another player drunk.",
                         on = Ref.Source,
                     ),
                 ),

@@ -133,7 +133,7 @@ internal val EXP_TOWNSFOLK_RULES: List<CharacterRule> = listOf(
  */
 internal val SUPPRESSED_INFO_IDS: List<String> = listOf(
     "acrobat", "amnesiac", "banshee", "engineer", "general", "highpriestess",
-    "huntsman", "lycanthrope", "magician", "pixie", "poppygrower", "princess",
+    "huntsman", "lycanthrope", "magician", "nightwatchman", "pixie", "poppygrower", "preacher", "princess",
 )
 
 // ---------------------------------------------------------------------------
@@ -747,10 +747,13 @@ private fun engineer(): CharacterRule {
                 max = 3,
                 playerConstraints = listOf(
                     TargetConstraint.ANY_LIVING_STATE,
-                    TargetConstraint.EVIL,
                 ),
                 pool = CharacterPool.EVIL,
                 sort = TargetSort.DEMON_FIRST,
+                matchTargetType = true,
+                sameTargetType = true,
+                completeTargetGroup = true,
+                preserveInPlayOwners = true,
                 allowNone = true,
                 noneLabel = "Declined — nothing changes and the ability is NOT used",
                 perPair = listOf(
@@ -1241,7 +1244,9 @@ private fun nightwatchman(): CharacterRule {
         prompt = "The Nightwatchman may choose a player — alive or dead. Put the " +
             "Nightwatchman to sleep, then wake the target separately and show them the " +
             "'This player is' and Nightwatchman tokens.",
-        infoId = "nightwatchman",
+        // This choice gives the Nightwatchman no information. The chosen player
+        // is woken separately by the recipient prompt below.
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "nightwatchman",
@@ -1252,9 +1257,50 @@ private fun nightwatchman(): CharacterRule {
                 sort = TargetSort.ALIVE_FIRST,
                 allowNone = true,
                 noneLabel = "Declined — no choice, the ability is NOT used",
-                perTarget = listOf(NightEffect.ShowCardTo(Ref.Target, "nightwatchman")),
                 onResolve = listOf(NightEffect.MarkSpent("nightwatchman")),
             )
+        },
+        resolveEffects = { ctx, input, targets ->
+            val holder = ctx.holder
+            val recipient = targets.singleOrNull()?.let(ctx.state::player)
+            if (input.none || holder == null || recipient == null) emptyList() else {
+                val point = ShowCardSpec.PointCard(
+                    prefix = "THIS PLAYER IS THE",
+                    playerNames = listOf(holder.name),
+                    seatNumbers = listOf(ctx.state.seats.indexOfFirst { it.id == holder.id } + 1),
+                    characterId = "nightwatchman",
+                )
+                val vortox = ctx.state.seats.any {
+                    Character.normalizeId(it.characterId.orEmpty()) == "vortox" &&
+                        it.alive && Status.hasAbility(ctx.state, ctx.lookup, it.id)
+                }
+                val handout = if (vortox) NightEffect.QueuePrompt(
+                    at = BriefingSlot.NOW,
+                    kind = PromptKind.CHOOSE_PLAYER,
+                    sourceId = "nightwatchman",
+                    on = Ref.Seat(recipient.id),
+                    title = "VORTOX — choose a different player to show ${recipient.name} as the Nightwatchman. Put ${holder.name} to sleep first.",
+                    targetIds = ctx.state.seats.filter {
+                        it.id != holder.id && Character.normalizeId(it.characterId.orEmpty()) != "nightwatchman"
+                    }.map { it.id },
+                    pointCardOnAnswer = point.copy(playerNames = emptyList(), seatNumbers = emptyList()),
+                    cardsTruthful = false,
+                ) else NightEffect.QueuePrompt(
+                    at = BriefingSlot.NOW,
+                    kind = PromptKind.INFO,
+                    sourceId = "nightwatchman",
+                    on = Ref.Seat(recipient.id),
+                    title = "Put ${holder.name} to sleep. Wake ${recipient.name} separately and show who the Nightwatchman is.",
+                    cards = listOf(point),
+                )
+                // Evaluate after on-chosen reactions too: picking the Goon can
+                // make this ability stop working before its information arrives.
+                listOf(NightEffect.When(
+                    predicate = if (ctx.role?.worksWhileImpaired == true) SeatPredicate.IS_ALIVE else SeatPredicate.HAS_ABILITY,
+                    on = Ref.Source,
+                    then = listOf(handout),
+                ))
+            }
         },
     )
     return CharacterRule(id = "nightwatchman", firstNight = rule, otherNight = rule)
@@ -1493,9 +1539,8 @@ private fun poppyGrowerRevealDue(): WakePredicate = WakePredicate { ctx ->
  * moment the Preacher is drunk, poisoned or dead, and `Status.abilityWorks`
  * gives that for free (digest §group 4).
  *
- * The picker is restricted to Minions because `NightAction` cannot make an
- * effect conditional on the target's team: an unconditional `perTarget` would
- * strip a Townsfolk's ability. Non-Minion picks are a decline.
+ * Every player is a legal choice. Record the actual choice before checking
+ * whether it affects a Minion, including reactive targets such as the Goon.
  */
 private fun preacher(): CharacterRule {
     val rule = NightRule(
@@ -1503,31 +1548,57 @@ private fun preacher(): CharacterRule {
         prompt = "The Preacher chooses a player — dead Minions are legal targets. If a " +
             "Minion, wake them and show 'This character selected you' and the Preacher " +
             "token. Never wake the Marionette.",
-        infoId = "preacher",
+        infoId = "",
         action = {
             ChoosePlayers(
                 sourceId = "preacher",
-                prompt = "WHICH MINION DID THEY CHOOSE?",
+                prompt = "WHO DID THEY CHOOSE?",
                 min = 1,
                 max = 1,
                 constraints = listOf(
                     TargetConstraint.ANY_LIVING_STATE,
                     TargetConstraint.SELF_ALLOWED,
-                    TargetConstraint.MINION,
                 ),
-                sort = TargetSort.MINION_FIRST,
-                allowNone = true,
-                noneLabel = "They chose a non-Minion — nothing happens, wake nobody",
-                perTarget = listOf(
-                    NightEffect.PlaceToken(
-                        sourceId = "preacher",
-                        label = "No Ability",
-                        on = Ref.Target,
-                        kind = EffectKind.NO_ABILITY,
-                        until = Until.FOREVER,
-                    ),
-                ),
+                sort = TargetSort.SEAT_ORDER,
             )
+        },
+        resolveEffects = { ctx, input, targets ->
+            val recipient = targets.singleOrNull()?.let(ctx.state::player)
+            if (input.none || recipient == null || Character.normalizeId(recipient.characterId.orEmpty()) == "legion") {
+                emptyList()
+            } else {
+                val marionette = Character.normalizeId(recipient.characterId.orEmpty()) == "marionette"
+                val vortox = ctx.state.seats.any {
+                    Character.normalizeId(it.characterId.orEmpty()) == "vortox" &&
+                        it.alive && Status.hasAbility(ctx.state, ctx.lookup, it.id)
+                }
+                val affectsMinion = buildList {
+                    add(NightEffect.PlaceToken(
+                        sourceId = "preacher", label = "No Ability", on = Ref.Seat(recipient.id),
+                        kind = EffectKind.NO_ABILITY, until = Until.FOREVER,
+                    ))
+                    if (!marionette) add(NightEffect.QueuePrompt(
+                        at = BriefingSlot.NOW,
+                        kind = PromptKind.INFO,
+                        sourceId = "preacher",
+                        on = Ref.Seat(recipient.id),
+                        title = "Put ${ctx.holder?.name ?: "the Preacher"} to sleep. Wake ${recipient.name} separately." +
+                            if (vortox) " VORTOX — the handout must be false; their ability is still removed." else " Show that the Preacher selected them.",
+                        cards = listOf(if (vortox) ShowCardSpec.Message("THE PREACHER DID NOT SELECT YOU")
+                            else ShowCardSpec.CharacterCard("THIS CHARACTER SELECTED YOU", "preacher")),
+                        cardsTruthful = !vortox,
+                    ))
+                }
+                listOf(NightEffect.When(
+                    predicate = if (ctx.role?.worksWhileImpaired == true) SeatPredicate.IS_ALIVE else SeatPredicate.HAS_ABILITY,
+                    on = Ref.Source,
+                    then = listOf(NightEffect.When(
+                        predicate = SeatPredicate.REGISTERS_MINION,
+                        on = Ref.Seat(recipient.id),
+                        then = affectsMinion,
+                    )),
+                ))
+            }
         },
     )
     return CharacterRule(

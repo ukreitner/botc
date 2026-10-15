@@ -50,6 +50,12 @@ data class Prompt(
     val becomesReason: ChangeReason = ChangeReason.STORYTELLER,
     /** Ordered cards owed to this prompt's recipient. */
     val cards: List<ShowCardSpec> = emptyList(),
+    /** A storyteller's player choice creates this card for the original recipient. */
+    val pointCardOnAnswer: ShowCardSpec.PointCard? = null,
+    /** False information is still a deliberate, valid handout under a Vortox. */
+    val cardsTruthful: Boolean? = true,
+    /** A storyteller chooses the one copy of a character receiving this token. */
+    val tokenOnAnswer: PlacedReminder? = null,
 )
 
 /**
@@ -85,6 +91,7 @@ object Prompts {
         playerId: Long,
     ): GameState {
         val prompt = state.prompts.firstOrNull { it.id == promptId && !it.resolved } ?: return state
+        if ((prompt.pointCardOnAnswer != null || prompt.tokenOnAnswer != null) && playerId !in prompt.targetIds) return state
         var next = state
         if (prompt.becomesCharacterId.isNotBlank()) {
             next = Identity.changeCharacter(
@@ -95,6 +102,15 @@ object Prompts {
                 reason = prompt.becomesReason,
             )
         }
+        prompt.tokenOnAnswer?.let { token ->
+            val rule = Tokens.rule(token.sourceId, token.label) ?: return state
+            val kind = rule.effect ?: return state
+            next = Effects.place(
+                state = next, target = playerId, kind = kind,
+                sourceCharacterId = token.sourceId, sourcePlayerId = prompt.subjectPlayerId,
+                until = rule.until, label = token.label, endsWithSource = rule.endsWithSource,
+            ).state
+        }
         next = Ledger.choice(
             state = next,
             sourceId = prompt.sourceId,
@@ -103,7 +119,23 @@ object Prompts {
             characterIds = listOfNotNull(prompt.becomesCharacterId.ifBlank { null }),
             byStoryteller = true,
         )
-        return resolve(next, promptId)
+        next = resolve(next, promptId)
+        prompt.pointCardOnAnswer?.let { template ->
+            val chosen = state.player(playerId) ?: return state
+            val seatNumber = state.seats.indexOfFirst { it.id == playerId } + 1
+            if (seatNumber <= 0) return state
+            next = queue(next, Prompt(
+                id = 0,
+                at = BriefingSlot.NOW,
+                kind = PromptKind.INFO,
+                sourceId = prompt.sourceId,
+                subjectPlayerId = prompt.subjectPlayerId,
+                title = "Wake ${state.player(prompt.subjectPlayerId ?: -1)?.name ?: "the chosen player"} separately and show this card.",
+                cards = listOf(template.copy(playerNames = listOf(chosen.name), seatNumbers = listOf(seatNumber))),
+                cardsTruthful = prompt.cardsTruthful,
+            ))
+        }
+        return next
     }
 
     /** Retires a prompt as done, keeping it in the list for the log and undo. */

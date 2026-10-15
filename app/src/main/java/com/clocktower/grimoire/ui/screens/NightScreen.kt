@@ -120,7 +120,8 @@ fun NightScreen(
     var openRow by rememberSaveable { mutableStateOf("") }
     val activeToken = openRowToken(openRow, state.cycle)
     var listOpen by rememberSaveable { mutableStateOf(false) }
-    var forced by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var forcedRows by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    val forced = forcedNightTokens(forcedRows, state.cycle)
     var shown by remember { mutableStateOf<ShownCard?>(null) }
     var remainingCards by remember { mutableStateOf(emptyList<ShownCard>()) }
     var showSerial by remember { mutableStateOf(0) }
@@ -214,7 +215,9 @@ fun NightScreen(
                         state = state,
                         step = step,
                         forced = step.key.token in forced,
-                        onRunAnyway = { forced = forced + step.key.token },
+                        onRunAnyway = {
+                            forcedRows = forcedRows + openRowKey(state.cycle, step.key.token)
+                        },
                         onShow = { card, who, truthful ->
                             remainingCards = emptyList()
                             present(ShownCard(card, who, truthful, step.abilityId))
@@ -253,7 +256,7 @@ fun NightScreen(
                         locked = pinned != null,
                         onOpen = { openRow = openRowKey(state.cycle, row.token) },
                         onRunAnyway = {
-                            forced = forced + row.token
+                            forcedRows = forcedRows + openRowKey(state.cycle, row.token)
                             openRow = openRowKey(state.cycle, row.token)
                         },
                         onUndo = {
@@ -320,6 +323,10 @@ fun NightScreen(
 
 /** How many rows either side of the open card the compact sheet shows. */
 private const val WINDOW = 3
+
+/** A deliberate override belongs only to the night when it was requested. */
+internal fun forcedNightTokens(savedRows: Set<String>, cycle: Int): Set<String> =
+    savedRows.mapNotNull { openRowToken(it, cycle) }.toSet()
 
 /** A card being held up to a player, and who it is for. */
 private data class ShownCard(

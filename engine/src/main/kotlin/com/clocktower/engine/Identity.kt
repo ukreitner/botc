@@ -31,6 +31,10 @@ data class AbilityGrant(
     val cycle: Int = 0,
     /** Independent once-per-game state for a granted once-per-game ability. */
     val spent: Boolean = false,
+    /** Whether a believed role draws its usual (inert) reminder tokens. */
+    val keepsIllusoryMarkers: Boolean = true,
+    /** Retire a believed once-per-game wake after its apparent use. */
+    val tracksApparentUse: Boolean = false,
 )
 
 /** A grant whose holder is derived, not fixed to a seat. */
@@ -57,6 +61,8 @@ data class ActingRole(
     val sourceId: String?,
     val alwaysFalse: Boolean,
     val worksWhileImpaired: Boolean,
+    val keepsIllusoryMarkers: Boolean = true,
+    val tracksApparentUse: Boolean = false,
 )
 
 /** Why a seat's character changed. */
@@ -140,6 +146,8 @@ object Identity {
                 sourceId = Character.normalizeId(grant.sourceId),
                 alwaysFalse = grant.alwaysFalse,
                 worksWhileImpaired = grant.worksWhileImpaired,
+                keepsIllusoryMarkers = grant.keepsIllusoryMarkers,
+                tracksApparentUse = grant.tracksApparentUse,
             )
         }
         return roles.distinctBy { Triple(it.abilityId, it.slotId, it.sourceId) }
