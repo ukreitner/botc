@@ -34,11 +34,13 @@ import com.clocktower.engine.CharacterPool
 import com.clocktower.engine.ChooseCharacter
 import com.clocktower.engine.Effects
 import com.clocktower.engine.ChoosePlayerAndCharacter
+import com.clocktower.engine.ChoosePlayersAndCharacters
 import com.clocktower.engine.ChoosePlayers
 import com.clocktower.engine.GameState
 import com.clocktower.engine.Memory
 import com.clocktower.engine.NightAction
 import com.clocktower.engine.NightStep
+import com.clocktower.engine.Options
 import com.clocktower.engine.Sequence
 import com.clocktower.engine.ShowInfo
 import com.clocktower.engine.TargetConstraint
@@ -94,14 +96,18 @@ fun seatOptions(
 fun constraintsOf(action: NightAction?): List<TargetConstraint> = when (action) {
     is ChoosePlayers -> action.constraints
     is ChoosePlayerAndCharacter -> action.playerConstraints
+    is ChoosePlayersAndCharacters -> action.playerConstraints
     is ShowInfo -> action.constraints
     is Sequence -> action.stages.flatMap { constraintsOf(it) }
     else -> emptyList()
 }
 
 /** The seat order this action asks for. */
-fun sortOf(action: NightAction?): TargetSort =
-    (action as? ChoosePlayers)?.sort ?: TargetSort.SEAT_ORDER
+fun sortOf(action: NightAction?): TargetSort = when (action) {
+    is ChoosePlayers -> action.sort
+    is ChoosePlayersAndCharacters -> action.sort
+    else -> TargetSort.SEAT_ORDER
+}
 
 /**
  * True when a confirmed answer includes a seat the ability's constraints
@@ -147,19 +153,63 @@ fun NightAsk(
             fontWeight = FontWeight.Bold,
             color = AgedGold,
         )
+        if (!supportedNightAction(action)) {
+            Text(
+                "This combination needs separate answers the app cannot record yet. Run it manually, then use Skip to continue.",
+                fontSize = NIGHT_MIN_SP.sp,
+                color = MaterialTheme.colorScheme.error,
+            )
+            return@Column
+        }
+        if (action is Sequence) {
+            for ((index, stage) in action.stages.withIndex()) {
+                if (pick.none && !allowsNoChoice(stage)) continue
+                NightAsk(viewModel, state, step, stage, sequenceStagePick(action, pick, index)) { stagePick ->
+                    onPick(updateSequenceStagePick(action, pick, index, stagePick))
+                }
+            }
+            return@Column
+        }
+        if (action is Options) {
+            for (option in action.options) {
+                NightChip(
+                    label = if (pick.optionId == option.id) "✓ ${option.label}" else option.label,
+                    tone = if (pick.optionId == option.id) Tone.ACTIVE else Tone.NORMAL,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onPick(pick.copy(optionId = option.id, none = false)) },
+                )
+                if (option.detail.isNotBlank()) {
+                    Text(option.detail, fontSize = NIGHT_MIN_SP.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            return@Column
+        }
         if (action is YesNo) {
             YesNoAsk(action, pick, onPick)
         }
-        if (picksAllowed(action) > 0) {
+        if (action is ChoosePlayersAndCharacters) {
+            AssignmentAsk(viewModel, state, step, action, pick, onPick)
+        } else if (picksAllowed(action) > 0) {
             SeatGrid(viewModel, state, step, action, pick, onPick)
+            if (picksAllowed(action) > 1 && pick.playerIds.isNotEmpty()) {
+                Text(
+                    pick.playerIds.mapIndexed { index, id -> "${index + 1}. ${state.player(id)?.name.orEmpty()}" }.joinToString(" → "),
+                    fontSize = NIGHT_MIN_SP.sp,
+                    color = AgedGold,
+                )
+            }
         }
         if (action is ChooseCharacter || action is ChoosePlayerAndCharacter) {
-            CharacterAsk(viewModel, state, action, pick, onPick)
+            CharacterAsk(viewModel, state, action, pick, onPick = onPick)
         }
-        val allowsNone = (action as? ChoosePlayers)?.allowNone == true ||
-            (action as? ChooseCharacter)?.allowNone == true
+        val allowsNone = allowsNoChoice(action)
         if (allowsNone) {
-            val noneLabel = (action as? ChoosePlayers)?.noneLabel ?: "They chose nobody"
+            val noneLabel = when (action) {
+                is ChoosePlayers -> action.noneLabel
+                is ChoosePlayersAndCharacters -> action.noneLabel
+                is ChooseCharacter -> "Not tonight — keep the ability"
+                else -> "They chose nobody"
+            }
             NightChip(
                 label = if (pick.none) "✓ $noneLabel" else noneLabel,
                 tone = if (pick.none) Tone.ACTIVE else Tone.MUTED,
@@ -167,6 +217,61 @@ fun NightAsk(
                     onPick(if (pick.none) pick.copy(none = false) else PickState(none = true))
                 },
             )
+        }
+    }
+}
+
+/** Each selected seat owns its own character, so edits cannot cross-wire a pair. */
+@Composable
+private fun AssignmentAsk(
+    viewModel: GameViewModel,
+    state: GameState,
+    step: NightStep,
+    action: ChoosePlayersAndCharacters,
+    pick: PickState,
+    onPick: (PickState) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (action.matchTargetType || action.sameTargetType || action.completeTargetGroup || action.preserveInPlayOwners) {
+            Text(
+                "Choose the Minions or the Demon, then assign their characters. Players keep their character type.",
+                fontSize = NIGHT_MIN_SP.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            NightChip(
+                label = if (pick.overrideConstraints) "✓ Storyteller override — custom assignments" else "Storyteller override…",
+                tone = if (pick.overrideConstraints) Tone.ALERT else Tone.MUTED,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onPick(pick.copy(overrideConstraints = !pick.overrideConstraints)) },
+            )
+        }
+        SeatGrid(viewModel, state, step, action, pick.copy(playerIds = pick.assignments.map { it.first })) {
+            onPick(setAssignmentPlayers(pick, it.playerIds))
+        }
+        for ((index, pair) in pick.assignments.withIndex()) {
+            val (playerId, characterId) = pair
+            Column(
+                modifier = Modifier.fillMaxWidth().border(1.dp, AgedGold.copy(alpha = .45f), RoundedCornerShape(12.dp)).padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "${index + 1}. ${state.player(playerId)?.name.orEmpty()} becomes…",
+                    fontSize = nightSp(16f).sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AgedGold,
+                )
+                CharacterAsk(viewModel, state, action,
+                    PickState(characterIds = listOf(characterId), overrideConstraints = pick.overrideConstraints),
+                    assignedPlayerId = playerId,
+                ) {
+                    onPick(setAssignedCharacter(pick, playerId, it.characterIds.firstOrNull().orEmpty()))
+                }
+            }
+        }
+        if (pick.assignments.isNotEmpty()) {
+            assignmentProblem(action, pick, state, viewModel::characterById)?.let { problem ->
+                Text(problem, fontSize = NIGHT_MIN_SP.sp, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }
@@ -205,8 +310,10 @@ private fun SeatGrid(
     onPick: (PickState) -> Unit,
 ) {
     val constraints = constraintsOf(action)
-    val options = remember(state, step.key.token, action) {
+    val options = remember(state, step.key.token, action, pick.overrideConstraints) {
         sortOptions(seatOptions(state, viewModel::characterById, step), sortOf(action))
+            .filter { action !is ChoosePlayersAndCharacters || !action.matchTargetType || pick.overrideConstraints ||
+                it.team == Team.MINION || it.team == Team.DEMON }
     }
     val max = picksAllowed(action)
     // "Alive" is ADVISORY: dead seats stay in the main grid, dimmed and
@@ -373,17 +480,32 @@ private fun CharacterAsk(
     state: GameState,
     action: NightAction,
     pick: PickState,
+    assignedPlayerId: Long? = null,
     onPick: (PickState) -> Unit,
 ) {
     val pool = when (action) {
         is ChooseCharacter -> action.pool
         is ChoosePlayerAndCharacter -> action.pool
+        is ChoosePlayersAndCharacters -> action.pool
         else -> CharacterPool.SCRIPT
     }
     val inPlay = state.seats.mapNotNull { it.characterId?.let(Character::normalizeId) }.toSet()
-    val candidates = remember(state.script, pool, inPlay) {
+    val requireNotInPlay = when (action) {
+        is ChoosePlayerAndCharacter -> action.requireNotInPlay
+        is ChoosePlayersAndCharacters -> action.requireNotInPlay
+        else -> false
+    }
+    val sameType = action is ChoosePlayersAndCharacters && action.matchTargetType && !pick.overrideConstraints
+    val keepOwner = action is ChoosePlayersAndCharacters && action.preserveInPlayOwners && !pick.overrideConstraints
+    val targetType = assignedPlayerId?.let(state::player)?.characterId?.let(viewModel::characterById)?.team
+    val candidates = remember(state, pool, inPlay, requireNotInPlay, assignedPlayerId, sameType, keepOwner) {
         viewModel.gameData.resolve(state.script)
             .filter { it.team != Team.FABLED }
+            .filter { !requireNotInPlay || Character.normalizeId(it.id) !in inPlay }
+            .filter { !sameType || it.team == targetType }
+            .filter { character -> !keepOwner || state.seats.none { seat ->
+                seat.id != assignedPlayerId && seat.characterId?.let(Character::normalizeId) == Character.normalizeId(character.id)
+            } }
             .filter { character ->
                 when (pool) {
                     CharacterPool.SCRIPT -> true

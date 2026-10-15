@@ -4,6 +4,7 @@ import com.clocktower.grimoire.ui.components.ShowCard
 import com.clocktower.grimoire.ui.screens.night.customOffer
 import com.clocktower.grimoire.ui.screens.night.nightCardAlreadyPresented
 import com.clocktower.grimoire.ui.screens.night.primaryLabel
+import com.clocktower.grimoire.ui.screens.night.pendingPromptCards
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -57,4 +58,22 @@ class NightCardPresentationTest {
         assertFalse(nightCardAlreadyPresented(listOf(first, second), second, second))
         assertFalse(nightCardAlreadyPresented(listOf(second), first, first))
     }
+    @Test
+    fun `prompt completion does not replace a custom handout with the suggested truth`() {
+        val original = ShowCard.PointCard("THIS PLAYER IS THE NIGHTWATCHMAN", listOf("Ana"), listOf(1), "nightwatchman")
+        val custom = ShowCard.PointCard("THIS PLAYER IS THE NIGHTWATCHMAN", listOf("Dev"), listOf(4), "nightwatchman")
+        assertEquals(listOf(original), pendingPromptCards(listOf(original), emptyList()))
+        assertTrue(pendingPromptCards(listOf(original), listOf(custom), customShown = custom).isEmpty())
+        assertTrue(pendingPromptCards(listOf(original), listOf(original)).isEmpty())
+    }
+
+    @Test
+    fun `prompt completion shows only the rest of a multi-card handout`() {
+        val first = ShowCard.Message("YOU ARE EVIL")
+        val second = ShowCard.CharacterCard("YOU ARE", "imp")
+        assertEquals(listOf(second), pendingPromptCards(listOf(first, second), listOf(first)))
+        assertTrue(pendingPromptCards(listOf(first, second), listOf(first, second)).isEmpty())
+        assertEquals(listOf(first), pendingPromptCards(listOf(first, first), listOf(first)))
+    }
+
 }

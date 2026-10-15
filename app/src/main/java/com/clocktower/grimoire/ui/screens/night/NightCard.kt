@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.clocktower.engine.Answer
+import com.clocktower.engine.ChoosePlayersAndCharacters
 import com.clocktower.engine.Deaths
 import com.clocktower.engine.GameState
 import com.clocktower.engine.InfoAudience
@@ -115,12 +116,15 @@ fun NightCard(
     var pick by remember(state.cycle, key.token) {
         mutableStateOf(PickState(playerIds = preselected(step.action)))
     }
-    var gateAnswer by rememberSaveable(state.cycle, key.token) { mutableStateOf<Boolean?>(null) }
+    var savedGateAnswer by rememberSaveable { mutableStateOf("") }
+    val gateAnswer = nightGateAnswer(savedGateAnswer, state.cycle, key.token)
     var drawerOpen by rememberSaveable(state.cycle, key.token) { mutableStateOf(false) }
     var editing by remember(state.cycle, key.token) { mutableStateOf<ShowCard?>(null) }
     var customOpen by rememberSaveable(state.cycle, key.token) { mutableStateOf(false) }
 
-    val skipped = isSkipped(step, forced)
+    val owed = prompts.firstOrNull()
+    // An already-used ability can still owe its recipient a card.
+    val skipped = owed == null && isSkipped(step, forced)
     val gate = step.gate
     val awaitingGate = needsGateAnswer(gate, gateAnswer != null)
     val choiceAllowed = gate !is StepGate.Reduced || StepGate.CHOOSE in gate.allow
@@ -163,7 +167,9 @@ fun NightCard(
     // `shown:` row, so the Chef got nothing and the sheet said the step was
     // done (playtest B P1 #6).
     val truthCard = remember(answerCards) { answerCards.firstOrNull { it.truthful }?.card?.asCard() }
-    val truthful = remember(offers) { offers.filter { it.truthful == true } }
+    val truthful = remember(offers, info?.obligation) {
+        offers.filter { it.truthful == true && info?.obligation != InfoObligation.MUST_LIE }
+    }
     val lies = remember(offers) { offers.filter { it.truthful == false } }
     // An answer the engine computed FOR THE STORYTELLER is not shown to anybody:
     // no card, and no `SHOW … TO …` on the one gold button (B2-2, D2-2, D2-3).
@@ -179,27 +185,29 @@ fun NightCard(
     }.orEmpty()
 
     // ---- what the action will do, previewed through the ONE kill funnel ----
-    val choicePreview = NightPlan.previewChoice(state, viewModel::characterById, step,
-        NightInput(playerIds = pick.playerIds, characterIds = pick.characterIds, none = pick.none, yes = pick.yes))
-    val effects = actionEffects(step.action) + choicePreview.effects
-    val attack = effects.filterIsInstance<NightEffect.Attack>().firstOrNull()
-    val outcomes: List<Pair<Long, KillOutcome>> = remember(state, key.token, pick.playerIds, attack) {
-        if (attack == null || skipped) {
+    val choicePreview = NightPlan.previewChoice(state, viewModel::characterById, step, pick.toNightInput())
+    val effects = pickedActionEffects(step.action, pick) + choicePreview.effects
+    val attacks = effects.filterIsInstance<NightEffect.Attack>()
+    val outcomes: List<Pair<Long, KillOutcome>> = remember(state, key.token, pick, attacks) {
+        if (attacks.isEmpty() || skipped) {
             emptyList()
         } else {
-            choicePreview.targetIds.map { id ->
-                id to Deaths.killOutcome(
-                    state,
-                    viewModel::characterById,
-                    id,
-                    KillCause(
-                        cause = attack.cause,
-                        sourceCharacterId = step.abilityId,
-                        sourcePlayerId = step.holderId,
-                        ignoresProtection = !attack.respectProtection,
-                    ),
-                )
-            }
+            attacks.flatMap { attack ->
+                attackTargetIds(attack.on, step.holderId, choicePreview.targetIds).map { id ->
+                    id to Deaths.killOutcome(
+                        state,
+                        viewModel::characterById,
+                        id,
+                        KillCause(
+                            cause = attack.cause,
+                            sourceCharacterId = step.abilityId,
+                            sourcePlayerId = step.holderId,
+                            ignoresProtection = !attack.respectProtection,
+                            deferred = attack.deferred,
+                        ),
+                    )
+                }
+            }.distinctBy { it.first }
         }
     }
     val needsKillSheet = outcomes.any { it.second is KillOutcome.Choice }
@@ -279,7 +287,7 @@ fun NightCard(
     val label = primaryLabel(
         picked = resolvedNames,
         pickedCharacters = pick.characterIds.map { viewModel.characterById(it)?.name ?: it },
-        places = placedLabels(sharedEffects(step.action) + choicePreview.effects.filterNot {
+        places = placedLabels((effects - lastPickEffects(step.action).toSet()).filterNot {
             it is NightEffect.PlaceToken && it.on == Ref.Source
         }),
         lastPickPlaces = placedLabels(lastPickEffects(step.action)),
@@ -340,7 +348,7 @@ fun NightCard(
             }
 
             // ---- 2. badges: the gate, then whatever the planner noticed ----
-            val badge = gateBadge(gate)
+            val badge = gateBadge(gate).takeIf { owed == null }
             if (badge != null || step.badges.isNotEmpty()) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -374,7 +382,6 @@ fun NightCard(
             }
 
             // ---- 4b. the question the engine is still owed, before anything else ----
-            val owed = prompts.firstOrNull()
             if (owed != null) {
                 NightPromptAsk(
                     viewModel = viewModel,
@@ -396,7 +403,7 @@ fun NightCard(
                         NightChip(
                             label = gate.yesLabel,
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { gateAnswer = true },
+                            onClick = { savedGateAnswer = saveNightGateAnswer(state.cycle, key.token, true) },
                         )
                     }
                     Box(Modifier.weight(1f)) {
@@ -405,7 +412,7 @@ fun NightCard(
                             tone = Tone.MUTED,
                             modifier = Modifier.fillMaxWidth(),
                             onClick = {
-                                gateAnswer = false
+                                savedGateAnswer = saveNightGateAnswer(state.cycle, key.token, false)
                                 viewModel.resolveNightStep(key, NightInput(none = true))
                             },
                         )
@@ -473,9 +480,10 @@ fun NightCard(
                     color = EmberRed,
                 )
             }
-            if (truthful.isNotEmpty() || liesOnCard.isNotEmpty()) {
+            val truthsOnCard = truthful.take(3)
+            if (truthsOnCard.isNotEmpty() || liesOnCard.isNotEmpty()) {
                 CardOffers(
-                    offers = truthful + liesOnCard,
+                    offers = truthsOnCard + liesOnCard,
                     chosen = chosen,
                     onShow = ::showOffer,
                     onEdit = { editing = it; customOpen = true },
@@ -511,6 +519,18 @@ fun NightCard(
             }
 
             // ---- 10. ONE primary button, stating the outcome ----
+            if (!pick.none) {
+                for ((playerId, characterId) in pick.assignments) {
+                    Text(
+                        "${state.player(playerId)?.name.orEmpty()} → ${viewModel.characterById(characterId)?.name ?: "choose a character"}",
+                        fontSize = NIGHT_MIN_SP.sp,
+                        color = AgedGold,
+                    )
+                }
+                for (selectedAnswer in pickedOptionLabels(action, pick)) {
+                    Text(selectedAnswer, fontSize = NIGHT_MIN_SP.sp, color = AgedGold)
+                }
+            }
             if (skipped) {
                 PrimaryButton(label = "RUN IT ANYWAY", onConfirm = onRunAnyway)
             } else if (!awaitingGate) {
@@ -518,9 +538,12 @@ fun NightCard(
                     label = when {
                         needsKillSheet -> "RESOLVE THE DEATH…"
                         replay.size > 1 -> "REPLAY ${replay.size} CARDS TO ${holderName.uppercase()}"
+                        pick.assignments.isNotEmpty() -> "CONFIRM ${pick.assignments.size} CHARACTER CHANGES"
+                        pickedOptionLabels(action, pick).isNotEmpty() && label == "DONE — NEXT STEP" -> "CONFIRM CHOICE"
                         else -> label
                     },
-                    enabled = primaryEnabled(action, pick) && !(needsInfoChoice && chosen == null),
+                    enabled = primaryEnabled(action, pick) && !(needsInfoChoice && chosen == null) &&
+                        assignmentProblem(action, pick, state, viewModel::characterById) == null,
                     // A standing death is as destructive as a chosen one.
                     holdMillis = if (
                         (isDestructive(effects) || deferred.isNotEmpty()) && !needsKillSheet
@@ -546,17 +569,15 @@ fun NightCard(
                                 }
                                 viewModel.resolveNightStep(
                                     key,
-                                    NightInput(
-                                        playerIds = pick.playerIds,
-                                        characterIds = pick.characterIds,
-                                        yes = pick.yes,
-                                        none = pick.none,
+                                    pick.toNightInput(
                                         // A pick the constraints advise against
                                         // (a dead target, say) was confirmed on
                                         // the picker — resolve must not drop it.
-                                        overrideConstraints = picksOverrideConstraints(
-                                            state, viewModel::characterById, step, action, pick,
-                                        ),
+                                        overrideConstraints = if (action is ChoosePlayersAndCharacters) {
+                                            // Pair semantics need an explicit custom ruling,
+                                            // not the advisory seat-constraint escape hatch.
+                                            pick.overrideConstraints
+                                        } else picksOverrideConstraints(state, viewModel::characterById, step, action, pick),
                                     ),
                                 )
                                 if (isDawn) onDawn()
@@ -599,8 +620,8 @@ fun NightCard(
                     state = state,
                     step = step,
                     attacked = pick.playerIds,
-                    hasAttack = attack != null,
-                    otherCards = lies - liesOnCard.toSet(),
+                    hasAttack = attacks.isNotEmpty(),
+                    otherCards = (truthful - truthsOnCard.toSet()) + (lies - liesOnCard.toSet()),
                     onShow = ::showOffer,
                     onEdit = { editing = it; customOpen = true },
                     onOpenShowTool = onOpenShowTool,
@@ -693,32 +714,32 @@ private fun NightPromptAsk(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     if (choices.isEmpty()) {
-        if (prompt.cards.isNotEmpty()) {
-            CardOffers(
-                offers = prompt.cards.mapIndexed { index, offered -> UiOffer("SHOW ${index + 1}", offered.asCard(), true) },
-                chosen = null,
-                onShow = { offer -> onShow(offer.card, prompt.subjectPlayerId, true) },
-                onEdit = { editing = it; customOpen = true },
-            )
+        val requiredCards = remember(prompt.id, prompt.cards, card) {
+            prompt.cards.map { it.asCard() }.ifEmpty { listOfNotNull(card) }
         }
-        if (card != null) {
+        val requiredTruth = if (prompt.cards.isNotEmpty()) prompt.cardsTruthful else true
+        var presentedCards by remember(prompt.id, requiredCards) { mutableStateOf(emptyList<ShowCard>()) }
+        var customShown by remember(prompt.id, requiredCards) { mutableStateOf<ShowCard?>(null) }
+        var chosen by remember(prompt.id, requiredCards) { mutableStateOf<UiOffer?>(null) }
+        fun present(offer: UiOffer, custom: Boolean = false) {
+            chosen = offer
+            customShown = offer.card.takeIf { custom }
+            presentedCards = presentedCards + offer.card
+            onShow(offer.card, prompt.subjectPlayerId, offer.truthful)
+        }
+        if (requiredCards.isNotEmpty()) {
             CardOffers(
-                offers = listOf(
-                    UiOffer(
-                        label = "SHOW: YOU ARE " +
-                            (viewModel.characterById(prompt.characterIds.first())?.name ?: "?"),
-                        card = card,
-                        truthful = true,
-                    ),
-                ),
-                chosen = null,
-                onShow = { offer -> onShow(offer.card, prompt.subjectPlayerId, true) },
+                offers = requiredCards.mapIndexed { index, offered ->
+                    UiOffer("SHOW ${index + 1}", offered, requiredTruth)
+                },
+                chosen = chosen,
+                onShow = { offer -> present(offer) },
                 onEdit = { editing = it; customOpen = true },
             )
         }
         NightChip(
             label = "Custom choice…",
-            onClick = { editing = card; customOpen = true },
+            onClick = { editing = chosen?.card ?: requiredCards.firstOrNull(); customOpen = true },
         )
         if (customOpen) {
             CustomCardEditor(
@@ -728,15 +749,19 @@ private fun NightPromptAsk(
                 onDismiss = { customOpen = false },
                 onShow = { custom ->
                     customOpen = false
-                    onShow(custom, prompt.subjectPlayerId, null)
+                    present(customOffer(custom) { viewModel.characterById(it)?.name ?: it }, custom = true)
                 },
             )
         }
+        val pending = pendingPromptCards(requiredCards, presentedCards, customShown)
         PrimaryButton(
-            label = if (prompt.cards.isNotEmpty()) "SHOW ${prompt.cards.size} ${if (prompt.cards.size == 1) "CARD" else "CARDS"} TO ${prompt.subjectPlayerId?.let(state::player)?.name.orEmpty().uppercase()}"
-                else promptDoneLabel(card != null),
+            label = if (pending.isNotEmpty()) "SHOW ${pending.size} ${if (pending.size == 1) "CARD" else "CARDS"} TO ${prompt.subjectPlayerId?.let(state::player)?.name.orEmpty().uppercase()}"
+                else promptDoneLabel(false),
             onConfirm = {
-                if (prompt.cards.isNotEmpty()) onShowCards(prompt.cards.map { it.asCard() }, prompt.subjectPlayerId, true)
+                // A card chip already handed this information over and logged
+                // it. Completing only delivers remaining required cards; a
+                // deliberate custom handout replaces the suggested sequence.
+                if (pending.isNotEmpty()) onShowCards(pending, prompt.subjectPlayerId, requiredTruth)
                 onDone()
             },
         )
@@ -801,6 +826,20 @@ fun nightCardAlreadyPresented(
 ): Boolean {
     val expected = if (replay.isEmpty()) primaryCard else replay.singleOrNull()
     return expected != null && expected == presented
+}
+
+/** Remaining required handouts, with each delivered occurrence consumed once. */
+fun pendingPromptCards(
+    required: List<ShowCard>,
+    presented: List<ShowCard>,
+    customShown: ShowCard? = null,
+): List<ShowCard> {
+    if (customShown != null) return emptyList()
+    val delivered = presented.toMutableList()
+    return required.filter { card ->
+        val index = delivered.indexOf(card)
+        if (index < 0) true else { delivered.removeAt(index); false }
+    }
 }
 
 /**
@@ -896,7 +935,7 @@ private fun SecondaryDrawer(
         HorizontalDivider()
         if (otherCards.isNotEmpty()) {
             Text(
-                text = "FALSE INFO YOU COULD SHOW INSTEAD",
+                text = if (otherCards.all { it.truthful == false }) "FALSE INFO YOU COULD SHOW INSTEAD" else "MORE CARDS",
                 fontSize = NIGHT_MIN_SP.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

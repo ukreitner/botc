@@ -453,7 +453,15 @@ private fun CardBody(card: ShowCard, viewModel: GameViewModel) {
                 textAlign = TextAlign.Center,
             )
             card.characterId?.let {
-                CharacterToken(character = viewModel.characterById(it), size = 160.dp)
+                val character = viewModel.characterById(it)
+                CharacterToken(character = character, size = 160.dp)
+                Text(
+                    text = character?.name ?: "?",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Parchment,
+                    textAlign = TextAlign.Center,
+                )
             }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(28.dp),

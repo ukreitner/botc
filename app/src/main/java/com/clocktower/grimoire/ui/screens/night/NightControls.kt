@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +31,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -45,6 +50,15 @@ import com.clocktower.grimoire.ui.theme.AgedGold
 import com.clocktower.grimoire.ui.theme.EmberRed
 import com.clocktower.grimoire.ui.theme.Twilight
 import kotlinx.coroutines.withTimeoutOrNull
+
+/** Releasing or cancelling before the threshold never commits an action. */
+internal suspend fun confirmAfterHold(
+    holdMillis: Int,
+    awaitRelease: suspend () -> Boolean,
+    onConfirm: () -> Unit,
+) {
+    if (withTimeoutOrNull(holdMillis.toLong()) { awaitRelease() } == null) onConfirm()
+}
 
 /** The theme colour for one [Tone]. WP10 owns the palette; this only maps it. */
 @Composable
@@ -72,7 +86,8 @@ fun PrimaryButton(
     holdMillis: Int = 0,
     onConfirm: () -> Unit,
 ) {
-    var holding by remember { mutableStateOf(false) }
+    var holding by remember(enabled, holdMillis, label) { mutableStateOf(false) }
+    val currentOnConfirm by rememberUpdatedState(onConfirm)
     val fill by animateFloatAsState(
         targetValue = if (holding) 1f else 0f,
         animationSpec = tween(durationMillis = if (holding) holdMillis else 140),
@@ -85,16 +100,20 @@ fun PrimaryButton(
     val press = if (holdMillis <= 0) {
         Modifier.clickable(enabled = enabled, onClick = onConfirm)
     } else {
-        Modifier.pointerInput(enabled, holdMillis) {
+        // A changed outcome cancels a hold already in progress. Callback-only
+        // recompositions keep the gesture but use the latest chosen targets.
+        Modifier.pointerInput(enabled, holdMillis, label) {
             detectTapGestures(
                 onPress = {
                     if (!enabled) return@detectTapGestures
                     holding = true
                     // Fires only if the finger stays down: a fumble in the dark
                     // releases early and nothing happens.
-                    val released = withTimeoutOrNull(holdMillis.toLong()) { tryAwaitRelease() }
-                    holding = false
-                    if (released == null) onConfirm()
+                    try {
+                        confirmAfterHold(holdMillis, { tryAwaitRelease() }) { currentOnConfirm() }
+                    } finally {
+                        holding = false
+                    }
                 },
             )
         }
@@ -112,8 +131,16 @@ fun PrimaryButton(
             }
             .then(press)
             .semantics {
+                role = Role.Button
+                if (!enabled) disabled()
                 contentDescription =
                     if (holdMillis > 0) "$label. Press and hold to confirm." else label
+                if (holdMillis > 0 && enabled) {
+                    onLongClick(label = "Confirm $label") {
+                        currentOnConfirm()
+                        true
+                    }
+                }
             },
         contentAlignment = Alignment.Center,
     ) {

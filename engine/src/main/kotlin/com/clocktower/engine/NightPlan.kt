@@ -444,6 +444,7 @@ data class NightPlan(
             // half, which is the one an Exorcised Demon would still run. A
             // believed Pukka's standing victim must not die a night late.
             val illusion = nightCtx.role?.alwaysFalse == true
+            val keepsIllusoryMarkers = nightCtx.role?.keepsIllusoryMarkers != false
             val ownMark = illusionMarker(holder)
 
             // The deferred half is computed from the state BEFORE the choice lands,
@@ -451,18 +452,28 @@ data class NightPlan(
             // dies" is the order the rules ask for (lead D4).
             val declaredPending = nightRule?.pending?.invoke(nightCtx).orEmpty()
             val pending = if (illusion) {
-                inert(declaredPending, keepMarkers = ownMark == null)
+                inert(declaredPending, keepMarkers = ownMark == null && keepsIllusoryMarkers)
             } else {
                 declaredPending
             }
 
             val targets = resolvedTargets(state, lookup, step, action, input)
+            if (action is ChoosePlayersAndCharacters &&
+                assignmentConstraintError(state, lookup, action, input) != null) return state
+            // Never consume a once-per-game power from a missing, stale or
+            // half-completed picker answer. A pass is an explicit `none`, not
+            // the absence of the second Seamstress target or Philosopher icon.
+            if (!completeOncePerGameChoice(action, input, targets, lookup)) return state
             // A per-pair answer names its characters in `assignments` and an
             // answer-set branch in `ActionOption.characterIds`; the whole-step
             // list is what everything downstream reads.
-            val chosenCharacters = input.characterIds
+            // Passing takes precedence over a stale picker payload. In particular,
+            // a Philosopher's CHOICE history must not say they gained the character
+            // that was selected before they shook their head.
+            val chosenCharacters = (if (input.none) emptyList() else input.characterIds
                 .ifEmpty { input.assignments.map { it.second } }
-                .ifEmpty { (action as? Options)?.let { chosenOption(it, input) }?.characterIds.orEmpty() }
+                .ifEmpty { (action as? Options)?.let { chosenOption(it, input) }?.characterIds.orEmpty() })
+                .filter { it.isNotBlank() && lookup(it) != null }
             val scope = EffectScope(
                 sourceId = holderId,
                 sourceCharacterId = step.abilityId,
@@ -917,7 +928,14 @@ data class NightPlan(
             // a charged believed Po still takes three — and every consequence
             // is stripped out of it.
             val action = if (role.alwaysFalse) {
-                illusory(chosen, keepMarkers = illusionMarker(holder) == null)
+                // A failed Philosopher gain is a belief even after the poison
+                // ends. Its tokens must never become live effects; only its
+                // simulated once-per-game spend survives to retire that wake.
+                illusory(
+                    chosen,
+                    keepMarkers = illusionMarker(holder) == null && role.keepsIllusoryMarkers,
+                    keepSpent = role.tracksApparentUse,
+                )
             } else {
                 chosen
             }
@@ -1004,7 +1022,8 @@ data class NightPlan(
                 cards = if (inherited) {
                     emptyList()
                 } else {
-                    nightRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule)
+                    nightRule?.cards?.invoke(nightCtx).orEmpty() +
+                        believerRule?.cards?.invoke(nightCtx).orEmpty() + infoCards(ctx, role, nightRule)
                 },
                 promptId = promptId,
                 // An inherited Demon is not woken at all tonight, so a
@@ -1090,7 +1109,7 @@ data class NightPlan(
          * truthful answer behind it is what the storyteller needs in order to lie
          * — a drunk Empath's row must still compute the real count.
          */
-        private fun illusory(action: NightAction?, keepMarkers: Boolean): NightAction? =
+        private fun illusory(action: NightAction?, keepMarkers: Boolean, keepSpent: Boolean = false): NightAction? =
             when (action) {
                 null -> null
                 is ChoosePlayers -> action.copy(
@@ -1098,47 +1117,47 @@ data class NightPlan(
                     // "Chose nobody" is always a legal answer for a believer: the
                     // real Demon has to be told when the fake attack never came.
                     allowNone = true,
-                    perTarget = inert(action.perTarget, keepMarkers),
-                    onResolve = inert(action.onResolve, keepMarkers),
-                    onNone = inert(action.onNone, keepMarkers),
+                    perTarget = inert(action.perTarget, keepMarkers, keepSpent),
+                    onResolve = inert(action.onResolve, keepMarkers, keepSpent),
+                    onNone = inert(action.onNone, keepMarkers, keepSpent),
                 )
 
                 is ChooseCharacter -> action.copy(
                     prompt = illusionPrompt(action.prompt),
                     allowNone = true,
-                    onResolve = inert(action.onResolve, keepMarkers),
-                    onNone = inert(action.onNone, keepMarkers),
+                    onResolve = inert(action.onResolve, keepMarkers, keepSpent),
+                    onNone = inert(action.onNone, keepMarkers, keepSpent),
                 )
 
                 is ChoosePlayerAndCharacter -> action.copy(
                     prompt = illusionPrompt(action.prompt),
-                    onResolve = inert(action.onResolve, keepMarkers),
-                    onNone = inert(action.onNone, keepMarkers),
+                    onResolve = inert(action.onResolve, keepMarkers, keepSpent),
+                    onNone = inert(action.onNone, keepMarkers, keepSpent),
                 )
 
                 is ChoosePlayersAndCharacters -> action.copy(
                     prompt = illusionPrompt(action.prompt),
                     allowNone = true,
-                    perPair = inert(action.perPair, keepMarkers),
-                    onResolve = inert(action.onResolve, keepMarkers),
-                    onNone = inert(action.onNone, keepMarkers),
+                    perPair = inert(action.perPair, keepMarkers, keepSpent),
+                    onResolve = inert(action.onResolve, keepMarkers, keepSpent),
+                    onNone = inert(action.onNone, keepMarkers, keepSpent),
                 )
 
                 is YesNo -> action.copy(
                     prompt = illusionPrompt(action.prompt),
-                    onYes = inert(action.onYes, keepMarkers),
-                    onNo = inert(action.onNo, keepMarkers),
+                    onYes = inert(action.onYes, keepMarkers, keepSpent),
+                    onNo = inert(action.onNo, keepMarkers, keepSpent),
                 )
 
                 is Options -> action.copy(
                     prompt = illusionPrompt(action.prompt),
-                    options = action.options.map { it.copy(effects = inert(it.effects, keepMarkers)) },
-                    onNone = inert(action.onNone, keepMarkers),
+                    options = action.options.map { it.copy(effects = inert(it.effects, keepMarkers, keepSpent)) },
+                    onNone = inert(action.onNone, keepMarkers, keepSpent),
                 )
 
                 // Every stage of the Al-Hadikhia's three-pick sequence, one at a time.
                 is Sequence ->
-                    action.copy(stages = action.stages.mapNotNull { illusory(it, keepMarkers) })
+                    action.copy(stages = action.stages.mapNotNull { illusory(it, keepMarkers, keepSpent) })
 
                 is ShowInfo -> action
             }
@@ -1147,15 +1166,16 @@ data class NightPlan(
          * [effects] with everything that changes the game removed. See [illusory]
          * for why the markers may survive.
          */
-        private fun inert(effects: List<NightEffect>, keepMarkers: Boolean): List<NightEffect> {
-            if (!keepMarkers) return emptyList()
+        private fun inert(effects: List<NightEffect>, keepMarkers: Boolean, keepSpent: Boolean = false): List<NightEffect> {
+            if (!keepMarkers && !keepSpent) return emptyList()
             return effects.mapNotNull { effect ->
                 when (effect) {
-                    is NightEffect.PlaceToken, is NightEffect.RemoveToken -> effect
+                    is NightEffect.PlaceToken, is NightEffect.RemoveToken -> effect.takeIf { keepMarkers }
+                    is NightEffect.MarkSpent -> effect.takeIf { keepSpent }
                     is NightEffect.When -> effect
                         .copy(
-                            then = inert(effect.then, true),
-                            otherwise = inert(effect.otherwise, true),
+                            then = inert(effect.then, keepMarkers, keepSpent),
+                            otherwise = inert(effect.otherwise, keepMarkers, keepSpent),
                         )
                         .takeIf { it.then.isNotEmpty() || it.otherwise.isNotEmpty() }
 
@@ -1423,12 +1443,12 @@ data class NightPlan(
                 )
             }
 
-            is Answer.Players -> pointCard(state, answer)
+            is Answer.Players -> pointCard(state, answer, prefix)
             is Answer.Message -> ShowCardSpec.Message(answer.text)
         }
 
         /** "Point at these players", with the seat numbers the player checks. */
-        private fun pointCard(state: GameState, answer: Answer.Players): ShowCardSpec? {
+        private fun pointCard(state: GameState, answer: Answer.Players, prefix: String = ""): ShowCardSpec? {
             if (answer.ids.isEmpty()) return null
             val seats = answer.ids.mapNotNull { id ->
                 val index = state.seats.indexOfFirst { it.id == id }
@@ -1436,7 +1456,7 @@ data class NightPlan(
             }
             if (seats.isEmpty()) return null
             return ShowCardSpec.PointCard(
-                prefix = ShowCardSpec.pointPrefix(answer.characterId != null, seats.size),
+                prefix = prefix.ifBlank { ShowCardSpec.pointPrefix(answer.characterId != null, seats.size) },
                 playerNames = seats.mapNotNull { it.second?.name },
                 seatNumbers = seats.map { it.first },
                 characterId = answer.characterId,
@@ -1918,6 +1938,44 @@ data class NightPlan(
 
         // ---- applying one step ---------------------------------------------
 
+        private fun completeOncePerGameChoice(
+            action: NightAction?,
+            input: NightInput,
+            targets: List<Long>,
+            lookup: (String) -> Character?,
+        ): Boolean {
+            if (input.none) return true
+            fun spends(effects: List<NightEffect>) = effects.any { it is NightEffect.MarkSpent }
+            fun validCharacter(id: String, pool: CharacterPool): Boolean {
+                val character = id.takeIf { it.isNotBlank() }?.let(lookup) ?: return false
+                if (input.overrideConstraints) return true
+                return when (pool) {
+                    CharacterPool.GOOD -> character.team in setOf(Team.TOWNSFOLK, Team.OUTSIDER)
+                    CharacterPool.EVIL -> character.team in setOf(Team.MINION, Team.DEMON)
+                    CharacterPool.TOWNSFOLK -> character.team == Team.TOWNSFOLK
+                    CharacterPool.OUTSIDER -> character.team == Team.OUTSIDER
+                    CharacterPool.MINION -> character.team == Team.MINION
+                    CharacterPool.DEMON -> character.team == Team.DEMON
+                    CharacterPool.SCRIPT, CharacterPool.NOT_IN_PLAY -> true
+                }
+            }
+            return when (action) {
+                is ChooseCharacter -> !spends(action.onResolve) ||
+                    (input.characterIds.size == 1 && validCharacter(input.characterIds.single(), action.pool))
+                is ChoosePlayers -> !spends(action.onResolve) ||
+                    (targets.size in action.min.coerceAtLeast(1)..action.max &&
+                        input.playerIds.distinct().size <= action.max)
+                is ChoosePlayerAndCharacter -> !spends(action.onResolve) ||
+                    (targets.size == 1 && input.characterIds.size == 1 &&
+                        validCharacter(input.characterIds.single(), action.pool))
+                is ChoosePlayersAndCharacters -> !spends(action.onResolve) ||
+                    (input.assignments.size in action.min.coerceAtLeast(1)..action.max &&
+                        input.assignments.map { it.first }.distinct().size == input.assignments.size &&
+                        input.assignments.all { it.first in targets && validCharacter(it.second, action.pool) })
+                else -> true
+            }
+        }
+
         /** The seats and characters one resolution addresses. */
         private class EffectScope(
             val sourceId: Long?,
@@ -2071,7 +2129,7 @@ data class NightPlan(
                 // `onResolve`, which would otherwise fire with nothing picked.
                 is ChooseCharacter -> {
                     scope.current = targets.firstOrNull()
-                    val none = input.none || input.characterIds.isEmpty()
+                    val none = input.none || scope.character() == null
                     next = applyEffects(
                         next,
                         lookup,
@@ -2082,7 +2140,7 @@ data class NightPlan(
 
                 is ChoosePlayerAndCharacter -> {
                     scope.current = targets.firstOrNull()
-                    val none = input.none || input.characterIds.isEmpty() || targets.isEmpty()
+                    val none = input.none || scope.character() == null || targets.isEmpty()
                     next = applyEffects(
                         next,
                         lookup,
@@ -2096,7 +2154,7 @@ data class NightPlan(
                 // and an empty payload can never take the first pick's character.
                 is ChoosePlayersAndCharacters -> {
                     val pairs = input.assignments
-                        .filter { it.first in targets && it.second.isNotBlank() }
+                        .filter { it.first in targets && it.second.isNotBlank() && lookup(it.second) != null }
                         .distinctBy { it.first }
                     if (input.none || pairs.isEmpty()) {
                         next = applyEffects(next, lookup, action.onNone, scope)
@@ -2337,6 +2395,10 @@ data class NightPlan(
                             title = effect.title,
                             stepSlotId = effect.stepSlotId,
                             cards = effect.cards,
+                            targetIds = effect.targetIds,
+                            pointCardOnAnswer = effect.pointCardOnAnswer,
+                            cardsTruthful = effect.cardsTruthful,
+                            tokenOnAnswer = effect.tokenOnAnswer,
                         ),
                     )
                 }
@@ -2429,6 +2491,9 @@ data class NightPlan(
                                 slotId = effect.slotId,
                                 worksWhileImpaired = effect.worksWhileImpaired,
                                 cycle = next.cycle,
+                                alwaysFalse = effect.alwaysFalse,
+                                keepsIllusoryMarkers = effect.keepsIllusoryMarkers,
+                                tracksApparentUse = effect.tracksApparentUse,
                             )
                             for (target in seats(next, lookup, on, scope)) {
                                 next = next.updatePlayer(target) { seat ->
@@ -2807,10 +2872,10 @@ object Gates {
     /** Reads `Character.spentLabel` (lead D49) — never the "Once per game" text. */
     fun notSpent(): WakePredicate = WakePredicate { ctx ->
         val holder = ctx.holder ?: return@WakePredicate StepGate.Fire
-        // A believer has nothing to use up: the planner strips their `MarkSpent`
-        // along with every other effect, so a Lunatic who "used" a once-per-game
-        // Demon power last night must be offered it again tonight (lead D70).
-        if (ctx.role?.alwaysFalse == true) return@WakePredicate StepGate.Fire
+        // Preserve the existing Lunatic/Drunk illusion gate. A failed Philosopher
+        // gain additionally tracks the borrowed power's simulated once-per-game
+        // use, so that wake stops after the player believes they have spent it.
+        if (ctx.role?.alwaysFalse == true && !ctx.role.tracksApparentUse) return@WakePredicate StepGate.Fire
         val ability = ctx.role?.abilityId ?: return@WakePredicate StepGate.Fire
         val label = ctx.lookup(ability)?.spentLabel.orEmpty()
         val key = if (label.isEmpty()) null else Tokens.key(ability, label)

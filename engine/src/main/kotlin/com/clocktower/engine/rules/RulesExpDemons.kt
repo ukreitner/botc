@@ -217,7 +217,7 @@ private fun alHadikhiaRitual(): NightAction = Sequence(
         ChoosePlayers(
             sourceId = "alhadikhia",
             prompt = "WHICH 3 PLAYERS DID THEY CHOOSE? (in order)",
-            min = 0,
+            min = 3,
             max = 3,
             // Dead players are legal, powerful picks and must not be demoted.
             constraints = listOf(

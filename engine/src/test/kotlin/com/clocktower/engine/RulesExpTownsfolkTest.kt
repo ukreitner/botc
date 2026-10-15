@@ -771,7 +771,8 @@ class RulesExpTownsfolkTest {
         val action = assertIs<ChoosePlayersAndCharacters>(assertNotNull(step(state, "engineer")).action)
         assertEquals(CharacterPool.EVIL, action.pool)
         assertEquals(3, action.max)
-        assertTrue(TargetConstraint.EVIL in action.playerConstraints)
+        assertFalse(TargetConstraint.EVIL in action.playerConstraints, "character type, not alignment, determines an Engineer target")
+        assertTrue(action.matchTargetType && action.sameTargetType)
 
         // Only the Demon seat is paired: nobody else changes.
         state = run(state, "engineer", NightInput(assignments = listOf(1L to "vortox")))
@@ -1011,11 +1012,12 @@ class RulesExpTownsfolkTest {
         state = kill(state, 4L, DeathCause.DEMON_KILL, "imp", 1L)
         state = run(state, "nightwatchman", NightInput(playerIds = listOf(4L)))
 
-        // Then the target was told, and the ability is gone from the sheet
+        // The target now owes a separate handout; queuing it is not proof they
+        // were told. Only the real presentation writes a TOLD ledger entry.
         assertTrue(has(state, 0L, "nightwatchman", "No Ability"))
         assertTrue(
-            state.ledger.any { it.kind == LedgerKind.TOLD && it.actorId == 4L },
-            "a dead target is a legal target and is told",
+            state.prompts.any { !it.resolved && it.sourceId == "nightwatchman" && it.subjectPlayerId == 4L && it.cards.isNotEmpty() },
+            "a dead target is a legal recipient and gets a handout prompt",
         )
         assertTrue(gate(atNight(state, 3), "nightwatchman") is StepGate.Skip)
     }

@@ -1,0 +1,25 @@
+{
+  "game": {
+    "id": "qa-complex-night",
+    "script": {
+      "id": "qa-complex-night",
+      "name": "QA complex night actions",
+      "characterIds": ["gambler", "engineer", "alhadikhia", "courtier", "general", "chef", "empath", "washerwoman", "monk", "soldier", "poisoner", "scarletwoman", "cerenovus", "baron", "imp", "fanggu"]
+    },
+    "players": [
+      {"id": 1, "name": "Actor", "characterId": "gambler"},
+      {"id": 2, "name": "Alice", "characterId": "chef"},
+      {"id": 3, "name": "Bob", "characterId": "empath"},
+      {"id": 4, "name": "Cara", "characterId": "washerwoman"},
+      {"id": 5, "name": "Eve", "characterId": "poisoner"},
+      {"id": 6, "name": "Finn", "characterId": "baron"},
+      {"id": 7, "name": "Dan", "characterId": "imp"}
+    ],
+    "phase": "NIGHT",
+    "cycle": 2,
+    "nightStepsDone": ["DUSK"],
+    "bluffSets": {"demon": ["monk", "soldier", "general"]}
+  },
+  "importedScripts": [],
+  "schemaVersion": 0
+}

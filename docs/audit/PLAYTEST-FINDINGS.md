@@ -106,3 +106,31 @@ a flow.
      `y=2337` (`2400-63`), 21 px short of clearing the 84 px
      `mandatorySystemGestures` inset. `WindowInsets.safeGestures` (or
      `.systemGestures`) would close the gap.
+
+### Night handout regression sweep, 2026-10-15 — night_emulator_qa
+
+Full reproducible emulator report: [2026-10-15-night-cards-emulator.md](2026-10-15-night-cards-emulator.md).
+Only emulator-5554 was driven; synthetic fixture and strict-serial seed helper
+are under `tools/emu/`.
+
+- **P1 · Lunatic first-night handout (fixed-build PASS):** baseline has Minions
+  instructions but only a bluff button. Fixed UI shows actual fake-Minions card.
+- **P1 · Grandmother relationship caption (fixed-build PASS):** baseline generic
+  THIS PLAYER IS. Fixed card has THIS IS YOUR GRANDCHILD + character + player.
+- **P0 · Dreamer information cardinality (fixed-build PASS):** baseline offered
+  one token; fixed healthy and poisoned cards display simultaneous good/evil pairs.
+- **P2 · Nightwatchman pending handout wording:** pending SHOW 1 CARD TO MARCO
+  sits beneath NOTHING TO DO / spent. Reported for final APK repair and retest.
+- **Regression PASS:** initial Philosopher action disabled without explicit
+  choice; pass survives Night2 and process restart; Imp A→B then hold commits B
+  only, early release commits nothing; Nightwatchman healthy targets chosen
+  recipient, poisoned source creates no recipient wake.
+
+Exact commands, expected versus actual, rule references, suspect files and
+screenshots are in the linked report. No physical phone or user save was edited.
+
+Night-emulator final update: pending wording **fixed and UI-verified** on APK
+SHA-256 `85c74a6f93e444e3db3312af0cdbb5f8569c9dd0b14373404f7762e39f33bc61`.
+Standard and custom Nightwatchman SHOW→close→Done both pass without replay;
+persisted custom card remains the only handout record. See final section of the
+linked emulator report for screenshots and exact assertions.

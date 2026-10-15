@@ -1,5 +1,7 @@
 package com.clocktower.engine.rules
 
+import com.clocktower.engine.CardOffer
+import com.clocktower.engine.ShowCardSpec
 import com.clocktower.engine.BriefingSlot
 import com.clocktower.engine.ChosenContext
 import com.clocktower.engine.Character
@@ -25,6 +27,7 @@ import com.clocktower.engine.NightContext
 import com.clocktower.engine.NightEffect
 import com.clocktower.engine.NightRule
 import com.clocktower.engine.Player
+import com.clocktower.engine.PlacedReminder
 import com.clocktower.engine.Prompt
 import com.clocktower.engine.PromptKind
 import com.clocktower.engine.Ref
@@ -132,7 +135,7 @@ private fun grandmother() = CharacterRule(
     killCause = DeathCause.GOOD_ABILITY,
     firstNight = NightRule(
         gate = Gates.aliveHolder,
-        prompt = "Show the marked Grandchild's character token, then point to that player.",
+        prompt = "Show THIS IS YOUR GRANDCHILD with the marked player and their character token.",
         // The card says "the MARKED Grandchild", so the marked seat arrives lit
         // and the primary arrives armed — it opened empty and disabled, and the
         // storyteller had to pick the seat a second time (playtest D, P2-19).
@@ -523,15 +526,35 @@ private fun courtier(): CharacterRule {
                 allowNone = true,
                 onResolve = listOf(
                     NightEffect.MarkSpent("courtier"),
-                    NightEffect.PlaceToken(
-                        sourceId = "courtier",
-                        label = "Drunk 1",
-                        on = Ref.Target,
-                        kind = EffectKind.DRUNK,
-                        until = Until.DUSK,
-                    ),
                 ),
             )
+        },
+        // The Courtier picks a CHARACTER, so the normal UI sends no playerIds.
+        // Resolve its holder from that choice instead of requiring a second,
+        // invisible player selection to make the drunkenness land.
+        resolveEffects = { ctx, input, _ ->
+            val chosen = input.characterIds.firstOrNull()?.let(Character::normalizeId)
+            val works = ctx.role?.let { Status.roleWorks(ctx.state, ctx.lookup, it) }
+                ?: ctx.holder?.let { Status.hasAbility(ctx.state, ctx.lookup, it.id) } ?: false
+            // A failed use stays failed after the Courtier sobers up. Creating
+            // an inactive source-dependent token would wrongly revive it later.
+            if (input.none || chosen.isNullOrBlank() || !works) emptyList() else {
+                val copies = ctx.state.seats.filter { it.characterId?.let(Character::normalizeId) == chosen }
+                val target = copies.singleOrNull() ?: copies.singleOrNull { it.id in input.playerIds }
+                when {
+                    target != null -> listOf(NightEffect.PlaceToken(
+                        sourceId = "courtier", label = "Drunk 1", on = Ref.Seat(target.id),
+                        kind = EffectKind.DRUNK, until = Until.DUSK,
+                    ))
+                    copies.size > 1 -> listOf(NightEffect.QueuePrompt(
+                        at = BriefingSlot.NOW, kind = PromptKind.CHOOSE_PLAYER, sourceId = "courtier",
+                        title = "The Courtier chose ${ctx.lookup(chosen)?.name ?: chosen}. Choose which one copy becomes drunk for three nights and days.",
+                        on = Ref.Source, targetIds = copies.map { it.id },
+                        tokenOnAnswer = PlacedReminder("courtier", "Drunk 1"),
+                    ))
+                    else -> emptyList()
+                }
+            }
         },
         infoId = "courtier",
     )
@@ -769,6 +792,23 @@ private fun lunatic(): CharacterRule {
             "bluffs. Nothing they choose tonight has any effect.",
         banner = { ctx -> lunaticHandOver(ctx, short = true) },
         detail = { ctx -> lunaticHandOver(ctx, short = false) },
+        cards = { ctx ->
+            val minions = ctx.state.seats.filter { seat ->
+                seat.reminders.any { Tokens.key(it) == Tokens.key("lunatic", "Fake Minion") }
+            }
+            buildList {
+                add(CardOffer("SHOW: THESE ARE YOUR MINIONS", ShowCardSpec.Message("THESE ARE YOUR MINIONS"), true))
+                if (minions.isNotEmpty()) add(CardOffer(
+                    "SHOW: THESE ARE YOUR MINIONS — ${minions.joinToString { it.name }}",
+                    ShowCardSpec.PointCard(
+                        prefix = "THESE ARE YOUR MINIONS",
+                        playerNames = minions.map { it.name },
+                        seatNumbers = minions.map { p -> ctx.state.seats.indexOfFirst { it.id == p.id } + 1 },
+                    ),
+                    true,
+                ))
+            }
+        },
         action = choice,
     )
     return CharacterRule(

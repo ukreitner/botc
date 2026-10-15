@@ -78,6 +78,14 @@ data class ChoosePlayersAndCharacters(
     val onResolve: List<NightEffect> = emptyList(),
     /** The head-shake: "they rebuilt nothing". Never runs [onResolve]. */
     val onNone: List<NightEffect> = emptyList(),
+    /** Ordinary assignments preserve each target's character type. */
+    val matchTargetType: Boolean = false,
+    /** One rebuild chooses a single character type, never a mixed group. */
+    val sameTargetType: Boolean = false,
+    /** An evil rebuild covers all current Minions, or exactly one Demon. */
+    val completeTargetGroup: Boolean = false,
+    /** Choosing an already in-play character keeps its current player. */
+    val preserveInPlayOwners: Boolean = false,
 ) : NightAction
 
 /** Organ Grinder, Po head-shake, Professor pass. */
@@ -364,6 +372,10 @@ sealed interface NightEffect {
         val on: Ref? = null,
         val stepSlotId: String = "",
         val cards: List<ShowCardSpec> = emptyList(),
+        val targetIds: List<Long> = emptyList(),
+        val pointCardOnAnswer: ShowCardSpec.PointCard? = null,
+        val cardsTruthful: Boolean? = true,
+        val tokenOnAnswer: PlacedReminder? = null,
     ) : NightEffect
 
     @Serializable
@@ -410,6 +422,10 @@ sealed interface NightEffect {
         val worksWhileImpaired: Boolean = false,
         /** Only when [on] is null: who ends up exercising the floating grant. */
         val floatingHolder: GrantHolder = GrantHolder.STORYTELLER,
+        /** Failed Philosopher use: keep the believed wake, never a real ability. */
+        val alwaysFalse: Boolean = false,
+        val keepsIllusoryMarkers: Boolean = true,
+        val tracksApparentUse: Boolean = false,
     ) : NightEffect
 
     /**

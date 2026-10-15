@@ -1,0 +1,155 @@
+{
+  "game": {
+    "id": "qa-night-cards",
+    "script": {
+      "id": "qa-night-cards",
+      "name": "QA night cards",
+      "characterIds": [
+        "monk",
+        "sailor",
+        "lunatic",
+        "grandmother",
+        "widow",
+        "goblin",
+        "imp",
+        "gambler",
+        "dreamer",
+        "washerwoman",
+        "philosopher",
+        "vigormortis",
+        "fanggu",
+        "empath",
+        "chef",
+        "librarian",
+        "fortuneteller",
+        "undertaker"
+      ]
+    },
+    "players": [
+      {
+        "id": 1,
+        "name": "nicu",
+        "characterId": "monk"
+      },
+      {
+        "id": 2,
+        "name": "victor",
+        "characterId": "sailor",
+        "reminders": [
+          {
+            "sourceId": "lunatic",
+            "label": "Fake Minion"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "name": "kira",
+        "characterId": "lunatic",
+        "shownCharacterId": "vigormortis"
+      },
+      {
+        "id": 4,
+        "name": "todor",
+        "characterId": "grandmother",
+        "reminders": [
+          {
+            "sourceId": "lunatic",
+            "label": "Fake Minion"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "name": "yan",
+        "characterId": "widow",
+        "reminders": [
+          {
+            "sourceId": "lunatic",
+            "label": "Fake Minion"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "name": "Philippa",
+        "characterId": "goblin"
+      },
+      {
+        "id": 7,
+        "name": "nova",
+        "characterId": "imp"
+      },
+      {
+        "id": 8,
+        "name": "marius",
+        "characterId": "gambler",
+        "reminders": [
+          {
+            "sourceId": "grandmother",
+            "label": "Grandchild"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "name": "marco",
+        "characterId": "dreamer"
+      },
+      {
+        "id": 10,
+        "name": "soroush",
+        "characterId": "washerwoman"
+      },
+      {
+        "id": 11,
+        "name": "Natalie",
+        "characterId": "philosopher"
+      }
+    ],
+    "phase": "NIGHT",
+    "cycle": 1,
+    "bluffSets": {
+      "demon": [
+        "chef",
+        "empath",
+        "librarian"
+      ],
+      "lunatic:3": [
+        "undertaker",
+        "fortuneteller",
+        "monk"
+      ]
+    },
+    "decisions": {
+      "lunatic.demon": "vigormortis"
+    }
+  },
+  "importedScripts": [
+    {
+      "id": "qa-night-cards",
+      "name": "QA night cards",
+      "characterIds": [
+        "monk",
+        "sailor",
+        "lunatic",
+        "grandmother",
+        "widow",
+        "goblin",
+        "imp",
+        "gambler",
+        "dreamer",
+        "washerwoman",
+        "philosopher",
+        "vigormortis",
+        "fanggu",
+        "empath",
+        "chef",
+        "librarian",
+        "fortuneteller",
+        "undertaker"
+      ]
+    }
+  ],
+  "schemaVersion": 0
+}
